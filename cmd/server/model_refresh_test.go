@@ -318,7 +318,7 @@ func TestGrokProbeCandidatesIncludesPolicyAndExistingModels(t *testing.T) {
 	}
 }
 
-func TestApplyModelRefresh_DeletesModelsMissingFromDiscoveredList(t *testing.T) {
+func TestApplyModelRefresh_MarksModelsMissingFromDiscoveredListOffline(t *testing.T) {
 	testCases := []struct {
 		channel string
 		modelID string
@@ -353,21 +353,31 @@ func TestApplyModelRefresh_DeletesModelsMissingFromDiscoveredList(t *testing.T) 
 			if err != nil {
 				t.Fatalf("applyModelRefresh() error = %v", err)
 			}
-			if result.Deleted != 1 {
-				t.Fatalf("Deleted=%d want 1", result.Deleted)
+			if result.Deleted != 0 {
+				t.Fatalf("Deleted=%d want 0", result.Deleted)
 			}
-			if len(result.DeletedModelIDs) != 1 || result.DeletedModelIDs[0] != tc.modelID {
-				t.Fatalf("DeletedModelIDs=%v want [%s]", result.DeletedModelIDs, tc.modelID)
+			if result.Offline != 1 {
+				t.Fatalf("Offline=%d want 1", result.Offline)
+			}
+			if len(result.OfflineModelIDs) != 1 || result.OfflineModelIDs[0] != tc.modelID {
+				t.Fatalf("OfflineModelIDs=%v want [%s]", result.OfflineModelIDs, tc.modelID)
 			}
 
-			models, err := s.ListModels(ctx)
+			model, err := s.GetModelByChannelAndModelID(ctx, tc.channel, tc.modelID)
 			if err != nil {
-				t.Fatalf("ListModels() error = %v", err)
+				t.Fatalf("GetModelByChannelAndModelID() error = %v", err)
 			}
-			for _, model := range models {
-				if model != nil && strings.EqualFold(model.Channel, tc.channel) && model.ModelID == tc.modelID {
-					t.Fatalf("expected %s to be deleted, got %+v", tc.modelID, model)
-				}
+			if model == nil {
+				t.Fatalf("expected %s to remain offline", tc.modelID)
+			}
+			if model.Status != store.ModelStatusOffline {
+				t.Fatalf("Status=%q want %q", model.Status, store.ModelStatusOffline)
+			}
+			if model.Verified {
+				t.Fatal("Verified=true want false")
+			}
+			if model.IsDefault {
+				t.Fatal("IsDefault=true want false")
 			}
 		})
 	}

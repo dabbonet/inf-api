@@ -143,7 +143,9 @@ function normalizeModelRefreshResult(data, fallbackChannel) {
     added: Number(data.added ?? 0),
     updated: Number(data.updated ?? 0),
     deleted: Number(data.deleted ?? 0),
+    offline: Number(data.offline ?? 0),
     deletedModelIDs: sortTextValues(Array.isArray(data.deleted_model_ids) ? data.deleted_model_ids : []),
+    offlineModelIDs: sortTextValues(Array.isArray(data.offline_model_ids) ? data.offline_model_ids : []),
   };
 }
 
@@ -168,14 +170,14 @@ function renderModelRefreshSummary() {
 
   summary.hidden = false;
   title.textContent = `${result.channel || channel} 最近一次刷新结果`;
-  meta.textContent = `已按来源列表完成同步，并发数 ${result.concurrency || modelRefreshConcurrency}。发现到的模型会写入当前渠道，来源列表里消失的模型会直接删除。`;
+  meta.textContent = `已按来源列表完成同步，并发数 ${result.concurrency || modelRefreshConcurrency}。发现到的模型会写入当前渠道，来源列表里暂时缺失的模型会标记为离线并保留记录。`;
 
   const stats = [
     { label: "发现", value: result.discovered },
     { label: "同步", value: result.verified },
     { label: "新增", value: result.added },
     { label: "更新", value: result.updated },
-    { label: "删除", value: result.deleted },
+    { label: "下线", value: result.offline },
   ];
   statGrid.innerHTML = stats.map((item) => `
     <div class="models-refresh-stat">
@@ -184,7 +186,7 @@ function renderModelRefreshSummary() {
     </div>
   `).join("");
 
-  const deletedItems = sortTextValues(result.deletedModelIDs || []);
+  const deletedItems = sortTextValues([...(result.offlineModelIDs || []), ...(result.deletedModelIDs || [])]);
   deletedBlock.hidden = deletedItems.length === 0;
   deletedList.innerHTML = deletedItems.map((item) => `
     <span class="models-refresh-deleted-item">${escapeHtml(item)}</span>

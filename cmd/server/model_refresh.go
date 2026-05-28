@@ -45,9 +45,11 @@ type modelRefreshResult struct {
 	Added           int      `json:"added"`
 	Updated         int      `json:"updated"`
 	Deleted         int      `json:"deleted"`
+	Offline         int      `json:"offline"`
 	DefaultModelID  string   `json:"default_model_id,omitempty"`
 	AddedModelIDs   []string `json:"added_model_ids,omitempty"`
 	DeletedModelIDs []string `json:"deleted_model_ids,omitempty"`
+	OfflineModelIDs []string `json:"offline_model_ids,omitempty"`
 }
 
 type discoveredModel struct {
@@ -874,15 +876,31 @@ func applyModelRefresh(ctx context.Context, s *store.Store, channel string, sour
 		if _, ok := fetchedSet[modelID]; ok {
 			continue
 		}
-		if err := s.DeleteModel(ctx, existing.ID); err != nil {
-			return nil, err
+		needsUpdate := false
+		if existing.Status != store.ModelStatusOffline {
+			existing.Status = store.ModelStatusOffline
+			needsUpdate = true
 		}
-		result.Deleted++
-		result.DeletedModelIDs = append(result.DeletedModelIDs, modelID)
+		if existing.Verified {
+			existing.Verified = false
+			needsUpdate = true
+		}
+		if existing.IsDefault {
+			existing.IsDefault = false
+			needsUpdate = true
+		}
+		if needsUpdate {
+			if err := s.UpdateModel(ctx, existing); err != nil {
+				return nil, err
+			}
+			result.Offline++
+			result.OfflineModelIDs = append(result.OfflineModelIDs, modelID)
+		}
 	}
 
 	sort.Strings(result.AddedModelIDs)
 	sort.Strings(result.DeletedModelIDs)
+	sort.Strings(result.OfflineModelIDs)
 	return result, nil
 }
 
