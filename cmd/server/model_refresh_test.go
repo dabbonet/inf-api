@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -191,6 +193,76 @@ func TestDiscoverModelsForChannel_BoltReturnsSeedCatalog(t *testing.T) {
 	}
 	if len(items) == 0 {
 		t.Fatal("expected bolt seed catalog to contain models")
+	}
+}
+
+func TestVerifyPuterDiscoveredModelsConcurrent_KeepsUnknownProbeFailures(t *testing.T) {
+	prevVerify := verifyPuterModelForRefresh
+	t.Cleanup(func() { verifyPuterModelForRefresh = prevVerify })
+
+	var mu sync.Mutex
+	seen := map[string]int{}
+	verifyPuterModelForRefresh = func(ctx context.Context, cfg *config.Config, acc *store.Account, modelID string) error {
+		mu.Lock()
+		seen[modelID]++
+		mu.Unlock()
+		switch modelID {
+		case "stable":
+			return nil
+		case "flaky":
+			return errors.New("puter API error: status=429, body=too many requests")
+		case "missing":
+			return errors.New("puter API error: message=Model not found, please try one of the following models listed here")
+		default:
+			return errors.New("failed to send puter verify request: timeout")
+		}
+	}
+
+	got := verifyPuterDiscoveredModelsConcurrent(
+		context.Background(),
+		&config.Config{},
+		[]*store.Account{{ID: 1, AccountType: "puter"}, {ID: 2, AccountType: "puter"}},
+		[]discoveredModel{{ID: "stable"}, {ID: "flaky"}, {ID: "missing"}},
+		8,
+	)
+
+	gotIDs := make([]string, 0, len(got))
+	for _, item := range got {
+		gotIDs = append(gotIDs, item.ID)
+	}
+	if strings.Join(gotIDs, ",") != "stable,flaky" {
+		t.Fatalf("verified IDs=%v want [stable flaky]", gotIDs)
+	}
+	if seen["missing"] != 2 {
+		t.Fatalf("missing probes=%d want 2", seen["missing"])
+	}
+}
+
+func TestVerifyPuterDiscoveredModelsSerial_KeepsUnknownProbeFailures(t *testing.T) {
+	prevVerify := verifyPuterModelForRefresh
+	t.Cleanup(func() { verifyPuterModelForRefresh = prevVerify })
+
+	verifyPuterModelForRefresh = func(ctx context.Context, cfg *config.Config, acc *store.Account, modelID string) error {
+		if modelID == "missing" {
+			return errors.New("puter API error: message=Model not found, please try one of the following models listed here")
+		}
+		return errors.New("failed to send puter verify request: EOF")
+	}
+
+	got := verifyPuterDiscoveredModelsConcurrent(
+		context.Background(),
+		&config.Config{},
+		[]*store.Account{{ID: 1, AccountType: "puter"}},
+		[]discoveredModel{{ID: "flaky"}, {ID: "missing"}},
+		1,
+	)
+
+	gotIDs := make([]string, 0, len(got))
+	for _, item := range got {
+		gotIDs = append(gotIDs, item.ID)
+	}
+	if strings.Join(gotIDs, ",") != "flaky" {
+		t.Fatalf("verified IDs=%v want [flaky]", gotIDs)
 	}
 }
 

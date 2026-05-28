@@ -25,6 +25,12 @@ const (
 	maxModelRefreshConcurrency     = 16
 )
 
+var verifyPuterModelForRefresh = func(ctx context.Context, cfg *config.Config, acc *store.Account, modelID string) error {
+	client := puter.NewFromAccount(acc, refreshModelRequestConfig(cfg, "puter"))
+	defer client.Close()
+	return client.VerifyModel(ctx, modelID)
+}
+
 type modelRefreshRequest struct {
 	Channel     string `json:"channel"`
 	Concurrency int    `json:"concurrency,omitempty"`
@@ -299,7 +305,7 @@ func verifyPuterDiscoveredModelsConcurrent(ctx context.Context, cfg *config.Conf
 		return verifyPuterDiscoveredModelsSerial(ctx, cfg, accounts, candidates)
 	}
 
-	accepted := make([]bool, len(candidates))
+	results := make([]puterModelProbeResult, len(candidates))
 	jobs := make(chan int, len(candidates))
 	var wg sync.WaitGroup
 	wg.Add(workerCount)
@@ -312,18 +318,24 @@ func verifyPuterDiscoveredModelsConcurrent(ctx context.Context, cfg *config.Conf
 					continue
 				}
 				startAccount := idx % len(accounts)
+				allDefinitiveRejects := true
 				for attempt := 0; attempt < len(accounts); attempt++ {
 					if err := ctx.Err(); err != nil {
+						allDefinitiveRejects = false
 						break
 					}
 					acc := accounts[(startAccount+attempt)%len(accounts)]
-					client := puter.NewFromAccount(acc, refreshModelRequestConfig(cfg, "puter"))
-					err := client.VerifyModel(ctx, candidate.ID)
-					client.Close()
+					err := verifyPuterModelForRefresh(ctx, cfg, acc, candidate.ID)
 					if err == nil {
-						accepted[idx] = true
+						results[idx] = puterModelProbeAccepted
 						break
 					}
+					if !isPuterModelDefinitiveReject(err) {
+						allDefinitiveRejects = false
+					}
+				}
+				if results[idx] != puterModelProbeAccepted && allDefinitiveRejects {
+					results[idx] = puterModelProbeRejected
 				}
 			}
 		}()
@@ -336,7 +348,7 @@ func verifyPuterDiscoveredModelsConcurrent(ctx context.Context, cfg *config.Conf
 
 	verified := make([]discoveredModel, 0, len(candidates))
 	for idx, candidate := range candidates {
-		if !accepted[idx] {
+		if results[idx] == puterModelProbeRejected {
 			continue
 		}
 		candidate.SortOrder = len(verified)
@@ -353,23 +365,54 @@ func verifyPuterDiscoveredModelsSerial(ctx context.Context, cfg *config.Config, 
 			continue
 		}
 		ok := false
+		allDefinitiveRejects := true
 		for attempt := 0; attempt < len(accounts); attempt++ {
+			if err := ctx.Err(); err != nil {
+				allDefinitiveRejects = false
+				break
+			}
 			acc := accounts[(accountIndex+attempt)%len(accounts)]
-			client := puter.NewFromAccount(acc, refreshModelRequestConfig(cfg, "puter"))
-			err := client.VerifyModel(ctx, candidate.ID)
-			client.Close()
+			err := verifyPuterModelForRefresh(ctx, cfg, acc, candidate.ID)
 			if err == nil {
 				ok = true
 				accountIndex = (accountIndex + attempt + 1) % len(accounts)
 				break
 			}
+			if !isPuterModelDefinitiveReject(err) {
+				allDefinitiveRejects = false
+			}
 		}
-		if ok {
+		if ok || !allDefinitiveRejects {
 			candidate.SortOrder = len(verified)
 			verified = append(verified, candidate)
 		}
 	}
 	return verified
+}
+
+type puterModelProbeResult uint8
+
+const (
+	puterModelProbeUnknown puterModelProbeResult = iota
+	puterModelProbeAccepted
+	puterModelProbeRejected
+)
+
+func isPuterModelDefinitiveReject(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(strings.TrimSpace(err.Error()))
+	if text == "" {
+		return false
+	}
+	if strings.Contains(text, "model not found") ||
+		strings.Contains(text, "invalid model") ||
+		strings.Contains(text, "unknown model") ||
+		strings.Contains(text, "unsupported model") {
+		return true
+	}
+	return false
 }
 
 func puterSeedDiscoveredModels() []discoveredModel {
