@@ -50,13 +50,11 @@ func (h *Handler) resolveBoltProjectID(ctx context.Context, acc *store.Account, 
 
 	projectID := strings.TrimSpace(acc.ProjectID)
 	workdir = normalizeBoltProjectWorkdir(workdir)
-	if workdir == "" {
-		if !forceNew {
-			if projectID == "" {
-				return "", fmt.Errorf("missing bolt project id")
-			}
-			return projectID, nil
-		}
+	if !forceNew && projectID != "" {
+		return projectID, nil
+	}
+	if workdir == "" && projectID == "" {
+		return "", fmt.Errorf("missing bolt project id")
 	}
 
 	cacheKey := boltProjectSessionKey(acc.ID, workdir)

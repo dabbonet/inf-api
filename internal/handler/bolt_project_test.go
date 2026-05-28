@@ -38,7 +38,7 @@ func (f *fakeBoltProjectClient) CreateEmptyProject(context.Context) (string, err
 
 func TestResolveBoltProjectID_CachesPerWorkdir(t *testing.T) {
 	h := &Handler{sessionStore: NewMemorySessionStore(30*time.Minute, 100)}
-	acc := &store.Account{ID: 6, ProjectID: "sb1-old"}
+	acc := &store.Account{ID: 6}
 	client := &fakeBoltProjectClient{projectIDs: []string{"sb1-new"}}
 
 	got, err := h.resolveBoltProjectID(context.Background(), acc, client, `C:\Users\Test\Repo`, false)
@@ -66,7 +66,7 @@ func TestResolveBoltProjectID_CachesPerWorkdir(t *testing.T) {
 
 func TestResolveBoltProjectID_CreatesNewProjectForDifferentWorkdir(t *testing.T) {
 	h := &Handler{sessionStore: NewMemorySessionStore(30*time.Minute, 100)}
-	acc := &store.Account{ID: 6, ProjectID: "sb1-old"}
+	acc := &store.Account{ID: 6}
 	client := &fakeBoltProjectClient{projectIDs: []string{"sb1-first", "sb1-second"}}
 
 	first, err := h.resolveBoltProjectID(context.Background(), acc, client, `/tmp/repo-a`, false)
@@ -88,7 +88,7 @@ func TestResolveBoltProjectID_CreatesNewProjectForDifferentWorkdir(t *testing.T)
 
 func TestResolveBoltProjectID_ReturnsCreationError(t *testing.T) {
 	h := &Handler{sessionStore: NewMemorySessionStore(30*time.Minute, 100)}
-	acc := &store.Account{ID: 6, ProjectID: "sb1-old"}
+	acc := &store.Account{ID: 6}
 	client := &fakeBoltProjectClient{err: errors.New("boom")}
 
 	_, err := h.resolveBoltProjectID(context.Background(), acc, client, `/tmp/repo-a`, false)
@@ -99,7 +99,7 @@ func TestResolveBoltProjectID_ReturnsCreationError(t *testing.T) {
 
 func TestResolveBoltProjectID_ForceNewReplacesCachedProjectForSameWorkdir(t *testing.T) {
 	h := &Handler{sessionStore: NewMemorySessionStore(30*time.Minute, 100)}
-	acc := &store.Account{ID: 6, ProjectID: "sb1-old"}
+	acc := &store.Account{ID: 6}
 	client := &fakeBoltProjectClient{projectIDs: []string{"sb1-first", "sb1-second"}}
 
 	first, err := h.resolveBoltProjectID(context.Background(), acc, client, `/tmp/repo-a`, false)
@@ -120,5 +120,22 @@ func TestResolveBoltProjectID_ForceNewReplacesCachedProjectForSameWorkdir(t *tes
 	}
 	if client.calls != 2 {
 		t.Fatalf("calls=%d want 2", client.calls)
+	}
+}
+
+func TestResolveBoltProjectID_PrefersConfiguredProject(t *testing.T) {
+	h := &Handler{sessionStore: NewMemorySessionStore(30*time.Minute, 100)}
+	acc := &store.Account{ID: 6, ProjectID: "sb1-configured"}
+	client := &fakeBoltProjectClient{projectIDs: []string{"sb1-created"}}
+
+	got, err := h.resolveBoltProjectID(context.Background(), acc, client, `/tmp/repo-a`, false)
+	if err != nil {
+		t.Fatalf("resolveBoltProjectID() error = %v", err)
+	}
+	if got != "sb1-configured" {
+		t.Fatalf("projectID=%q want configured", got)
+	}
+	if client.calls != 0 {
+		t.Fatalf("calls=%d want 0", client.calls)
 	}
 }
