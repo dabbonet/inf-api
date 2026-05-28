@@ -97,6 +97,23 @@ func TestResolveBoltProjectID_ReturnsCreationError(t *testing.T) {
 	}
 }
 
+func TestResolveBoltProjectID_FallsBackToConfiguredProjectOnCreationError(t *testing.T) {
+	h := &Handler{sessionStore: NewMemorySessionStore(30*time.Minute, 100)}
+	acc := &store.Account{ID: 6, ProjectID: "sb1-configured"}
+	client := &fakeBoltProjectClient{err: errors.New("boom")}
+
+	got, err := h.resolveBoltProjectID(context.Background(), acc, client, `/tmp/repo-a`, true)
+	if err != nil {
+		t.Fatalf("resolveBoltProjectID() error = %v", err)
+	}
+	if got != "sb1-configured" {
+		t.Fatalf("projectID=%q want configured fallback", got)
+	}
+	if client.calls != 1 {
+		t.Fatalf("calls=%d want attempted creation before fallback", client.calls)
+	}
+}
+
 func TestResolveBoltProjectID_ForceNewReplacesCachedProjectForSameWorkdir(t *testing.T) {
 	h := &Handler{sessionStore: NewMemorySessionStore(30*time.Minute, 100)}
 	acc := &store.Account{ID: 6}

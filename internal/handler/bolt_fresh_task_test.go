@@ -138,6 +138,18 @@ func TestShouldForceFreshBoltTask_FalseForSingleContinuationPrompt(t *testing.T)
 	}
 }
 
+func TestShouldForceFreshBoltTask_FalseForSingleGreetingPrompt(t *testing.T) {
+	req := ClaudeRequest{
+		Messages: []prompt.Message{
+			{Role: "user", Content: prompt.MessageContent{Text: "hi"}},
+		},
+	}
+
+	if shouldForceFreshBoltTask(req) {
+		t.Fatalf("expected greeting prompt to reuse configured bolt project")
+	}
+}
+
 func TestShouldForceFreshBoltTask_FalseForToolResultFollowup(t *testing.T) {
 	req := ClaudeRequest{
 		Messages: []prompt.Message{

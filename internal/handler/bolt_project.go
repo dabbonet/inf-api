@@ -75,6 +75,9 @@ func (h *Handler) resolveBoltProjectID(ctx context.Context, acc *store.Account, 
 
 	projectID, err := creator.CreateEmptyProject(ctx)
 	if err != nil {
+		if strings.TrimSpace(acc.ProjectID) != "" {
+			return strings.TrimSpace(acc.ProjectID), nil
+		}
 		return "", err
 	}
 	projectID = strings.TrimSpace(projectID)

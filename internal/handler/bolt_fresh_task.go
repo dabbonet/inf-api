@@ -37,7 +37,7 @@ func isStandaloneBoltPrompt(messages []prompt.Message) bool {
 	if !ok {
 		return false
 	}
-	return !bolt.LooksLikeContinuationOnlyText(normalizeTopicText(stripSystemRemindersForMode(text)))
+	return looksLikeBoltFreshStartRequest(text)
 }
 
 func shouldRestartBoltTaskFromHistory(messages []prompt.Message) bool {
