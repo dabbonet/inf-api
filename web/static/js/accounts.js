@@ -5,7 +5,6 @@ let currentPlatform = '';
 let accountHealth = {};
 let pageSize = 20;
 let currentPage = 1;
-let modelCatalog = [];
 
 // DOM 缓存
 const domCache = {
@@ -22,117 +21,10 @@ function initDOMCache() {
     domCache.accountImportStatus = document.getElementById("accountImportStatus");
 }
 
-const fallbackAgentModes = {
-  orchids: [
-    "claude-sonnet-4-5",
-    "claude-opus-4-6",
-    "claude-opus-4-6-thinking",
-    "claude-opus-4-5",
-    "claude-sonnet-4-5-thinking",
-  ],
-  warp: [
-    "auto",
-    "auto-efficient",
-    "auto-genius",
-    "claude-4-5-sonnet",
-    "claude-4-5-sonnet-thinking",
-    "claude-4-5-opus",
-    "claude-4-5-opus-thinking",
-    "claude-4-6-opus-high",
-    "claude-4-6-opus-max",
-  ],
-  bolt: [
-    "claude-opus-4-6",
-    "claude-sonnet-4-5",
-    "claude-3-7-sonnet-20250219",
-  ],
-  puter: [
-    "claude-opus-4-5",
-    "claude-sonnet-4-5",
-    "claude-3-7-sonnet-20250219",
-  ],
-  grok: [
-    "grok-3",
-    "grok-3-mini",
-    "grok-3-thinking",
-    "grok-4",
-    "grok-4-mini",
-    "grok-4-thinking",
-    "grok-4-heavy",
-    "grok-4.1-mini",
-    "grok-4.1-fast",
-    "grok-4.1-expert",
-    "grok-4.1-thinking",
-    "grok-imagine-image-lite",
-    "grok-imagine-image",
-    "grok-imagine-image-pro",
-    "grok-imagine-image-edit",
-    "grok-imagine-video",
-  ],
-};
-
-function normalizeChannel(channel) {
-  return String(channel || "orchids").trim().toLowerCase();
-}
-
-function isModelAvailable(model) {
-  if (!model) return false;
-  if (typeof model.status === "boolean") return model.status;
-  const status = String(model.status || "").toLowerCase();
-  if (!status) return true;
-  return status === "available";
-}
-
-function bySortOrder(a, b) {
-  const aOrderRaw = a && a.sort_order;
-  const bOrderRaw = b && b.sort_order;
-  const aOrder = Number.isFinite(Number(aOrderRaw)) ? Number(aOrderRaw) : 0;
-  const bOrder = Number.isFinite(Number(bOrderRaw)) ? Number(bOrderRaw) : 0;
-  if (aOrder !== bOrder) return aOrder - bOrder;
-  const aModelID = a && a.model_id ? a.model_id : "";
-  const bModelID = b && b.model_id ? b.model_id : "";
-  return String(aModelID).localeCompare(String(bModelID));
-}
-
-function getModelsForAccountType(type) {
-  const channel = normalizeChannel(type);
-  const active = modelCatalog
-    .filter((m) => normalizeChannel(m.channel) === channel)
-    .filter(isModelAvailable)
-    .sort(bySortOrder);
-
-  if (active.length > 0) return active;
-
-  const fallback = fallbackAgentModes[channel] || [];
-  return fallback.map((modelID, idx) => ({
-    model_id: modelID,
-    name: modelID,
-    sort_order: idx,
-    is_default: idx === 0,
-  }));
-}
-
-async function loadModelCatalog() {
-  try {
-    const res = await fetch("/api/models");
-    if (!res.ok) {
-      throw new Error(`status ${res.status}`);
-    }
-    const list = await res.json();
-    modelCatalog = Array.isArray(list) ? list : [];
-  } catch (err) {
-    console.error("Failed to load models:", err);
-    modelCatalog = [];
-  }
-}
-
 // Load accounts from API
 async function loadAccounts() {
   try {
-    const [res] = await Promise.all([
-      fetch("/api/accounts"),
-      loadModelCatalog(),
-    ]);
+    const res = await fetch("/api/accounts");
     if (res.status === 401) {
       window.location.href = "./login.html";
       return;
@@ -550,14 +442,6 @@ async function runAccountCreatePool(payloads, concurrency = 6, onProgress = null
   return { success, failed, failures };
 }
 
-function resolveAgentMode(type, preferredValue = "") {
-  const preferred = String(preferredValue || "").trim();
-  if (preferred) return preferred;
-  const models = getModelsForAccountType(type);
-  const defaultModel = models.find((m) => m.is_default) || models[0];
-  return defaultModel ? String(defaultModel.model_id || "").trim() : "";
-}
-
 // Render platform filter tabs
 function renderPlatformTabs() {
   const container = document.getElementById("platformFilters");
@@ -876,7 +760,6 @@ function renderAccounts() {
     { label: "", style: "width: 40px;" },
     { label: "ID", style: "width: 60px;" },
     { label: "Token" },
-    { label: "模型" },
     { label: "配额", style: "width: 140px;" },
     { label: "状态" },
     { label: "调用" },
@@ -934,13 +817,6 @@ function renderAccounts() {
     tokenSpan.textContent = tokenDisplay;
     tdToken.appendChild(tokenSpan);
     tr.appendChild(tdToken);
-
-    const tdModel = document.createElement("td");
-    const modelSpan = document.createElement("span");
-    modelSpan.className = "tag tag-free";
-    modelSpan.textContent = acc.agent_mode || "auto";
-    tdModel.appendChild(modelSpan);
-    tr.appendChild(tdModel);
 
     const tdQuota = document.createElement("td");
     tdQuota.style.fontSize = "0.85rem";
@@ -1128,10 +1004,6 @@ function renderAccountsMobile(container, pageItems, total, totalPages) {
         <span class="token-text" title="${escapeHtml(tokenDisplay)}">${escapeHtml(tokenDisplay)}</span>
       </div>
       <div class="account-mobile-grid">
-        <div class="account-mobile-item">
-          <span class="account-mobile-label">模型</span>
-          <span class="tag tag-free">${escapeHtml(acc.agent_mode || "auto")}</span>
-        </div>
         <div class="account-mobile-item">
           <span class="account-mobile-label">状态</span>
           <div class="account-mobile-inline">${buildStatusMarkup(acc, badge)}</div>
@@ -1332,11 +1204,8 @@ function openModal(account = null) {
     }
   };
 
-  loadModelCatalog()
-    .finally(() => {
-      applyValues();
-      finalizeModal();
-    });
+  applyValues();
+  finalizeModal();
 }
 
 // Close modal
@@ -1360,7 +1229,6 @@ async function saveAccount(e) {
   const existing = id ? accounts.find((a) => String(a.id) === String(id)) : null;
   const data = {
     account_type: type,
-    agent_mode: resolveAgentMode(type, existing ? existing.agent_mode : ""),
     weight: existing ? (parseInt(existing.weight, 10) || 1) : 1,
     enabled: document.getElementById("enabled").checked,
   };
