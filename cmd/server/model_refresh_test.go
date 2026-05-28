@@ -19,12 +19,12 @@ func TestMakeModelRefreshHandler_UsesBodyChannel(t *testing.T) {
 	prev := runModelRefresh
 	defer func() { runModelRefresh = prev }()
 
-	runModelRefresh = func(ctx context.Context, cfg *config.Config, s *store.Store, channel string) (*modelRefreshResult, error) {
-		return &modelRefreshResult{Channel: channel, Source: "stub", Discovered: 3, Verified: 2}, nil
+	runModelRefresh = func(ctx context.Context, cfg *config.Config, s *store.Store, channel string, concurrency int) (*modelRefreshResult, error) {
+		return &modelRefreshResult{Channel: channel, Source: "stub", Concurrency: concurrency, Discovered: 3, Verified: 2}, nil
 	}
 
 	handler := makeModelRefreshHandler(&config.Config{}, nil)
-	req := httptest.NewRequest(http.MethodPost, "/api/models/refresh", strings.NewReader(`{"channel":"puter"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/models/refresh?channel=warp&concurrency=99", strings.NewReader(`{"channel":"puter","concurrency":8}`))
 	rec := httptest.NewRecorder()
 
 	handler(rec, req)
@@ -42,6 +42,48 @@ func TestMakeModelRefreshHandler_UsesBodyChannel(t *testing.T) {
 	}
 	if resp.Verified != 2 {
 		t.Fatalf("verified=%d want 2", resp.Verified)
+	}
+	if resp.Concurrency != 8 {
+		t.Fatalf("concurrency=%d want 8", resp.Concurrency)
+	}
+}
+
+func TestNormalizeModelRefreshConcurrency(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int
+		want int
+	}{
+		{name: "default on zero", in: 0, want: defaultModelRefreshConcurrency},
+		{name: "default on negative", in: -2, want: defaultModelRefreshConcurrency},
+		{name: "keeps valid", in: 8, want: 8},
+		{name: "clamps max", in: 99, want: maxModelRefreshConcurrency},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeModelRefreshConcurrency(tt.in); got != tt.want {
+				t.Fatalf("normalizeModelRefreshConcurrency(%d)=%d want %d", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseModelRefreshConcurrency(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want int
+		ok   bool
+	}{
+		{raw: "", want: 0, ok: false},
+		{raw: "2", want: 2, ok: true},
+		{raw: "99", want: maxModelRefreshConcurrency, ok: true},
+		{raw: "bad", want: defaultModelRefreshConcurrency, ok: true},
+	}
+	for _, tt := range tests {
+		got, ok := parseModelRefreshConcurrency(tt.raw)
+		if got != tt.want || ok != tt.ok {
+			t.Fatalf("parseModelRefreshConcurrency(%q)=(%d,%v) want (%d,%v)", tt.raw, got, ok, tt.want, tt.ok)
+		}
 	}
 }
 
@@ -61,6 +103,25 @@ func TestSyncModelsForChannel_SkipsVerificationAndUsesDiscoveryList(t *testing.T
 	}
 	if result.Verified != result.Discovered {
 		t.Fatalf("verified=%d want discovered=%d", result.Verified, result.Discovered)
+	}
+	if result.Concurrency != defaultModelRefreshConcurrency {
+		t.Fatalf("concurrency=%d want %d", result.Concurrency, defaultModelRefreshConcurrency)
+	}
+}
+
+func TestSyncModelsForChannelConcurrent_RecordsConcurrency(t *testing.T) {
+	s, cleanup := setupModelRefreshStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	clearModelsForChannel(t, ctx, s, "Bolt")
+
+	result, err := syncModelsForChannelConcurrent(ctx, &config.Config{}, s, "Bolt", 8)
+	if err != nil {
+		t.Fatalf("syncModelsForChannelConcurrent() error = %v", err)
+	}
+	if result.Concurrency != 8 {
+		t.Fatalf("concurrency=%d want 8", result.Concurrency)
 	}
 }
 
@@ -139,11 +200,12 @@ func TestGrokCanonicalAcceptanceRejectsFallbackModels(t *testing.T) {
 		canonical string
 		want      bool
 	}{
-		{requested: "grok-4.3", canonical: "grok-4.3", want: true},
-		{requested: "grok-4.3-latest", canonical: "grok-4.3", want: true},
-		{requested: "grok-latest", canonical: "grok-4.3", want: true},
-		{requested: "grok-3-mini", canonical: "grok-4.3", want: false},
-		{requested: "grok-420", canonical: "grok-4.3", want: false},
+		{requested: "grok-4.20-0309", canonical: "grok-4.20-0309", want: true},
+		{requested: "grok-4.3-beta", canonical: "grok-4.3-beta", want: true},
+		{requested: "grok-4.3-latest", canonical: "grok-4.3", want: false},
+		{requested: "grok-latest", canonical: "grok-4.3", want: false},
+		{requested: "grok-3-mini", canonical: "grok-4.20-0309", want: false},
+		{requested: "grok-420", canonical: "grok-4.20-0309", want: false},
 	}
 	for _, tt := range tests {
 		if got := isAcceptedGrokCanonical(tt.requested, tt.canonical); got != tt.want {

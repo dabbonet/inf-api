@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/goccy/go-json"
 
@@ -18,13 +20,20 @@ import (
 	"orchids-api/internal/warp"
 )
 
+const (
+	defaultModelRefreshConcurrency = 4
+	maxModelRefreshConcurrency     = 16
+)
+
 type modelRefreshRequest struct {
-	Channel string `json:"channel"`
+	Channel     string `json:"channel"`
+	Concurrency int    `json:"concurrency,omitempty"`
 }
 
 type modelRefreshResult struct {
 	Channel         string   `json:"channel"`
 	Source          string   `json:"source"`
+	Concurrency     int      `json:"concurrency"`
 	Discovered      int      `json:"discovered"`
 	Verified        int      `json:"verified"`
 	Added           int      `json:"added"`
@@ -41,7 +50,9 @@ type discoveredModel struct {
 	SortOrder int
 }
 
-var runModelRefresh = syncModelsForChannel
+type modelRefreshFunc func(ctx context.Context, cfg *config.Config, s *store.Store, channel string, concurrency int) (*modelRefreshResult, error)
+
+var runModelRefresh modelRefreshFunc = syncModelsForChannelConcurrent
 
 func makeModelRefreshHandler(cfg *config.Config, s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -51,18 +62,28 @@ func makeModelRefreshHandler(cfg *config.Config, s *store.Store) http.HandlerFun
 		}
 
 		channel := strings.TrimSpace(r.URL.Query().Get("channel"))
+		concurrency := defaultModelRefreshConcurrency
+		if parsed, ok := parseModelRefreshConcurrency(r.URL.Query().Get("concurrency")); ok {
+			concurrency = parsed
+		}
 		if r.Body != nil {
 			defer r.Body.Close()
 			var req modelRefreshRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err == nil && strings.TrimSpace(req.Channel) != "" {
 				channel = strings.TrimSpace(req.Channel)
 			}
+			if req.Concurrency != 0 {
+				concurrency = normalizeModelRefreshConcurrency(req.Concurrency)
+			}
 		}
 
-		result, err := runModelRefresh(r.Context(), cfg, s, channel)
+		result, err := runModelRefresh(r.Context(), cfg, s, channel, concurrency)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+		if result != nil && result.Concurrency == 0 {
+			result.Concurrency = concurrency
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -73,6 +94,10 @@ func makeModelRefreshHandler(cfg *config.Config, s *store.Store) http.HandlerFun
 }
 
 func syncModelsForChannel(ctx context.Context, cfg *config.Config, s *store.Store, channel string) (*modelRefreshResult, error) {
+	return syncModelsForChannelConcurrent(ctx, cfg, s, channel, defaultModelRefreshConcurrency)
+}
+
+func syncModelsForChannelConcurrent(ctx context.Context, cfg *config.Config, s *store.Store, channel string, concurrency int) (*modelRefreshResult, error) {
 	channel = normalizeAdminModelChannel(channel)
 	if channel == "" {
 		return nil, fmt.Errorf("channel is required")
@@ -81,7 +106,8 @@ func syncModelsForChannel(ctx context.Context, cfg *config.Config, s *store.Stor
 		return nil, fmt.Errorf("store not configured")
 	}
 
-	candidates, source, err := discoverModelsForChannel(ctx, cfg, s, channel)
+	concurrency = normalizeModelRefreshConcurrency(concurrency)
+	candidates, source, err := discoverModelsForChannelConcurrent(ctx, cfg, s, channel, concurrency)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +115,11 @@ func syncModelsForChannel(ctx context.Context, cfg *config.Config, s *store.Stor
 		return nil, fmt.Errorf("%s has no discoverable models", channel)
 	}
 
-	return applyModelRefresh(ctx, s, channel, source, candidates)
+	result, err := applyModelRefresh(ctx, s, channel, source, candidates)
+	if result != nil {
+		result.Concurrency = concurrency
+	}
+	return result, err
 }
 
 func normalizeAdminModelChannel(channel string) string {
@@ -109,7 +139,44 @@ func normalizeAdminModelChannel(channel string) string {
 	}
 }
 
+func parseModelRefreshConcurrency(raw string) (int, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, false
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return defaultModelRefreshConcurrency, true
+	}
+	return normalizeModelRefreshConcurrency(value), true
+}
+
+func normalizeModelRefreshConcurrency(concurrency int) int {
+	if concurrency <= 0 {
+		return defaultModelRefreshConcurrency
+	}
+	if concurrency > maxModelRefreshConcurrency {
+		return maxModelRefreshConcurrency
+	}
+	return concurrency
+}
+
+func boundedModelRefreshWorkers(total int, concurrency int) int {
+	if total <= 0 {
+		return 0
+	}
+	workers := normalizeModelRefreshConcurrency(concurrency)
+	if workers > total {
+		workers = total
+	}
+	return workers
+}
+
 func discoverModelsForChannel(ctx context.Context, cfg *config.Config, s *store.Store, channel string) ([]discoveredModel, string, error) {
+	return discoverModelsForChannelConcurrent(ctx, cfg, s, channel, defaultModelRefreshConcurrency)
+}
+
+func discoverModelsForChannelConcurrent(ctx context.Context, cfg *config.Config, s *store.Store, channel string, concurrency int) ([]discoveredModel, string, error) {
 	switch strings.ToLower(channel) {
 	case "orchids":
 		items, source, err := fetchOrchidsModelChoices(ctx, cfg, s)
@@ -130,7 +197,7 @@ func discoverModelsForChannel(ctx context.Context, cfg *config.Config, s *store.
 		}
 		return out, source, nil
 	case "warp":
-		return discoverWarpModels(ctx, cfg, s)
+		return discoverWarpModelsConcurrent(ctx, cfg, s, concurrency)
 	case "bolt":
 		items := store.BuildBoltSeedModels(ctx)
 		out := make([]discoveredModel, 0, len(items))
@@ -143,15 +210,19 @@ func discoverModelsForChannel(ctx context.Context, cfg *config.Config, s *store.
 		}
 		return out, "bolt_bundle", nil
 	case "puter":
-		return discoverPuterModels(ctx, cfg, s)
+		return discoverPuterModelsConcurrent(ctx, cfg, s, concurrency)
 	case "grok":
-		return discoverGrokModels(ctx, cfg, s)
+		return discoverGrokModelsConcurrent(ctx, cfg, s, concurrency)
 	default:
 		return nil, "", fmt.Errorf("unsupported channel: %s", channel)
 	}
 }
 
 func discoverPuterModels(ctx context.Context, cfg *config.Config, s *store.Store) ([]discoveredModel, string, error) {
+	return discoverPuterModelsConcurrent(ctx, cfg, s, defaultModelRefreshConcurrency)
+}
+
+func discoverPuterModelsConcurrent(ctx context.Context, cfg *config.Config, s *store.Store, concurrency int) ([]discoveredModel, string, error) {
 	proxyFunc := http.ProxyFromEnvironment
 	if cfg != nil {
 		proxyFunc = util.ProxyFuncFromConfig(cfg)
@@ -176,7 +247,7 @@ func discoverPuterModels(ctx context.Context, cfg *config.Config, s *store.Store
 		return candidates, source + "_unverified", nil
 	}
 
-	verified := verifyPuterDiscoveredModels(ctx, cfg, accounts, candidates)
+	verified := verifyPuterDiscoveredModelsConcurrent(ctx, cfg, accounts, candidates, concurrency)
 	if len(verified) == 0 {
 		return nil, "", fmt.Errorf("no puter models verified by test_mode")
 	}
@@ -216,9 +287,65 @@ func puterPublicChoicesFromDiscovered(items []discoveredModel) []puterPublicMode
 }
 
 func verifyPuterDiscoveredModels(ctx context.Context, cfg *config.Config, accounts []*store.Account, candidates []discoveredModel) []discoveredModel {
+	return verifyPuterDiscoveredModelsConcurrent(ctx, cfg, accounts, candidates, defaultModelRefreshConcurrency)
+}
+
+func verifyPuterDiscoveredModelsConcurrent(ctx context.Context, cfg *config.Config, accounts []*store.Account, candidates []discoveredModel, concurrency int) []discoveredModel {
 	if len(accounts) == 0 || len(candidates) == 0 {
 		return nil
 	}
+	workerCount := boundedModelRefreshWorkers(len(candidates), concurrency)
+	if workerCount <= 1 {
+		return verifyPuterDiscoveredModelsSerial(ctx, cfg, accounts, candidates)
+	}
+
+	accepted := make([]bool, len(candidates))
+	jobs := make(chan int, len(candidates))
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for worker := 0; worker < workerCount; worker++ {
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				candidate := candidates[idx]
+				if strings.TrimSpace(candidate.ID) == "" {
+					continue
+				}
+				startAccount := idx % len(accounts)
+				for attempt := 0; attempt < len(accounts); attempt++ {
+					if err := ctx.Err(); err != nil {
+						break
+					}
+					acc := accounts[(startAccount+attempt)%len(accounts)]
+					client := puter.NewFromAccount(acc, refreshModelRequestConfig(cfg, "puter"))
+					err := client.VerifyModel(ctx, candidate.ID)
+					client.Close()
+					if err == nil {
+						accepted[idx] = true
+						break
+					}
+				}
+			}
+		}()
+	}
+	for idx := range candidates {
+		jobs <- idx
+	}
+	close(jobs)
+	wg.Wait()
+
+	verified := make([]discoveredModel, 0, len(candidates))
+	for idx, candidate := range candidates {
+		if !accepted[idx] {
+			continue
+		}
+		candidate.SortOrder = len(verified)
+		verified = append(verified, candidate)
+	}
+	return verified
+}
+
+func verifyPuterDiscoveredModelsSerial(ctx context.Context, cfg *config.Config, accounts []*store.Account, candidates []discoveredModel) []discoveredModel {
 	verified := make([]discoveredModel, 0, len(candidates))
 	accountIndex := 0
 	for _, candidate := range candidates {
@@ -267,6 +394,10 @@ func puterSeedDiscoveredModels() []discoveredModel {
 }
 
 func discoverGrokModels(ctx context.Context, cfg *config.Config, s *store.Store) ([]discoveredModel, string, error) {
+	return discoverGrokModelsConcurrent(ctx, cfg, s, defaultModelRefreshConcurrency)
+}
+
+func discoverGrokModelsConcurrent(ctx context.Context, cfg *config.Config, s *store.Store, concurrency int) ([]discoveredModel, string, error) {
 	accounts, err := enabledAccountsByType(ctx, s, "grok")
 	if err != nil {
 		return nil, "", err
@@ -275,28 +406,60 @@ func discoverGrokModels(ctx context.Context, cfg *config.Config, s *store.Store)
 		return nil, "", fmt.Errorf("no enabled grok accounts")
 	}
 
-	token := firstGrokToken(accounts)
-	if token == "" {
+	tokens := grokAccountTokens(accounts)
+	if len(tokens) == 0 {
 		return nil, "", fmt.Errorf("no enabled grok account token")
 	}
 
 	candidates := grokProbeCandidateModels(ctx, s)
 	client := grok.New(refreshModelRequestConfig(cfg, "grok"))
+	accepted := make([]bool, len(candidates))
+	workerCount := boundedModelRefreshWorkers(len(candidates), concurrency)
+	if workerCount <= 1 {
+		token := tokens[0]
+		for i, candidate := range candidates {
+			if spec, ok := grok.ResolveModel(candidate.ID); ok && (spec.IsImage || spec.IsVideo) {
+				accepted[i] = true
+				continue
+			}
+			result := client.ProbeConsoleModel(ctx, token, candidate.ID)
+			accepted[i] = result.OK && isAcceptedGrokCanonical(candidate.ID, result.CanonicalModel)
+		}
+	} else {
+		jobs := make(chan int, len(candidates))
+		var wg sync.WaitGroup
+		wg.Add(workerCount)
+		for worker := 0; worker < workerCount; worker++ {
+			go func() {
+				defer wg.Done()
+				for idx := range jobs {
+					candidate := candidates[idx]
+					if strings.TrimSpace(candidate.ID) == "" {
+						continue
+					}
+					if spec, ok := grok.ResolveModel(candidate.ID); ok && (spec.IsImage || spec.IsVideo) {
+						accepted[idx] = true
+						continue
+					}
+					if err := ctx.Err(); err != nil {
+						continue
+					}
+					token := tokens[idx%len(tokens)]
+					result := client.ProbeConsoleModel(ctx, token, candidate.ID)
+					accepted[idx] = result.OK && isAcceptedGrokCanonical(candidate.ID, result.CanonicalModel)
+				}
+			}()
+		}
+		for idx := range candidates {
+			jobs <- idx
+		}
+		close(jobs)
+		wg.Wait()
+	}
+
 	out := make([]discoveredModel, 0, len(candidates))
-	for _, candidate := range candidates {
-		if spec, ok := grok.ResolveModel(candidate.ID); ok && (spec.IsImage || spec.IsVideo) {
-			out = append(out, discoveredModel{
-				ID:        candidate.ID,
-				Name:      candidate.Name,
-				SortOrder: len(out),
-			})
-			continue
-		}
-		result := client.ProbeConsoleModel(ctx, token, candidate.ID)
-		if !result.OK {
-			continue
-		}
-		if !isAcceptedGrokCanonical(candidate.ID, result.CanonicalModel) {
+	for idx, candidate := range candidates {
+		if !accepted[idx] {
 			continue
 		}
 		out = append(out, discoveredModel{
@@ -311,17 +474,32 @@ func discoverGrokModels(ctx context.Context, cfg *config.Config, s *store.Store)
 	return out, "grok_console_probe", nil
 }
 
-func firstGrokToken(accounts []*store.Account) string {
+func grokAccountTokens(accounts []*store.Account) []string {
+	seen := map[string]struct{}{}
+	tokens := make([]string, 0, len(accounts))
 	for _, acc := range accounts {
 		if acc == nil {
 			continue
 		}
 		token := grok.NormalizeSSOToken(firstNonEmpty(acc.ClientCookie, acc.RefreshToken, acc.Token))
-		if token != "" {
-			return token
+		if token == "" {
+			continue
 		}
+		if _, exists := seen[token]; exists {
+			continue
+		}
+		seen[token] = struct{}{}
+		tokens = append(tokens, token)
 	}
-	return ""
+	return tokens
+}
+
+func firstGrokToken(accounts []*store.Account) string {
+	tokens := grokAccountTokens(accounts)
+	if len(tokens) == 0 {
+		return ""
+	}
+	return tokens[0]
 }
 
 func grokProbeCandidateModels(ctx context.Context, s *store.Store) []discoveredModel {
@@ -351,15 +529,14 @@ func grokProbeCandidateModels(ctx context.Context, s *store.Store) []discoveredM
 	}
 
 	for _, id := range []string{
-		"grok-4.3",
-		"grok-4.3-latest",
-		"grok-latest",
-		"grok-4.20",
+		"grok-4.20-0309",
 		"grok-4.20-0309-non-reasoning",
 		"grok-4.20-0309-reasoning",
-		"grok-3-mini",
-		"grok-4-thinking",
-		"grok-4.1-expert",
+		"grok-4.20-fast",
+		"grok-4.20-auto",
+		"grok-4.20-expert",
+		"grok-4.20-heavy",
+		"grok-4.3-beta",
 	} {
 		name := id
 		if spec, ok := grok.ResolveModel(id); ok && strings.TrimSpace(spec.Name) != "" {
@@ -391,15 +568,14 @@ func isAcceptedGrokCanonical(requested, canonical string) bool {
 	if requested == canonical {
 		return true
 	}
-	switch requested {
-	case "grok-4.3-latest", "grok-latest":
-		return canonical == "grok-4.3"
-	default:
-		return false
-	}
+	return false
 }
 
 func discoverWarpModels(ctx context.Context, cfg *config.Config, s *store.Store) ([]discoveredModel, string, error) {
+	return discoverWarpModelsConcurrent(ctx, cfg, s, defaultModelRefreshConcurrency)
+}
+
+func discoverWarpModelsConcurrent(ctx context.Context, cfg *config.Config, s *store.Store, concurrency int) ([]discoveredModel, string, error) {
 	if s == nil {
 		return warpSeedDiscoveredModels(), "warp_static_catalog", nil
 	}
@@ -429,21 +605,65 @@ func discoverWarpModels(ctx context.Context, cfg *config.Config, s *store.Store)
 		})
 	}
 
-	for _, acc := range accounts {
-		client := warp.NewFromAccount(acc, cfg)
-		choices, source, discoverErr := client.FetchDiscoveredModelChoices(ctx)
-		client.Close()
-		if discoverErr != nil {
-			continue
+	type warpAccountDiscovery struct {
+		index   int
+		choices []warp.ModelChoice
+		source  string
+		ok      bool
+	}
+
+	workerCount := boundedModelRefreshWorkers(len(accounts), concurrency)
+	if workerCount > 0 {
+		jobs := make(chan int, len(accounts))
+		results := make(chan warpAccountDiscovery, len(accounts))
+		var wg sync.WaitGroup
+		wg.Add(workerCount)
+		for worker := 0; worker < workerCount; worker++ {
+			go func() {
+				defer wg.Done()
+				for idx := range jobs {
+					acc := accounts[idx]
+					client := warp.NewFromAccount(acc, cfg)
+					choices, source, discoverErr := client.FetchDiscoveredModelChoices(ctx)
+					client.Close()
+					if discoverErr != nil {
+						continue
+					}
+					results <- warpAccountDiscovery{
+						index:   idx,
+						choices: choices,
+						source:  source,
+						ok:      true,
+					}
+				}
+			}()
 		}
-		for _, part := range strings.Split(source, "+") {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				sourceSet[part] = struct{}{}
+		for idx := range accounts {
+			jobs <- idx
+		}
+		close(jobs)
+		wg.Wait()
+		close(results)
+
+		ordered := make([]warpAccountDiscovery, len(accounts))
+		for result := range results {
+			if result.index >= 0 && result.index < len(ordered) {
+				ordered[result.index] = result
 			}
 		}
-		for _, choice := range choices {
-			appendChoice(choice)
+		for _, result := range ordered {
+			if !result.ok {
+				continue
+			}
+			for _, part := range strings.Split(result.source, "+") {
+				part = strings.TrimSpace(part)
+				if part != "" {
+					sourceSet[part] = struct{}{}
+				}
+			}
+			for _, choice := range result.choices {
+				appendChoice(choice)
+			}
 		}
 	}
 

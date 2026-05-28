@@ -8,6 +8,7 @@ let modelPageSize = 50;
 let modelCurrentPage = 1;
 let modelRefreshInFlight = false;
 let modelRefreshResults = {};
+let modelRefreshConcurrency = 4;
 
 function modelChannels() {
   const defaultChannels = ["Orchids", "Warp", "Bolt", "Puter", "Grok"];
@@ -136,6 +137,7 @@ function sortTextValues(values) {
 function normalizeModelRefreshResult(data, fallbackChannel) {
   return {
     channel: String(data.channel || fallbackChannel || "").trim(),
+    concurrency: Number(data.concurrency ?? modelRefreshConcurrency),
     discovered: Number(data.discovered ?? 0),
     verified: Number(data.verified ?? 0),
     added: Number(data.added ?? 0),
@@ -166,7 +168,7 @@ function renderModelRefreshSummary() {
 
   summary.hidden = false;
   title.textContent = `${result.channel || channel} 最近一次刷新结果`;
-  meta.textContent = `已按来源列表完成同步。发现到的模型会写入当前渠道，来源列表里消失的模型会直接删除。`;
+  meta.textContent = `已按来源列表完成同步，并发数 ${result.concurrency || modelRefreshConcurrency}。发现到的模型会写入当前渠道，来源列表里消失的模型会直接删除。`;
 
   const stats = [
     { label: "发现", value: result.discovered },
@@ -618,7 +620,7 @@ async function refreshModelsForCurrentChannel() {
     const res = await fetch("/api/models/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ channel }),
+      body: JSON.stringify({ channel, concurrency: modelRefreshConcurrency }),
     });
 
     const raw = await res.text();
@@ -643,6 +645,7 @@ async function refreshModelsForCurrentChannel() {
     await loadModels();
 
     const parts = [
+      `并发 ${data.concurrency ?? modelRefreshConcurrency}`,
       `发现 ${data.discovered ?? 0}`,
       `同步 ${data.verified ?? 0}`,
       `新增 ${data.added ?? 0}`,
@@ -682,6 +685,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const searchInput = document.getElementById("modelSearchInput");
   const statusFilter = document.getElementById("modelStatusFilter");
   const pageSize = document.getElementById("modelPageSize");
+  const refreshConcurrency = document.getElementById("modelRefreshConcurrency");
 
   if (searchInput) {
     searchInput.addEventListener("input", (event) => {
@@ -704,6 +708,13 @@ document.addEventListener("DOMContentLoaded", () => {
       modelPageSize = parseInt(event.target.value || "50", 10) || 50;
       modelCurrentPage = 1;
       renderModels();
+    });
+  }
+
+  if (refreshConcurrency) {
+    modelRefreshConcurrency = parseInt(refreshConcurrency.value || "4", 10) || 4;
+    refreshConcurrency.addEventListener("change", (event) => {
+      modelRefreshConcurrency = parseInt(event.target.value || "4", 10) || 4;
     });
   }
 
