@@ -723,7 +723,7 @@ func (f *streamMarkupFilter) feed(chunk string) string {
 				break
 			}
 			safe := validUTF8Prefix(f.pending[:len(f.pending)-keep])
-			safe = stripLeadingAngleNoise(sanitizeText(safe))
+			safe = sanitizeText(safe)
 			if safe != "" {
 				writeOut(safe)
 			}
@@ -733,7 +733,7 @@ func (f *streamMarkupFilter) feed(chunk string) string {
 
 		// Emit prefix before marker
 		prefix := validUTF8Prefix(f.pending[:idx])
-		prefix = stripLeadingAngleNoise(sanitizeText(prefix))
+		prefix = sanitizeText(prefix)
 		if prefix != "" {
 			writeOut(prefix)
 		}
@@ -758,7 +758,7 @@ func (f *streamMarkupFilter) flush() string {
 	if strings.TrimSpace(f.pending) == "" {
 		return ""
 	}
-	out := stripLeadingAngleNoise(sanitizeText(stripToolAndRenderMarkup(validUTF8Prefix(f.pending))))
+	out := sanitizeText(stripToolAndRenderMarkup(validUTF8Prefix(f.pending)))
 	f.pending = ""
 	return out
 }
@@ -838,7 +838,7 @@ func stripZeroWidth(s string) string {
 }
 
 func sanitizeUpstreamText(raw string) string {
-	return stripLeadingAngleNoise(sanitizeText(stripToolAndRenderMarkup(raw)))
+	return sanitizeText(stripToolAndRenderMarkup(raw))
 }
 
 const streamImageRefTailKeep = 1024
@@ -1155,10 +1155,7 @@ func (h *Handler) streamChat(w http.ResponseWriter, req *ChatCompletionsRequest,
 			return
 		}
 		if cleaned := mf.feed(raw); cleaned != "" {
-			cleaned = stripLeadingAngleNoise(cleaned)
-			if cleaned != "" {
-				emitTextChunk(cleaned)
-			}
+			emitTextChunk(cleaned)
 		}
 	}
 
@@ -1445,10 +1442,7 @@ func (h *Handler) streamChat(w http.ResponseWriter, req *ChatCompletionsRequest,
 			emitCleanText(tokenFallback.String())
 		}
 		if tail := mf.flush(); tail != "" {
-			tail = stripLeadingAngleNoise(tail)
-			if tail != "" {
-				emitTextChunk(tail)
-			}
+			emitTextChunk(tail)
 		}
 		if tokenFallback.Len() > 0 && !sawModelMessage && h != nil && h.cfg != nil && h.cfg.DebugEnabled {
 			slog.Debug("grok stream fallback used token deltas (no modelResponse)", "model", model)

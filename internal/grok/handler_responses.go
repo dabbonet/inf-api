@@ -564,7 +564,11 @@ func writeResponsesStreamFromChat(w http.ResponseWriter, model, raw string) {
 	var usage map[string]interface{}
 
 	writeSSEJSON := func(event string, payload map[string]interface{}) {
-		writeSSEBytes(w, event, mustJSON(payload))
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			raw = []byte(`{}`)
+		}
+		writeSSEBytes(w, event, raw)
 	}
 	writeSSEJSON("response.created", map[string]interface{}{
 		"type": "response.created",
@@ -663,12 +667,4 @@ func writeResponsesStreamFromChat(w http.ResponseWriter, model, raw string) {
 		},
 	})
 	writeSSEBytes(w, "", []byte("[DONE]"))
-}
-
-func mustJSON(v interface{}) []byte {
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return []byte(`{}`)
-	}
-	return raw
 }
