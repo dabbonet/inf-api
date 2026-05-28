@@ -60,17 +60,49 @@ func TestConsoleInputFromMessages_UsesOutputTextForAssistantHistory(t *testing.T
 	if len(items) != 3 {
 		t.Fatalf("items len=%d want 3", len(items))
 	}
-	if got := items[0].Content[0].Type; got != "input_text" {
+	first := items[0].(consoleMessageItem)
+	second := items[1].(consoleMessageItem)
+	third := items[2].(consoleMessageItem)
+	if got := first.Content[0].Type; got != "input_text" {
 		t.Fatalf("first user type=%q want input_text", got)
 	}
-	if got := items[1].Role; got != "assistant" {
+	if got := second.Role; got != "assistant" {
 		t.Fatalf("assistant role=%q want assistant", got)
 	}
-	if got := items[1].Content[0].Type; got != "output_text" {
+	if got := second.Content[0].Type; got != "output_text" {
 		t.Fatalf("assistant type=%q want output_text", got)
 	}
-	if got := items[2].Content[0].Type; got != "input_text" {
+	if got := third.Content[0].Type; got != "input_text" {
 		t.Fatalf("second user type=%q want input_text", got)
+	}
+}
+
+func TestConsoleInputFromMessages_ConvertsToolHistory(t *testing.T) {
+	items, instructions := consoleInputFromMessages([]ChatMessage{
+		{Role: "developer", Content: "use tools"},
+		{Role: "assistant", ToolCalls: []ToolCall{{
+			ID:   "call_1",
+			Type: "function",
+			Function: map[string]interface{}{
+				"name":      "get_weather",
+				"arguments": map[string]interface{}{"city": "Shanghai"},
+			},
+		}}},
+		{Role: "tool", ToolCallID: "call_1", Content: `{"temp":25}`},
+	})
+	if instructions != "use tools" {
+		t.Fatalf("instructions=%q want use tools", instructions)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items len=%d want 2: %#v", len(items), items)
+	}
+	call := items[0].(consoleFunctionCallItem)
+	if call.Type != "function_call" || call.CallID != "call_1" || call.Name != "get_weather" || !strings.Contains(call.Arguments, "Shanghai") {
+		t.Fatalf("unexpected function call item: %#v", call)
+	}
+	output := items[1].(consoleFunctionCallOutputItem)
+	if output.Type != "function_call_output" || output.CallID != "call_1" || output.Output != `{"temp":25}` {
+		t.Fatalf("unexpected function output item: %#v", output)
 	}
 }
 
@@ -113,6 +145,57 @@ func TestConsolePayload_DefaultsWebSearchTool(t *testing.T) {
 	}
 	if got := tools[0]["type"]; got != "web_search" {
 		t.Fatalf("tool type=%#v want web_search", got)
+	}
+}
+
+func TestConsolePayload_ConvertsOpenAIFunctionTools(t *testing.T) {
+	h := &Handler{}
+	req := &ChatCompletionsRequest{
+		Model: "grok-4.3",
+		Messages: []ChatMessage{{
+			Role:    "user",
+			Content: "上海天气",
+		}},
+		Tools: []ToolDef{{
+			Type: "function",
+			Function: map[string]interface{}{
+				"name":        "get_weather",
+				"description": "Get weather",
+				"parameters":  map[string]interface{}{"type": "object"},
+			},
+		}},
+		ToolChoice: map[string]interface{}{
+			"type":     "function",
+			"function": map[string]interface{}{"name": "get_weather"},
+		},
+	}
+
+	payload, err := h.consolePayload(ModelSpec{ID: "grok-4.3", ConsoleModel: "grok-4.3"}, req)
+	if err != nil {
+		t.Fatalf("consolePayload() error: %v", err)
+	}
+	tools, ok := payload["tools"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("tools type=%T want []map[string]interface{}", payload["tools"])
+	}
+	if len(tools) != 2 {
+		t.Fatalf("tools len=%d want function + web_search: %#v", len(tools), tools)
+	}
+	if got := tools[0]["type"]; got != "function" {
+		t.Fatalf("first tool type=%#v want function", got)
+	}
+	if got := tools[0]["name"]; got != "get_weather" {
+		t.Fatalf("function name=%#v want get_weather", got)
+	}
+	if _, exists := tools[0]["function"]; exists {
+		t.Fatalf("console function tool should be flat: %#v", tools[0])
+	}
+	choice, ok := payload["tool_choice"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("tool_choice type=%T want map", payload["tool_choice"])
+	}
+	if choice["type"] != "function" || choice["name"] != "get_weather" {
+		t.Fatalf("tool_choice=%#v want flat function choice", choice)
 	}
 }
 
@@ -165,6 +248,43 @@ func TestCollectConsoleChat_EmitsCitationsAndUsageDetails(t *testing.T) {
 	}
 }
 
+func TestCollectConsoleChat_EmitsFunctionToolCalls(t *testing.T) {
+	h := &Handler{}
+	rec := httptest.NewRecorder()
+	body := strings.NewReader(`{
+		"id":"resp_1",
+		"output":[
+			{"type":"function_call","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Shanghai\"}"}
+		],
+		"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}
+	}`)
+
+	h.collectConsoleChat(rec, &ChatCompletionsRequest{Model: "grok-4.3"}, body)
+
+	var obj map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &obj); err != nil {
+		t.Fatalf("json.Unmarshal() error: %v body=%q", err, rec.Body.String())
+	}
+	choices := obj["choices"].([]interface{})
+	choice := choices[0].(map[string]interface{})
+	if got := choice["finish_reason"]; got != "tool_calls" {
+		t.Fatalf("finish_reason=%#v want tool_calls", got)
+	}
+	message := choice["message"].(map[string]interface{})
+	if got := message["content"]; got != nil {
+		t.Fatalf("content=%#v want nil", got)
+	}
+	toolCalls := message["tool_calls"].([]interface{})
+	call := toolCalls[0].(map[string]interface{})
+	if call["id"] != "call_1" || call["type"] != "function" {
+		t.Fatalf("unexpected tool call: %#v", call)
+	}
+	fn := call["function"].(map[string]interface{})
+	if fn["name"] != "get_weather" || fn["arguments"] != `{"city":"Shanghai"}` {
+		t.Fatalf("unexpected function payload: %#v", fn)
+	}
+}
+
 func TestStreamConsoleChat_EmitsFinalAnnotationsAndUpstreamUsage(t *testing.T) {
 	h := &Handler{}
 	rec := httptest.NewRecorder()
@@ -187,6 +307,40 @@ func TestStreamConsoleChat_EmitsFinalAnnotationsAndUpstreamUsage(t *testing.T) {
 		t.Fatalf("expected final annotations, raw=%q", raw)
 	}
 	if !strings.Contains(raw, `"prompt_tokens":3`) || !strings.Contains(raw, `"completion_tokens":4`) {
+		t.Fatalf("expected upstream usage, raw=%q", raw)
+	}
+}
+
+func TestStreamConsoleChat_EmitsFunctionToolCalls(t *testing.T) {
+	h := &Handler{}
+	rec := httptest.NewRecorder()
+	body := strings.NewReader(
+		"event: response.output_item.added\n" +
+			`data: {"type":"response.output_item.added","item":{"type":"function_call","call_id":"call_1","name":"get_weather"}}` + "\n\n" +
+			"event: response.function_call_arguments.delta\n" +
+			`data: {"type":"response.function_call_arguments.delta","delta":"{\"city\":"}` + "\n\n" +
+			"event: response.function_call_arguments.delta\n" +
+			`data: {"type":"response.function_call_arguments.delta","delta":"\"Shanghai\"}"}` + "\n\n" +
+			"event: response.completed\n" +
+			`data: {"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}` + "\n\n",
+	)
+
+	h.streamConsoleChat(rec, &ChatCompletionsRequest{Model: "grok-4.3"}, body)
+
+	raw := rec.Body.String()
+	if !strings.Contains(raw, `"tool_calls"`) {
+		t.Fatalf("expected streamed tool_calls chunk, raw=%q", raw)
+	}
+	if !strings.Contains(raw, `"finish_reason":"tool_calls"`) {
+		t.Fatalf("expected tool_calls finish reason, raw=%q", raw)
+	}
+	if !strings.Contains(raw, `"id":"call_1"`) || !strings.Contains(raw, `"name":"get_weather"`) {
+		t.Fatalf("expected tool call id/name, raw=%q", raw)
+	}
+	if !strings.Contains(raw, `"{\"city\":\"Shanghai\"}"`) {
+		t.Fatalf("expected accumulated arguments, raw=%q", raw)
+	}
+	if !strings.Contains(raw, `"prompt_tokens":3`) || !strings.Contains(raw, `"completion_tokens":2`) {
 		t.Fatalf("expected upstream usage, raw=%q", raw)
 	}
 }

@@ -21,25 +21,81 @@ type consoleContentBlock struct {
 	URL  string `json:"image_url,omitempty"`
 }
 
-type consoleInputItem struct {
+type consoleFunctionCallItem struct {
+	Type      string `json:"type"`
+	CallID    string `json:"call_id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type consoleFunctionCallOutputItem struct {
+	Type   string `json:"type"`
+	CallID string `json:"call_id"`
+	Output string `json:"output"`
+}
+
+type consoleMessageItem struct {
 	Role    string                `json:"role"`
 	Content []consoleContentBlock `json:"content"`
 }
 
-func consoleInputFromMessages(messages []ChatMessage) ([]consoleInputItem, string) {
-	items := make([]consoleInputItem, 0, len(messages))
+func consoleInputFromMessages(messages []ChatMessage) ([]interface{}, string) {
+	items := make([]interface{}, 0, len(messages))
 	var instructions strings.Builder
 	for _, msg := range messages {
 		role := strings.ToLower(strings.TrimSpace(msg.Role))
 		text := strings.TrimSpace(chatMessageContentText(msg.Content))
-		if text == "" {
-			continue
-		}
 		if role == "system" || role == "developer" {
 			if instructions.Len() > 0 {
 				instructions.WriteString("\n\n")
 			}
 			instructions.WriteString(text)
+			continue
+		}
+		if role == "tool" {
+			callID := strings.TrimSpace(msg.ToolCallID)
+			if callID == "" {
+				callID = strings.TrimSpace(msg.Name)
+			}
+			items = append(items, consoleFunctionCallOutputItem{
+				Type:   "function_call_output",
+				CallID: callID,
+				Output: text,
+			})
+			continue
+		}
+		if role == "assistant" && len(msg.ToolCalls) > 0 {
+			for _, tc := range msg.ToolCalls {
+				name := strings.TrimSpace(fmt.Sprint(tc.Function["name"]))
+				if name == "" {
+					continue
+				}
+				args := "{}"
+				if raw := tc.Function["arguments"]; raw != nil {
+					switch v := raw.(type) {
+					case string:
+						if strings.TrimSpace(v) != "" {
+							args = strings.TrimSpace(v)
+						}
+					default:
+						if buf, err := json.Marshal(v); err == nil {
+							args = string(buf)
+						}
+					}
+				}
+				callID := strings.TrimSpace(tc.ID)
+				if callID == "" {
+					callID = "call_" + randomHex(12)
+				}
+				items = append(items, consoleFunctionCallItem{
+					Type:      "function_call",
+					CallID:    callID,
+					Name:      name,
+					Arguments: args,
+				})
+			}
+		}
+		if text == "" {
 			continue
 		}
 		contentType := "input_text"
@@ -49,7 +105,7 @@ func consoleInputFromMessages(messages []ChatMessage) ([]consoleInputItem, strin
 		if role != "assistant" {
 			role = "user"
 		}
-		items = append(items, consoleInputItem{
+		items = append(items, consoleMessageItem{
 			Role: role,
 			Content: []consoleContentBlock{{
 				Type: contentType,
@@ -124,8 +180,69 @@ func (h *Handler) consolePayload(spec ModelSpec, req *ChatCompletionsRequest) (m
 			payload["reasoning"] = map[string]interface{}{"effort": effort}
 		}
 	}
-	payload["tools"] = injectConsoleWebSearchTool(nil)
+	tools := injectConsoleWebSearchTool(consoleToolsFromOpenAI(req.Tools))
+	if len(tools) > 0 {
+		payload["tools"] = tools
+		if choice := consoleToolChoiceFromOpenAI(req.ToolChoice); choice != nil {
+			payload["tool_choice"] = choice
+		}
+	}
 	return payload, nil
+}
+
+func consoleToolsFromOpenAI(tools []ToolDef) []map[string]interface{} {
+	if len(tools) == 0 {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(tools))
+	for _, tool := range tools {
+		if !strings.EqualFold(strings.TrimSpace(tool.Type), "function") {
+			continue
+		}
+		name := strings.TrimSpace(fmt.Sprint(tool.Function["name"]))
+		if name == "" {
+			continue
+		}
+		item := map[string]interface{}{
+			"type":        "function",
+			"name":        name,
+			"description": strings.TrimSpace(fmt.Sprint(tool.Function["description"])),
+			"parameters":  map[string]interface{}{},
+		}
+		if params, ok := tool.Function["parameters"]; ok && params != nil {
+			item["parameters"] = params
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func consoleToolChoiceFromOpenAI(choice interface{}) interface{} {
+	switch v := choice.(type) {
+	case nil:
+		return nil
+	case string:
+		c := strings.ToLower(strings.TrimSpace(v))
+		if c == "" {
+			return nil
+		}
+		return c
+	case map[string]interface{}:
+		if !strings.EqualFold(strings.TrimSpace(fmt.Sprint(v["type"])), "function") {
+			return v
+		}
+		fn, _ := v["function"].(map[string]interface{})
+		name := strings.TrimSpace(fmt.Sprint(fn["name"]))
+		if name == "" {
+			return v
+		}
+		return map[string]interface{}{
+			"type": "function",
+			"name": name,
+		}
+	default:
+		return v
+	}
 }
 
 func injectConsoleWebSearchTool(tools []map[string]interface{}) []map[string]interface{} {
@@ -481,6 +598,21 @@ func (h *Handler) collectConsoleChat(w http.ResponseWriter, req *ChatCompletions
 	}
 	text := consoleExtractMessageText(raw)
 	annotations := consoleChatAnnotations(consoleFlatAnnotations(raw))
+	toolCalls := consoleToolCallsFromOutput(raw)
+	message := map[string]interface{}{
+		"role":        "assistant",
+		"content":     text,
+		"refusal":     nil,
+		"annotations": annotations,
+	}
+	finishReason := "stop"
+	if len(toolCalls) > 0 {
+		message["tool_calls"] = toolCalls
+		finishReason = "tool_calls"
+		if strings.TrimSpace(text) == "" {
+			message["content"] = nil
+		}
+	}
 	resp := map[string]interface{}{
 		"id":                 firstNonEmpty(fmt.Sprint(raw["id"]), "chatcmpl_"+randomHex(8)),
 		"object":             "chat.completion",
@@ -489,19 +621,95 @@ func (h *Handler) collectConsoleChat(w http.ResponseWriter, req *ChatCompletions
 		"service_tier":       nil,
 		"system_fingerprint": "",
 		"choices": []map[string]interface{}{{
-			"index": 0,
-			"message": map[string]interface{}{
-				"role":        "assistant",
-				"content":     text,
-				"refusal":     nil,
-				"annotations": annotations,
-			},
-			"finish_reason": "stop",
+			"index":         0,
+			"message":       message,
+			"finish_reason": finishReason,
 		}},
-		"usage": firstUsage(consoleUsage(raw), buildChatUsagePayload(req, text, nil)),
+		"usage": firstUsage(consoleUsage(raw), buildChatUsagePayload(req, text, toolCalls)),
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func consoleToolCallsFromOutput(raw map[string]interface{}) []map[string]interface{} {
+	if raw == nil {
+		return nil
+	}
+	var out []map[string]interface{}
+	for _, item := range interfaceSlice(raw["output"]) {
+		if tc := consoleToolCallFromItem(item); tc != nil {
+			out = append(out, tc)
+		}
+	}
+	return out
+}
+
+func consoleToolCallFromItem(raw interface{}) map[string]interface{} {
+	item, _ := raw.(map[string]interface{})
+	if item == nil {
+		return nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(fmt.Sprint(item["type"])), "function_call") {
+		return nil
+	}
+	name := strings.TrimSpace(fmt.Sprint(item["name"]))
+	if name == "" || name == "<nil>" {
+		return nil
+	}
+	callID := strings.TrimSpace(fmt.Sprint(item["call_id"]))
+	if callID == "" || callID == "<nil>" {
+		callID = strings.TrimSpace(fmt.Sprint(item["id"]))
+	}
+	if callID == "" || callID == "<nil>" {
+		callID = "call_" + randomHex(12)
+	}
+	arguments := "{}"
+	if rawArgs, ok := item["arguments"]; ok && rawArgs != nil {
+		switch v := rawArgs.(type) {
+		case string:
+			if strings.TrimSpace(v) != "" {
+				arguments = strings.TrimSpace(v)
+			}
+		default:
+			if buf, err := json.Marshal(v); err == nil {
+				arguments = string(buf)
+			}
+		}
+	}
+	return map[string]interface{}{
+		"id":   callID,
+		"type": "function",
+		"function": map[string]interface{}{
+			"name":      name,
+			"arguments": arguments,
+		},
+	}
+}
+
+type consoleStreamToolCall struct {
+	ID        string
+	Name      string
+	Arguments strings.Builder
+}
+
+func (tc *consoleStreamToolCall) openAIToolCall(index int) map[string]interface{} {
+	id := strings.TrimSpace(tc.ID)
+	if id == "" {
+		id = "call_" + randomHex(12)
+	}
+	args := strings.TrimSpace(tc.Arguments.String())
+	if args == "" {
+		args = "{}"
+	}
+	return map[string]interface{}{
+		"index": index,
+		"id":    id,
+		"type":  "function",
+		"function": map[string]interface{}{
+			"name":      strings.TrimSpace(tc.Name),
+			"arguments": args,
+		},
+	}
 }
 
 func firstUsage(a, b map[string]interface{}) map[string]interface{} {
@@ -568,6 +776,8 @@ func (h *Handler) streamConsoleChat(w http.ResponseWriter, req *ChatCompletionsR
 	var final strings.Builder
 	var annotations []map[string]interface{}
 	var finalUsage map[string]interface{}
+	var toolCalls []*consoleStreamToolCall
+	var activeToolCall *consoleStreamToolCall
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "event:") {
@@ -589,6 +799,54 @@ func (h *Handler) streamConsoleChat(w http.ResponseWriter, req *ChatCompletionsR
 		if usage := consoleUsageFromStreamEvent(ev); len(usage) > 0 {
 			finalUsage = usage
 		}
+		eventLower := strings.ToLower(strings.TrimSpace(event))
+		if eventLower == "" {
+			eventLower = strings.ToLower(strings.TrimSpace(fmt.Sprint(ev["type"])))
+		}
+		if item, _ := ev["item"].(map[string]interface{}); item != nil && strings.EqualFold(strings.TrimSpace(fmt.Sprint(item["type"])), "function_call") {
+			name := strings.TrimSpace(fmt.Sprint(item["name"]))
+			if name != "" && name != "<nil>" {
+				tc := &consoleStreamToolCall{
+					ID:   strings.TrimSpace(fmt.Sprint(item["call_id"])),
+					Name: name,
+				}
+				if tc.ID == "" || tc.ID == "<nil>" {
+					tc.ID = strings.TrimSpace(fmt.Sprint(item["id"]))
+				}
+				if args, ok := item["arguments"]; ok && args != nil {
+					switch v := args.(type) {
+					case string:
+						tc.Arguments.WriteString(v)
+					default:
+						if buf, err := json.Marshal(v); err == nil {
+							tc.Arguments.Write(buf)
+						}
+					}
+				}
+				toolCalls = append(toolCalls, tc)
+				activeToolCall = tc
+			}
+			continue
+		}
+		if strings.Contains(eventLower, "function_call_arguments") {
+			if activeToolCall == nil && len(toolCalls) > 0 {
+				activeToolCall = toolCalls[len(toolCalls)-1]
+			}
+			if activeToolCall != nil {
+				if strings.Contains(eventLower, ".delta") {
+					if delta := strings.TrimSpace(fmt.Sprint(ev["delta"])); delta != "" && delta != "<nil>" {
+						activeToolCall.Arguments.WriteString(delta)
+					}
+				}
+				if strings.Contains(eventLower, ".done") {
+					if args := strings.TrimSpace(fmt.Sprint(ev["arguments"])); args != "" && args != "<nil>" {
+						activeToolCall.Arguments.Reset()
+						activeToolCall.Arguments.WriteString(args)
+					}
+				}
+			}
+			continue
+		}
 		content := consoleDeltaText(event, ev)
 		if content == "" {
 			continue
@@ -600,7 +858,23 @@ func (h *Handler) streamConsoleChat(w http.ResponseWriter, req *ChatCompletionsR
 			flusher.Flush()
 		}
 	}
-	usage := firstUsage(finalUsage, buildChatUsagePayload(req, final.String(), nil))
+	indexedToolCalls := make([]map[string]interface{}, 0, len(toolCalls))
+	for _, tc := range toolCalls {
+		if tc == nil || strings.TrimSpace(tc.Name) == "" {
+			continue
+		}
+		indexedToolCalls = append(indexedToolCalls, tc.openAIToolCall(len(indexedToolCalls)))
+	}
+	usage := firstUsage(finalUsage, buildChatUsagePayload(req, final.String(), indexedToolCalls))
+	if len(indexedToolCalls) > 0 {
+		raw = appendChatCompletionToolCallsChunkWithUsage(nil, id, time.Now().Unix(), req.Model, fingerprint, indexedToolCalls, "tool_calls", true, usage)
+		writeSSEBytes(w, "", raw)
+		writeSSEBytes(w, "", []byte("[DONE]"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return
+	}
 	raw = appendConsoleFinalChunk(nil, id, time.Now().Unix(), req.Model, fingerprint, "stop", consoleChatAnnotations(annotations), usage)
 	writeSSEBytes(w, "", raw)
 	writeSSEBytes(w, "", []byte("[DONE]"))
