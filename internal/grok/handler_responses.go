@@ -525,9 +525,9 @@ func responsesUsageFromChat(raw interface{}) map[string]interface{} {
 	if usage == nil {
 		return map[string]interface{}{"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 	}
-	input := intFromAny(firstNonNil(usage["prompt_tokens"], usage["input_tokens"]))
-	output := intFromAny(firstNonNil(usage["completion_tokens"], usage["output_tokens"]))
-	total := intFromAny(usage["total_tokens"])
+	input := interfaceToInt(firstNonNil(usage["prompt_tokens"], usage["input_tokens"]))
+	output := interfaceToInt(firstNonNil(usage["completion_tokens"], usage["output_tokens"]))
+	total := interfaceToInt(usage["total_tokens"])
 	if total == 0 {
 		total = input + output
 	}
@@ -592,7 +592,7 @@ func writeResponsesStreamFromChat(w http.ResponseWriter, model, raw string) {
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			continue
 		}
-		if u := responsesUsageFromChat(chunk["usage"]); intFromAny(u["total_tokens"]) > 0 {
+		if u := responsesUsageFromChat(chunk["usage"]); interfaceToInt(u["total_tokens"]) > 0 {
 			usage = u
 		}
 		choices := interfaceSlice(chunk["choices"])

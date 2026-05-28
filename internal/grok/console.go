@@ -428,7 +428,7 @@ func consoleFlatAnnotations(v interface{}) []map[string]interface{} {
 		case map[string]interface{}:
 			t := strings.ToLower(strings.TrimSpace(fmt.Sprint(x["type"])))
 			if t == "url_citation" || (x["url"] != nil && (x["title"] != nil || x["start_index"] != nil || x["end_index"] != nil)) {
-				add(fmt.Sprint(x["url"]), fmt.Sprint(x["title"]), intFromAny(x["start_index"]), intFromAny(x["end_index"]))
+				add(fmt.Sprint(x["url"]), fmt.Sprint(x["title"]), interfaceToInt(x["start_index"]), interfaceToInt(x["end_index"]))
 			}
 			if t == "web_search_call" {
 				if action, _ := x["action"].(map[string]interface{}); action != nil {
@@ -509,24 +509,24 @@ func consoleUsage(v map[string]interface{}) map[string]interface{} {
 	if !ok {
 		return nil
 	}
-	prompt := intFromAny(raw["input_tokens"])
-	completion := intFromAny(raw["output_tokens"])
+	prompt := interfaceToInt(raw["input_tokens"])
+	completion := interfaceToInt(raw["output_tokens"])
 	if prompt == 0 {
-		prompt = intFromAny(raw["prompt_tokens"])
+		prompt = interfaceToInt(raw["prompt_tokens"])
 	}
 	if completion == 0 {
-		completion = intFromAny(raw["completion_tokens"])
+		completion = interfaceToInt(raw["completion_tokens"])
 	}
-	total := intFromAny(raw["total_tokens"])
+	total := interfaceToInt(raw["total_tokens"])
 	if total == 0 {
 		total = prompt + completion
 	}
 	reasoning := 0
 	if details, _ := raw["output_tokens_details"].(map[string]interface{}); details != nil {
-		reasoning = intFromAny(details["reasoning_tokens"])
+		reasoning = interfaceToInt(details["reasoning_tokens"])
 	}
 	if reasoning == 0 {
-		reasoning = intFromAny(raw["reasoning_tokens"])
+		reasoning = interfaceToInt(raw["reasoning_tokens"])
 	}
 	return map[string]interface{}{
 		"prompt_tokens":     prompt,
@@ -539,33 +539,10 @@ func consoleUsage(v map[string]interface{}) map[string]interface{} {
 			"image_tokens":  0,
 		},
 		"completion_tokens_details": map[string]interface{}{
-			"text_tokens":      maxInt(completion-reasoning, 0),
+			"text_tokens":      max(completion-reasoning, 0),
 			"audio_tokens":     0,
 			"reasoning_tokens": reasoning,
 		},
-	}
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func intFromAny(v interface{}) int {
-	switch n := v.(type) {
-	case float64:
-		return int(n)
-	case int:
-		return n
-	case int64:
-		return int(n)
-	case json.Number:
-		i, _ := n.Int64()
-		return int(i)
-	default:
-		return 0
 	}
 }
 
