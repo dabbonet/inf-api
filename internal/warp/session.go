@@ -156,6 +156,11 @@ func extractRefreshTokenFromJSON(raw string) string {
 func findRefreshTokenValue(value interface{}) string {
 	switch v := value.(type) {
 	case map[string]interface{}:
+		for _, key := range []string{"id_token", "auth_tokens", "authTokens"} {
+			if token := findRefreshTokenValue(v[key]); token != "" {
+				return token
+			}
+		}
 		for key, item := range v {
 			switch strings.ToLower(strings.TrimSpace(key)) {
 			case "refresh_token", "refreshtoken":

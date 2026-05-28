@@ -12,12 +12,12 @@ const (
 	// this key exchanges refresh_token -> id_token successfully.
 	warpFirebaseKey  = "AIzaSyBdy3O3S9hrdayLJxJ7mriBR4qgUaUygAs"
 	warpFirebaseURL  = "https://securetoken.googleapis.com/v1/token?key=" + warpFirebaseKey
-	clientVersion    = "v0.2025.01.28.08.02.stable_05"
+	clientVersion    = "v0.2026.05.06.15.42.stable_03"
 	userAgent        = "Warp/" + clientVersion
 	clientID         = "warp-app"
-	clientOSCategory = "macOS"
-	clientOSName     = "macOS"
-	clientOSVersion  = "15.6.1"
+	clientOSCategory = "Windows"
+	clientOSName     = "Windows"
+	clientOSVersion  = "10.0.26200"
 	identifier       = "cli-agent-auto"
 )
 

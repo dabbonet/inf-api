@@ -22,6 +22,8 @@ func TestNormalizeRefreshToken_ExtractsCommonFormats(t *testing.T) {
 		{name: "cookie fragment", raw: "foo=1; refresh_token=token-123; Path=/", want: "token-123"},
 		{name: "json snake", raw: `{"refresh_token":"token-123"}`, want: "token-123"},
 		{name: "json camel", raw: `{"auth":{"refreshToken":"token-123"}}`, want: "token-123"},
+		{name: "warp persisted user", raw: `{"id_token":{"id_token":"runtime-jwt","refresh_token":"token-123","expiration_time":"2026-05-28T00:00:00+00:00"},"refresh_token":"legacy-empty"}`, want: "token-123"},
+		{name: "warp auth redirect url", raw: "warp://auth/desktop_redirect?refresh_token=token-123&state=abc", want: "token-123"},
 	}
 
 	for _, tt := range tests {

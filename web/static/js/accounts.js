@@ -236,19 +236,23 @@ function applyTokenLabels(type) {
   const hint = document.getElementById("tokenHint");
   const projectGroup = document.getElementById("projectIdGroup");
   const projectInput = document.getElementById("projectId");
+  const warpImportActions = document.getElementById("warpLocalImportActions");
   const accountId = String(document.getElementById("accountId")?.value || "");
   if (!label || !input || !hint) return;
+  if (warpImportActions) {
+    warpImportActions.hidden = type !== "warp";
+  }
   if (projectGroup && projectInput) {
     const boltMode = type === "bolt";
     projectGroup.style.display = boltMode ? "" : "none";
     projectInput.required = boltMode;
   }
   if (type === 'warp') {
-    label.textContent = "Refresh Token";
-    input.placeholder = "每行一个 refresh_token";
+    label.textContent = "Warp Auth";
+    input.placeholder = "每行一个 id_token.refresh_token、登录回跳 URL 或 User JSON";
     hint.textContent = accountId
-      ? "编辑时仅保存第一行 refresh_token"
-      : "支持批量添加 Warp。每行一个 refresh_token";
+      ? "编辑时仅保存第一行；可从本机 WARP 导入，或粘贴 warp://auth/... 回跳 URL / User JSON"
+      : "支持批量添加 Warp。推荐从本机 WARP 导入 id_token.refresh_token；也可粘贴 warp://auth/... 回跳 URL / User JSON";
     input.required = true;
   } else if (type === 'grok') {
     label.textContent = "SSO Token";
@@ -280,6 +284,59 @@ function applyTokenLabels(type) {
   }
 }
 
+async function importLocalWarpUser() {
+  const typeEl = document.getElementById("accountType");
+  const input = document.getElementById("clientCookie");
+  if (!input || String(typeEl?.value || "").toLowerCase() !== "warp") return;
+
+  try {
+    renderAccountImportStatus("正在读取本机 WARP 安全存储...", "info");
+    const res = await fetch("/api/warp/import-local-user", { method: "POST" });
+    if (!res.ok) throw new Error((await res.text()).trim() || "导入失败");
+    const data = await res.json();
+    const token = String(data.refresh_token || "").trim();
+    if (!token) throw new Error("未找到 id_token.refresh_token");
+    input.value = token;
+    renderAccountImportStatus("已从本机 WARP 导入 id_token.refresh_token", "info", data.source_path ? [`来源: ${data.source_path}`] : []);
+    showToast("已导入本机 WARP 凭据");
+  } catch (err) {
+    renderAccountImportStatus("导入本机 WARP 凭据失败", "error", [err.message || String(err)]);
+    showToast("导入失败: " + (err.message || String(err)), "error");
+  }
+}
+
+function selectWarpUserFile() {
+  const input = document.getElementById("warpUserFileInput");
+  if (!input) return;
+  input.value = "";
+  input.click();
+}
+
+async function importWarpUserFile(file) {
+  if (!file) return;
+  const typeEl = document.getElementById("accountType");
+  if (String(typeEl?.value || "").toLowerCase() !== "warp") return;
+
+  try {
+    renderAccountImportStatus("正在上传并解密 WARP User 文件...", "info", [file.name]);
+    const form = new FormData();
+    form.append("file", file, file.name || "dev.warp.Warp-User");
+    const res = await fetch("/api/warp/import-user-file", {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) throw new Error((await res.text()).trim() || "上传导入失败");
+    const account = await res.json();
+    renderAccountImportStatus("已解密并保存 Warp 账号", "info", [`账号 #${account.id || ""}`.trim()]);
+    showToast("已保存上传的 WARP 账号");
+    closeModal();
+    loadAccounts();
+  } catch (err) {
+    renderAccountImportStatus("上传 User 文件失败", "error", [err.message || String(err)]);
+    showToast("上传导入失败: " + (err.message || String(err)), "error");
+  }
+}
+
 function splitBatchCredentialInput(raw) {
   const text = String(raw || "").trim();
   if (!text) return [];
@@ -302,8 +359,15 @@ function normalizeCredentialForType(type, credential) {
   if (!raw) return "";
 
   if (normalizedType === "warp") {
-    const match = raw.match(/(?:^|[?&;\s])refresh_token=([^&;\s]+)/);
-    return (match ? match[1] : raw).trim();
+    try {
+      const parsed = JSON.parse(raw);
+      const token = findNestedWarpRefreshToken(parsed);
+      if (token) return token;
+    } catch (_) {
+      // Not JSON; continue with URL/cookie/form extraction.
+    }
+    const match = raw.match(/(?:^|[?&;\s])refresh_token=([^&;\s]+)/i);
+    return (match ? decodeURIComponent(match[1]) : raw).trim();
   }
 
   if (normalizedType === "grok") {
@@ -312,6 +376,27 @@ function normalizeCredentialForType(type, credential) {
   }
 
   return raw;
+}
+
+function findNestedWarpRefreshToken(value) {
+  if (!value || typeof value !== "object") return "";
+  const preferred = ["id_token", "auth_tokens", "authTokens"];
+  for (const key of preferred) {
+    if (value[key]) {
+      const token = findNestedWarpRefreshToken(value[key]);
+      if (token) return token;
+    }
+  }
+  for (const [key, item] of Object.entries(value)) {
+    const normalizedKey = String(key || "").toLowerCase();
+    if (normalizedKey === "refresh_token" || normalizedKey === "refreshtoken") {
+      const token = String(item || "").trim();
+      if (token) return token;
+    }
+    const token = findNestedWarpRefreshToken(item);
+    if (token) return token;
+  }
+  return "";
 }
 
 function buildCredentialFingerprint(type, credential) {
@@ -1523,5 +1608,12 @@ document.addEventListener('DOMContentLoaded', () => {
       applyTokenLabels(typeSelect.value);
     });
     applyTokenLabels(typeSelect.value);
+  }
+  const warpUserFileInput = document.getElementById("warpUserFileInput");
+  if (warpUserFileInput) {
+    warpUserFileInput.addEventListener("change", () => {
+      const file = warpUserFileInput.files && warpUserFileInput.files[0];
+      importWarpUserFile(file);
+    });
   }
 });
