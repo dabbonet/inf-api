@@ -330,7 +330,7 @@ func (c *Client) SendRequestWithPayload(ctx context.Context, req upstream.Upstre
 		return fmt.Errorf("failed to create bolt request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Referer", "https://bolt.new/~/sb1-"+projectID)
+	httpReq.Header.Set("Referer", "https://bolt.new/~/"+normalizeBoltProjectSlug(projectID))
 	c.applyCommonHeaders(httpReq)
 
 	resp, err := c.httpClient.Do(httpReq)
@@ -351,6 +351,17 @@ func (c *Client) SendRequestWithPayload(ctx context.Context, req upstream.Upstre
 		}
 		return nil
 	})
+}
+
+func normalizeBoltProjectSlug(projectID string) string {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return ""
+	}
+	if strings.HasPrefix(projectID, "sb1-") {
+		return projectID
+	}
+	return "sb1-" + projectID
 }
 
 func (c *Client) applyCommonHeaders(req *http.Request) {

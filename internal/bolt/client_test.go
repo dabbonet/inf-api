@@ -31,6 +31,9 @@ func TestSendRequestWithPayload_EmitsModelEvents(t *testing.T) {
 		if got := r.Header.Get("Cookie"); !strings.Contains(got, "__session=session-token") {
 			t.Fatalf("cookie=%q", got)
 		}
+		if got := r.Header.Get("Referer"); got != "https://bolt.new/~/sb1-demo" {
+			t.Fatalf("referer=%q want https://bolt.new/~/sb1-demo", got)
+		}
 		body, _ := io.ReadAll(r.Body)
 		if !strings.Contains(string(body), `"projectId":"sb1-demo"`) {
 			t.Fatalf("request body missing projectId: %s", string(body))
@@ -64,6 +67,23 @@ func TestSendRequestWithPayload_EmitsModelEvents(t *testing.T) {
 	want := []string{"model.text-delta", "model.finish"}
 	if strings.Join(events, ",") != strings.Join(want, ",") {
 		t.Fatalf("events=%v want %v", events, want)
+	}
+}
+
+func TestNormalizeBoltProjectSlug(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: "demo", want: "sb1-demo"},
+		{in: "sb1-demo", want: "sb1-demo"},
+		{in: "  sb1-demo  ", want: "sb1-demo"},
+		{in: "", want: ""},
+	}
+	for _, tt := range tests {
+		if got := normalizeBoltProjectSlug(tt.in); got != tt.want {
+			t.Fatalf("normalizeBoltProjectSlug(%q)=%q want %q", tt.in, got, tt.want)
+		}
 	}
 }
 
