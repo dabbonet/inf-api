@@ -1444,6 +1444,17 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 					currentAccount = nextAccount
 					if currentAccount != nil {
 						trackedAccountID = h.acquireTrackedAccount(currentAccount)
+						if isBoltRequest {
+							var initErr error
+							boltProjectID, initErr = h.resolveBoltProjectID(r.Context(), currentAccount, apiClient, effectiveWorkdir, freshBoltTask)
+							if initErr != nil {
+								slog.Error("Failed to initialize bolt project after account switch", "account_id", currentAccount.ID, "error", initErr)
+								sh.InjectUpstreamError("Failed to initialize bolt project: " + initErr.Error())
+								sh.finishResponse("end_turn")
+								return
+							}
+							upstreamReq.ProjectID = strings.TrimSpace(boltProjectID)
+						}
 						if verboseDiagnostics {
 							slog.Debug("Switched to account", "account", currentAccount.Name)
 						}
