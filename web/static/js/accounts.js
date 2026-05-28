@@ -48,15 +48,15 @@ function sortAccounts() {
 
 // Normalize account type
 function normalizeAccountType(acc) {
-  return (acc.account_type || 'orchids').toLowerCase();
+  return normalizeSidebarAccountType(acc);
 }
 
 function getQuotaStats(acc) {
   if (!acc) return null;
+  const base = getSidebarQuotaStats(acc);
+  if (!base) return null;
+  if (base.unknown) return base;
   const type = normalizeAccountType(acc);
-  if (type === "puter") {
-    return { supported: false, unknown: true };
-  }
   if (type === "warp") {
     const monthlyLimit = Math.max(0, Math.floor(acc.warp_monthly_limit || acc.usage_limit || 0));
     const monthlyRemainingRaw = acc.warp_monthly_remaining !== undefined && acc.warp_monthly_remaining !== null
@@ -81,45 +81,15 @@ function getQuotaStats(acc) {
       };
     }
   }
-  const explicitLimit = Math.floor(acc.quota_limit || 0);
-  const hasExplicitRemaining = acc.quota_remaining !== undefined && acc.quota_remaining !== null;
-  if (explicitLimit > 0 && hasExplicitRemaining) {
-    const remaining = Math.max(0, Math.floor(acc.quota_remaining || 0));
-    const used = Math.max(0, explicitLimit - remaining);
-    const pctRemaining = explicitLimit > 0 ? Math.min(100, Math.round((remaining / explicitLimit) * 100)) : 0;
-    return { supported: true, limit: explicitLimit, remaining, used, pctRemaining };
-  }
-
-  const limit = Math.floor(acc.usage_limit || 0);
-  if (limit <= 0) return null;
-  const current = Math.floor(acc.usage_current || 0);
-  let remaining = 0;
-  if (type === "warp") {
-    remaining = Math.max(0, limit - current);
-  } else {
-    remaining = Math.max(0, current);
-  }
+  const limit = Math.max(0, Math.floor(base.limit || 0));
+  const remaining = Math.max(0, Math.floor(base.remaining || 0));
   const used = Math.max(0, limit - remaining);
   const pctRemaining = limit > 0 ? Math.min(100, Math.round((remaining / limit) * 100)) : 0;
-  return { supported: true, limit, remaining, used, pctRemaining };
+  return { ...base, limit, remaining, used, pctRemaining };
 }
 
 function getAccountToken(acc) {
-  if (!acc) return '';
-  const type = normalizeAccountType(acc);
-  if (type === 'warp') {
-    return acc.refresh_token || acc.token || acc.client_cookie || '';
-  }
-  if (type === 'orchids') {
-    return acc.client_cookie || acc.session_cookie || acc.token || '';
-  }
-  if (type === 'bolt') {
-    return acc.session_cookie || acc.client_cookie || acc.token || '';
-  }
-  if (type === 'puter') {
-    return acc.client_cookie || acc.token || acc.session_cookie || '';
-  }
-  return acc.client_cookie || acc.token || '';
+  return getSidebarAccountToken(acc);
 }
 
 function applyTokenLabels(type) {
@@ -480,11 +450,6 @@ function updateAccountHealth(id, ok, msg = '') {
   };
 }
 
-function normalizeStatusCode(statusCode) {
-  if (statusCode === null || statusCode === undefined) return '';
-  return String(statusCode).trim();
-}
-
 function evaluateAccountStatus(acc) {
   const health = accountHealth[acc.id];
   if (health && !health.ok) {
@@ -493,7 +458,7 @@ function evaluateAccountStatus(acc) {
   if (!acc.enabled) {
     return { normal: false, text: '禁用', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: '账号已禁用' };
   }
-  const statusCode = normalizeStatusCode(acc.status_code);
+  const statusCode = normalizeSidebarStatusCode(acc.status_code);
   if (statusCode) {
     switch (statusCode) {
       case '429':

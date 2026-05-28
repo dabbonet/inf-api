@@ -99,6 +99,41 @@ func isGrokModelNotFound(err error) bool {
 	return strings.Contains(lower, "model is not found") || strings.Contains(lower, "model not found")
 }
 
+func verifyGrokAccount(ctx context.Context, acc *store.Account, cfg *config.Config) error {
+	if acc == nil {
+		return fmt.Errorf("missing grok account")
+	}
+	token := grok.NormalizeSSOToken(firstNonEmptyString(acc.ClientCookie, acc.RefreshToken, acc.Token))
+	if token == "" {
+		return fmt.Errorf("missing sso token")
+	}
+	acc.ClientCookie = token
+
+	client := grok.New(cfg)
+	modelID := normalizeGrokVerifyModelID(acc.AgentMode)
+	if modelID != "" && modelID != acc.AgentMode {
+		acc.AgentMode = modelID
+	}
+
+	verifyCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	info, verifyErr := client.VerifyToken(verifyCtx, token, modelID)
+	cancel()
+	if verifyErr != nil && isGrokModelNotFound(verifyErr) && modelID != "grok-3" {
+		modelID = "grok-3"
+		acc.AgentMode = modelID
+		verifyCtx, cancel = context.WithTimeout(ctx, 20*time.Second)
+		info, verifyErr = client.VerifyToken(verifyCtx, token, modelID)
+		cancel()
+	}
+	if verifyErr != nil {
+		return verifyErr
+	}
+	if info != nil {
+		grok.ApplyQuotaInfo(acc, info)
+	}
+	return nil
+}
+
 func normalizeWarpTokenInput(acc *store.Account) {
 	if acc == nil || !strings.EqualFold(acc.AccountType, "warp") {
 		return
@@ -268,7 +303,7 @@ func normalizedAccountCredentialKey(acc *store.Account) string {
 	case "bolt":
 		token = strings.TrimSpace(firstNonEmptyString(acc.SessionCookie, acc.ClientCookie, acc.Token))
 	case "puter":
-		token = strings.TrimSpace(firstNonEmptyString(acc.SessionCookie, acc.ClientCookie, acc.Token))
+		token = puter.ResolveAuthToken(acc)
 	case "orchids":
 		token = strings.TrimSpace(firstNonEmptyString(acc.SessionCookie, acc.ClientCookie, acc.Token))
 	default:
@@ -519,37 +554,7 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 		limitInfo, bonuses, limitErr := warpClient.GetRequestLimitInfo(limitCtx)
 		limitCancel()
 		if limitErr == nil && limitInfo != nil {
-			if planTier := strings.ToLower(strings.TrimSpace(limitInfo.PlanTier)); planTier != "" {
-				acc.Subscription = planTier
-			} else if planName := strings.ToLower(strings.TrimSpace(limitInfo.PlanName)); planName != "" {
-				acc.Subscription = planName
-			} else if limitInfo.IsUnlimited {
-				acc.Subscription = "unlimited"
-			} else if strings.TrimSpace(acc.Subscription) == "" {
-				acc.Subscription = "free"
-			}
-			monthlyLimit := float64(limitInfo.RequestLimit)
-			bonusRemaining := 0.0
-			for _, bg := range bonuses {
-				if bg.RequestCreditsRemaining > 0 {
-					bonusRemaining += float64(bg.RequestCreditsRemaining)
-				}
-			}
-			usedRequests := float64(limitInfo.RequestsUsedSinceLastRefresh)
-			monthlyRemaining := monthlyLimit - usedRequests
-			if monthlyRemaining < 0 {
-				monthlyRemaining = 0
-			}
-			acc.UsageLimit = monthlyLimit
-			acc.UsageCurrent = usedRequests
-			acc.WarpMonthlyLimit = monthlyLimit
-			acc.WarpMonthlyRemaining = monthlyRemaining
-			acc.WarpBonusRemaining = bonusRemaining
-			if limitInfo.NextRefreshTime != "" {
-				if t, err := time.Parse(time.RFC3339, limitInfo.NextRefreshTime); err == nil {
-					acc.QuotaResetAt = t
-				}
-			}
+			warp.ApplyRequestLimitInfoToAccount(acc, limitInfo, bonuses)
 		} else if limitErr != nil {
 			slog.Warn("Warp quota sync failed after refresh; keeping account available", "account_id", acc.ID, "error", limitErr)
 		}
@@ -557,35 +562,12 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 	}
 
 	if strings.EqualFold(acc.AccountType, "grok") {
-		if strings.TrimSpace(acc.ClientCookie) == "" {
-			return "", http.StatusBadRequest, fmt.Errorf("Failed to verify grok account: missing sso token")
-		}
-
-		cfg := a.config.Load()
-		client := grok.New(cfg)
-
-		modelID := normalizeGrokVerifyModelID(acc.AgentMode)
-		if modelID != "" && modelID != acc.AgentMode {
-			acc.AgentMode = modelID
-		}
-
-		verifyCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		info, verifyErr := client.VerifyToken(verifyCtx, acc.ClientCookie, modelID)
-		cancel()
-		if verifyErr != nil && isGrokModelNotFound(verifyErr) && modelID != "grok-3" {
-			modelID = "grok-3"
-			acc.AgentMode = modelID
-			verifyCtx, cancel = context.WithTimeout(ctx, 20*time.Second)
-			info, verifyErr = client.VerifyToken(verifyCtx, acc.ClientCookie, modelID)
-			cancel()
-		}
-		if verifyErr != nil {
+		if verifyErr := verifyGrokAccount(ctx, acc, a.config.Load()); verifyErr != nil {
+			if strings.Contains(strings.ToLower(verifyErr.Error()), "missing sso token") {
+				return "", http.StatusBadRequest, fmt.Errorf("Failed to verify grok account: %w", verifyErr)
+			}
 			status := classifyAccountStatusFromError(verifyErr.Error())
 			return status, httpStatusFromAccountStatus(status), fmt.Errorf("Failed to verify grok account: %w", verifyErr)
-		}
-
-		if info != nil {
-			grok.ApplyQuotaInfo(acc, info)
 		}
 		return "", 0, nil
 	}
@@ -620,9 +602,7 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 	}
 
 	if strings.EqualFold(acc.AccountType, "puter") {
-		if strings.TrimSpace(acc.ClientCookie) == "" &&
-			strings.TrimSpace(acc.Token) == "" &&
-			strings.TrimSpace(acc.SessionCookie) == "" {
+		if puter.ResolveAuthToken(acc) == "" {
 			return "", http.StatusBadRequest, fmt.Errorf("Failed to verify puter account: missing auth token")
 		}
 		if err := puterVerifyAccount(ctx, acc, a.config.Load()); err != nil {
