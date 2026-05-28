@@ -124,7 +124,30 @@ func (h *Handler) consolePayload(spec ModelSpec, req *ChatCompletionsRequest) (m
 			payload["reasoning"] = map[string]interface{}{"effort": effort}
 		}
 	}
+	payload["tools"] = injectConsoleWebSearchTool(nil)
 	return payload, nil
+}
+
+func injectConsoleWebSearchTool(tools []map[string]interface{}) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(tools)+1)
+	hasWebSearch := false
+	for _, tool := range tools {
+		if tool == nil {
+			continue
+		}
+		copied := make(map[string]interface{}, len(tool))
+		for k, v := range tool {
+			copied[k] = v
+		}
+		if strings.EqualFold(strings.TrimSpace(fmt.Sprint(copied["type"])), "web_search") {
+			hasWebSearch = true
+		}
+		out = append(out, copied)
+	}
+	if !hasWebSearch {
+		out = append(out, map[string]interface{}{"type": "web_search"})
+	}
+	return out
 }
 
 func (h *Handler) doConsole(ctx context.Context, token string, payload map[string]interface{}) (*http.Response, error) {

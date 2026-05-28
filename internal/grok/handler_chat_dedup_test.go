@@ -90,6 +90,44 @@ func TestShouldServeConsoleChat_IgnoresOpenAIToolDefinitions(t *testing.T) {
 	}
 }
 
+func TestConsolePayload_DefaultsWebSearchTool(t *testing.T) {
+	h := &Handler{}
+	req := &ChatCompletionsRequest{
+		Model: "grok-4.3",
+		Messages: []ChatMessage{{
+			Role:    "user",
+			Content: "今天有什么 AI 新闻",
+		}},
+	}
+
+	payload, err := h.consolePayload(ModelSpec{ID: "grok-4.3", ConsoleModel: "grok-4.3"}, req)
+	if err != nil {
+		t.Fatalf("consolePayload() error: %v", err)
+	}
+	tools, ok := payload["tools"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("tools type=%T want []map[string]interface{}", payload["tools"])
+	}
+	if len(tools) != 1 {
+		t.Fatalf("tools len=%d want 1: %#v", len(tools), tools)
+	}
+	if got := tools[0]["type"]; got != "web_search" {
+		t.Fatalf("tool type=%#v want web_search", got)
+	}
+}
+
+func TestInjectConsoleWebSearchTool_DoesNotDuplicate(t *testing.T) {
+	tools := injectConsoleWebSearchTool([]map[string]interface{}{
+		{"type": "web_search", "search_context_size": "high"},
+	})
+	if len(tools) != 1 {
+		t.Fatalf("tools len=%d want 1: %#v", len(tools), tools)
+	}
+	if got := tools[0]["search_context_size"]; got != "high" {
+		t.Fatalf("preserved option=%#v want high", got)
+	}
+}
+
 func TestCollectChat_EmitsOpenAIParityMetadata(t *testing.T) {
 	h := &Handler{}
 	rec := httptest.NewRecorder()
