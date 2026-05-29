@@ -19,6 +19,7 @@
   let imagineStreamSequence = 0;
   const imagineSelectedImages = new Set();
   const imagineStreamImageMap = new Map();
+  const IMAGINE_BATCH_SIZE = 6;
 
   const cacheOnlineState = {
     selectedTokens: new Set(),
@@ -550,12 +551,27 @@
     const stopBtn = document.getElementById("imagineStopBtn");
     if (startBtn) {
       startBtn.disabled = false;
-      startBtn.classList.toggle("hidden", !!running);
+      startBtn.classList.remove("hidden");
+      startBtn.innerHTML = running
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7v10"></path><path d="M14 7v10"></path></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="m6 11 6-6 6 6"></path></svg>';
+      startBtn.setAttribute("aria-label", running ? "停止" : "生成");
+      startBtn.setAttribute("title", running ? "停止" : "生成");
     }
     if (stopBtn) {
-      stopBtn.disabled = false;
-      stopBtn.classList.toggle("hidden", !running);
+      stopBtn.disabled = !running;
+      stopBtn.classList.add("hidden");
     }
+  }
+
+  function setImagineControlsDisabled(disabled) {
+    const prompt = document.getElementById("imaginePrompt");
+    if (prompt) prompt.disabled = !!disabled;
+    const ratio = document.getElementById("imagineRatio");
+    if (ratio) ratio.disabled = !!disabled;
+    document.querySelectorAll("#imagineRunModeToggle button, #imagineQualityToggle button").forEach((btn) => {
+      btn.disabled = !!disabled;
+    });
   }
 
   function imagineOptionEnabled(id, fallback) {
@@ -627,6 +643,276 @@
 
   function getFinalMinBytes() {
     return Number.isFinite(imagineFinalMinBytes) && imagineFinalMinBytes >= 0 ? imagineFinalMinBytes : 100000;
+  }
+
+  function imagineAspectRatioCss(value) {
+    const ratio = String(value || "1:1").trim();
+    if (!ratio.includes(":")) return "1 / 1";
+    const parts = ratio.split(":");
+    const width = Math.max(1, Number(parts[0]) || 1);
+    const height = Math.max(1, Number(parts[1]) || 1);
+    return `${width} / ${height}`;
+  }
+
+  function imagineSizeForRatio(value) {
+    switch (String(value || "").trim()) {
+      case "16:9":
+      case "3:2":
+        return "1792x1024";
+      case "9:16":
+      case "2:3":
+        return "1024x1792";
+      case "1:1":
+      default:
+        return "1024x1024";
+    }
+  }
+
+  function imagineReadToggle(selector, attr, fallback) {
+    const active = document.querySelector(`${selector} .is-active`);
+    return String(active?.dataset?.[attr] || fallback || "").trim();
+  }
+
+  function imagineSetToggle(selector, attr, value) {
+    document.querySelectorAll(`${selector} [data-${attr.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}]`).forEach((btn) => {
+      const active = String(btn.dataset[attr] || "") === String(value || "");
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
+  function imagineQualityModel(quality) {
+    return quality === "quality" ? "grok-imagine-image" : "grok-imagine-image-lite";
+  }
+
+  function syncImagineRatioUI() {
+    const ratio = String(document.getElementById("imagineRatio")?.value || "2:3");
+    const wrap = document.getElementById("imagineRatioWrap");
+    if (wrap) wrap.dataset.ratio = ratio;
+  }
+
+  function resizeImaginePrompt() {
+    const input = document.getElementById("imaginePrompt");
+    if (!input) return;
+    input.style.height = "52px";
+    input.style.height = `${Math.min(Math.max(input.scrollHeight, 52), 160)}px`;
+    input.style.overflowY = input.scrollHeight > 160 ? "auto" : "hidden";
+  }
+
+  function setImagineEmptyState() {
+    const grid = document.getElementById("imagineGrid");
+    const empty = document.getElementById("imagineEmpty");
+    if (!grid || !empty) return;
+    const hasBatch = grid.querySelector(".imagine-masonry-batch") !== null;
+    empty.hidden = hasBatch;
+    empty.style.display = hasBatch ? "none" : "";
+  }
+
+  function createImagineBatch(prompt, ratio, quality, round) {
+    const grid = document.getElementById("imagineGrid");
+    if (!grid) return null;
+
+    const batch = document.createElement("section");
+    batch.className = "imagine-masonry-batch";
+
+    const head = document.createElement("header");
+    head.className = "imagine-masonry-batch-head";
+
+    const promptEl = document.createElement("div");
+    promptEl.className = "imagine-masonry-batch-prompt";
+    promptEl.textContent = prompt;
+
+    const meta = document.createElement("div");
+    meta.className = "imagine-masonry-batch-meta";
+    const chips = [
+      ["is-round", `第 ${round} 轮`],
+      ["is-param", ratio],
+      ["is-param", quality === "quality" ? "Quality" : "Speed"],
+      ["is-count", `0/${IMAGINE_BATCH_SIZE}`],
+      ["is-state", "正在生成"],
+    ];
+    chips.forEach(([cls, text]) => {
+      const chip = document.createElement("span");
+      chip.className = `imagine-masonry-batch-chip ${cls}`;
+      chip.textContent = text;
+      if (cls === "is-state") chip.dataset.state = "generating";
+      meta.appendChild(chip);
+    });
+
+    head.appendChild(promptEl);
+    head.appendChild(meta);
+
+    const slotGrid = document.createElement("div");
+    slotGrid.className = "imagine-masonry-grid";
+    slotGrid.style.setProperty("--tile-aspect", imagineAspectRatioCss(ratio));
+
+    const slots = Array.from({ length: IMAGINE_BATCH_SIZE }, (_, idx) => {
+      const tile = document.createElement("article");
+      tile.className = "imagine-masonry-tile waterfall-item is-pending";
+      tile.dataset.prompt = prompt;
+
+      const badge = document.createElement("div");
+      badge.className = "imagine-masonry-tile-badge";
+      badge.textContent = String(idx + 1);
+
+      const body = document.createElement("div");
+      body.className = "imagine-masonry-tile-body";
+
+      const progress = document.createElement("div");
+      progress.className = "imagine-masonry-tile-progress";
+      progress.innerHTML = '<div class="imagine-masonry-tile-progress-value">0%</div><div class="imagine-masonry-tile-progress-track"><div class="imagine-masonry-tile-progress-fill"></div></div>';
+      body.appendChild(progress);
+
+      tile.appendChild(badge);
+      tile.appendChild(body);
+      slotGrid.appendChild(tile);
+      return { tile, body, progress: 0, url: "", status: "pending" };
+    });
+
+    batch.appendChild(head);
+    batch.appendChild(slotGrid);
+    grid.prepend(batch);
+    setImagineEmptyState();
+
+    return {
+      el: batch,
+      countEl: meta.querySelector(".is-count"),
+      stateEl: meta.querySelector(".is-state"),
+      slots,
+      ready: 0,
+      failed: 0,
+      round,
+    };
+  }
+
+  function updateImagineBatchMeta(batch, final) {
+    if (!batch) return;
+    if (batch.countEl) batch.countEl.textContent = `${batch.ready}/${IMAGINE_BATCH_SIZE}`;
+    if (!batch.stateEl) return;
+    if (!final) {
+      batch.stateEl.dataset.state = "generating";
+      batch.stateEl.textContent = "正在生成";
+      return;
+    }
+    if (batch.ready >= IMAGINE_BATCH_SIZE) {
+      batch.stateEl.dataset.state = "success";
+      batch.stateEl.textContent = "生成成功";
+    } else if (batch.ready > 0) {
+      batch.stateEl.dataset.state = "partial";
+      batch.stateEl.textContent = "部分失败";
+    } else {
+      batch.stateEl.dataset.state = "failed";
+      batch.stateEl.textContent = "生成失败";
+    }
+  }
+
+  function setImagineSlotProgress(slot, value) {
+    if (!slot || slot.status !== "pending") return;
+    const progress = Math.max(0, Math.min(99, Number(value) || 0));
+    slot.progress = progress;
+    const text = slot.tile.querySelector(".imagine-masonry-tile-progress-value");
+    const fill = slot.tile.querySelector(".imagine-masonry-tile-progress-fill");
+    if (text) text.textContent = `${progress}%`;
+    if (fill) fill.style.width = `${progress}%`;
+  }
+
+  function finishImagineSlot(slot, raw, meta) {
+    if (!slot || slot.status !== "pending") return;
+    const value = String(raw || "");
+    if (!value) {
+      failImagineSlot(slot, "失败");
+      return;
+    }
+    const isURL = value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/") || value.startsWith("data:");
+    const src = isURL ? value : `data:${inferMime(value)};base64,${value}`;
+    slot.status = "ready";
+    slot.url = src;
+    slot.tile.classList.remove("is-pending", "is-filtered");
+    slot.tile.classList.add("is-ready");
+    slot.tile.dataset.imageUrl = src;
+    if (imagineSelectionMode) slot.tile.classList.add("selection-mode");
+
+    const link = document.createElement("a");
+    link.className = "imagine-masonry-tile-link";
+    link.href = src;
+    link.target = "_blank";
+    link.rel = "noopener";
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.alt = meta && meta.sequence ? `image-${meta.sequence}` : "image";
+    img.src = src;
+    link.appendChild(img);
+    slot.body.replaceChildren(link);
+
+    imagineState.imageCount += 1;
+    const count = document.getElementById("imagineCount");
+    if (count) count.textContent = String(imagineState.imageCount);
+  }
+
+  function failImagineSlot(slot, label) {
+    if (!slot || slot.status !== "pending") return;
+    slot.status = "failed";
+    slot.tile.classList.remove("is-pending", "is-ready");
+    slot.tile.classList.add("is-filtered");
+    const message = document.createElement("div");
+    message.className = "imagine-masonry-tile-label";
+    message.textContent = label || "失败";
+    slot.body.replaceChildren(message);
+  }
+
+  function extractImagineImageValue(data) {
+    const list = Array.isArray(data?.data) ? data.data : [];
+    const item = list[0] || {};
+    return String(item.url || item.b64_json || item.base64 || item.b64 || "");
+  }
+
+  async function runImagineSlot(batch, slot, prompt, ratio, model, nsfw, signal) {
+    const startedAt = Date.now();
+    let tick = 0;
+    const timer = window.setInterval(() => {
+      tick += 1;
+      setImagineSlotProgress(slot, Math.min(92, 8 + tick * 7));
+    }, 900);
+    try {
+      const res = await fetch("/grok/v1/images/generations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal,
+        body: JSON.stringify({
+          model,
+          prompt,
+          n: 1,
+          size: imagineSizeForRatio(ratio),
+          response_format: "url",
+          nsfw,
+        }),
+      });
+      if (handleUnauthorized(res)) throw new Error("unauthorized");
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const image = extractImagineImageValue(data);
+      if (!image) throw new Error("no image generated");
+      finishImagineSlot(slot, image, { elapsed_ms: Date.now() - startedAt });
+      if (batch) {
+        batch.ready += 1;
+        updateImagineBatchMeta(batch, false);
+      }
+      return true;
+    } catch (err) {
+      if (signal?.aborted) {
+        failImagineSlot(slot, "已停止");
+      } else {
+        failImagineSlot(slot, "失败");
+      }
+      if (batch) {
+        batch.failed += 1;
+        updateImagineBatchMeta(batch, false);
+      }
+      return false;
+    } finally {
+      window.clearInterval(timer);
+    }
   }
 
   function dataUrlToBlob(dataUrl) {
@@ -993,7 +1279,7 @@
     }
     const toggleBtn = document.getElementById("toggleSelectAllBtn");
     if (toggleBtn) {
-      const items = document.querySelectorAll("#imagineGrid .waterfall-item");
+      const items = document.querySelectorAll("#imagineGrid .waterfall-item.is-ready");
       const allSelected = items.length > 0 && imagineSelectedImages.size === items.length;
       toggleBtn.textContent = allSelected ? "取消全选" : "全选";
     }
@@ -1004,7 +1290,7 @@
     imagineSelectedImages.clear();
     const toolbar = document.getElementById("selectionToolbar");
     if (toolbar) toolbar.classList.remove("hidden");
-    const items = document.querySelectorAll("#imagineGrid .waterfall-item");
+    const items = document.querySelectorAll("#imagineGrid .waterfall-item.is-ready");
     items.forEach((item) => {
       item.classList.add("selection-mode");
     });
@@ -1044,7 +1330,7 @@
   }
 
   function toggleImagineSelectAll() {
-    const items = document.querySelectorAll("#imagineGrid .waterfall-item");
+    const items = document.querySelectorAll("#imagineGrid .waterfall-item.is-ready");
     const allSelected = items.length > 0 && imagineSelectedImages.size === items.length;
     if (allSelected) {
       items.forEach((item) => item.classList.remove("selected"));
@@ -1129,7 +1415,7 @@
   }
 
   function getImagineAllImages() {
-    return Array.from(document.querySelectorAll("#imagineGrid .waterfall-item img"));
+    return Array.from(document.querySelectorAll("#imagineGrid .waterfall-item.is-ready img"));
   }
 
   function updateImagineLightbox(index) {
@@ -1344,56 +1630,76 @@
 
   async function startImagine() {
     if (imagineState.running) {
-      showToast("Imagine 已在运行中", "info");
+      await stopImagine();
       return;
     }
-    const prompt = String(document.getElementById("imaginePrompt")?.value || "").trim();
+    const promptInput = document.getElementById("imaginePrompt");
+    const prompt = String(promptInput?.value || "").trim();
     if (!prompt) {
       showToast("请输入 Prompt", "error");
       return;
     }
     const ratio = String(document.getElementById("imagineRatio")?.value || "2:3");
-    const model = String(document.getElementById("imagineModel")?.value || "grok-imagine-image-lite").trim() || "grok-imagine-image-lite";
-    const concurrent = 1;
+    const runMode = imagineReadToggle("#imagineRunModeToggle", "imagineRunMode", "single");
+    const quality = imagineReadToggle("#imagineQualityToggle", "imagineQuality", "speed");
+    const model = imagineQualityModel(quality);
     const nsfw = String(document.getElementById("imagineNSFW")?.value || "true") === "true";
-    const mode = String(document.getElementById("imagineMode")?.value || "auto").toLowerCase();
+
     saveGrokToolsUIState({
       imagineRatio: ratio,
       imagineModel: model,
-      imagineConcurrent: concurrent,
+      imagineRunMode: runMode,
+      imagineQuality: quality,
+      imagineConcurrent: IMAGINE_BATCH_SIZE,
     });
 
     imagineState.running = true;
-    imagineState.mode = mode;
+    imagineState.mode = runMode;
+    imagineState.effectiveMode = "masonry";
+    imagineState.abortController = new AbortController();
+    imagineState.taskIDs = [];
     setImagineButtons(true);
-    setImagineStatus("创建任务中");
+    setImagineControlsDisabled(true);
+    setImagineStatus("生成中");
 
-    const taskIDs = [];
+    let round = 0;
     try {
-      for (let i = 0; i < concurrent; i++) {
-        const taskID = await createImagineTask(prompt, ratio, nsfw);
-        if (!taskID) {
-          throw new Error("创建任务失败：空 task_id");
-        }
-        taskIDs.push(taskID);
-      }
+      while (imagineState.running) {
+        round += 1;
+        const batch = createImagineBatch(prompt, ratio, quality, round);
+        if (!batch) throw new Error("瀑布流容器不存在");
+        setImagineStatus(`生成中 · 第 ${round} 轮`);
+        const signal = imagineState.abortController?.signal;
+        const results = await Promise.all(batch.slots.map((slot) => runImagineSlot(batch, slot, prompt, ratio, model, nsfw, signal)));
+        batch.ready = results.filter(Boolean).length;
+        batch.failed = results.length - batch.ready;
+        updateImagineBatchMeta(batch, true);
 
-      imagineState.taskIDs = taskIDs;
-      if (mode === "sse") {
-        startImagineSSE(taskIDs);
-      } else if (mode === "ws") {
-        startImagineWS(taskIDs, prompt, ratio, false);
-      } else {
-        startImagineWS(taskIDs, prompt, ratio, true);
+        const elapsed = batch.slots.reduce((sum, slot) => sum + (slot.status === "ready" ? 1 : 0), 0);
+        const active = document.getElementById("imagineActive");
+        if (active) active.textContent = imagineState.running ? "1" : "0";
+        if (elapsed > 0) {
+          const latency = document.getElementById("imagineLatency");
+          if (latency) latency.textContent = "-";
+        }
+
+        if (!imagineState.running || runMode !== "continuous") break;
       }
-      showToast(`Imagine 已启动 (${taskIDs.length} 并发)`, "success");
+      if (imagineState.running) {
+        setImagineStatus("完成");
+      }
     } catch (err) {
+      if (!imagineState.abortController?.signal?.aborted) {
+        setImagineStatus("错误");
+        showToast(`启动失败: ${err.message || err}`, "error");
+      }
+    } finally {
       imagineState.running = false;
+      imagineState.abortController = null;
       setImagineButtons(false);
-      setImagineStatus("启动失败");
-      await stopImagineTasks(taskIDs);
-      imagineState.taskIDs = [];
-      showToast(`启动失败: ${err.message || err}`, "error");
+      setImagineControlsDisabled(false);
+      updateImagineActiveCount();
+      if (document.activeElement !== promptInput) promptInput?.focus();
     }
   }
 
@@ -1401,7 +1707,12 @@
     const taskIDs = imagineState.taskIDs.slice();
     imagineState.running = false;
     setImagineButtons(false);
+    setImagineControlsDisabled(false);
     setImagineStatus("停止中");
+    if (imagineState.abortController) {
+      imagineState.abortController.abort();
+      imagineState.abortController = null;
+    }
     closeImagineConnections(true);
     imagineState.taskIDs = [];
     try {
@@ -1417,7 +1728,11 @@
     const grid = document.getElementById("imagineGrid");
     const empty = document.getElementById("imagineEmpty");
     if (grid) grid.innerHTML = "";
-    if (empty) empty.style.display = "block";
+    if (empty) {
+      empty.hidden = false;
+      empty.style.display = "";
+      if (grid) grid.appendChild(empty);
+    }
     imagineStreamImageMap.clear();
     imagineStreamSequence = 0;
     imagineSelectedImages.clear();
@@ -4419,10 +4734,27 @@
         applyImagineMode(imagineModeSelect.value);
       });
     }
+    document.querySelectorAll("[data-imagine-run-mode]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const value = String(btn.dataset.imagineRunMode || "single");
+        imagineSetToggle("#imagineRunModeToggle", "imagineRunMode", value);
+        saveGrokToolsUIState({ imagineRunMode: value });
+      });
+    });
+    document.querySelectorAll("[data-imagine-quality]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const value = String(btn.dataset.imagineQuality || "speed");
+        imagineSetToggle("#imagineQualityToggle", "imagineQuality", value);
+        const model = imagineQualityModel(value);
+        const modelSelect = document.getElementById("imagineModel");
+        if (modelSelect) modelSelect.value = model;
+        saveGrokToolsUIState({ imagineQuality: value, imagineModel: model });
+      });
+    });
     const imaginePrompt = document.getElementById("imaginePrompt");
     if (imaginePrompt) {
       imaginePrompt.addEventListener("keydown", async (event) => {
-        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           try {
             await startImagine();
@@ -4431,6 +4763,8 @@
           }
         }
       });
+      imaginePrompt.addEventListener("input", resizeImaginePrompt);
+      resizeImaginePrompt();
     }
     [
       ["imagineRatio", "imagineRatio"],
@@ -4447,6 +4781,11 @@
       input.addEventListener("change", sync);
       input.addEventListener("input", sync);
     });
+    const imagineRatioSelect = document.getElementById("imagineRatio");
+    if (imagineRatioSelect) {
+      imagineRatioSelect.addEventListener("change", syncImagineRatioUI);
+      syncImagineRatioUI();
+    }
     bindPersistedCheckbox("imagineAutoScroll", "imagineAutoScroll");
     bindPersistedCheckbox("imagineAutoDownload", "imagineAutoDownload");
     bindPersistedCheckbox("imagineAutoFilter", "imagineAutoFilter");
@@ -4515,6 +4854,7 @@
       imagineGrid.addEventListener("click", (event) => {
         const item = event.target.closest(".waterfall-item");
         if (!item) return;
+        if (!item.classList.contains("is-ready")) return;
         if (imagineSelectionMode) {
           toggleImagineItemSelection(item);
           return;
@@ -4927,6 +5267,11 @@
     if (imagineModel && typeof uiState.imagineModel === "string" && uiState.imagineModel) {
       imagineModel.value = uiState.imagineModel;
     }
+    const savedQuality = typeof uiState.imagineQuality === "string" ? uiState.imagineQuality : "";
+    const quality = savedQuality || (imagineModel?.value === "grok-imagine-image" ? "quality" : "speed");
+    imagineSetToggle("#imagineQualityToggle", "imagineQuality", quality);
+    const savedRunMode = typeof uiState.imagineRunMode === "string" ? uiState.imagineRunMode : "single";
+    imagineSetToggle("#imagineRunModeToggle", "imagineRunMode", savedRunMode === "continuous" ? "continuous" : "single");
     if (imagineConcurrent && typeof uiState.imagineConcurrent === "number" && Number.isFinite(uiState.imagineConcurrent)) {
       imagineConcurrent.value = String(uiState.imagineConcurrent);
     }
@@ -4935,6 +5280,8 @@
     }
     resetImagineMetrics();
     updateImagineActiveCount();
+    syncImagineRatioUI();
+    resizeImaginePrompt();
     const videoRatio = document.getElementById("videoRatio");
     const videoLength = document.getElementById("videoLength");
     const videoResolution = document.getElementById("videoResolution");
