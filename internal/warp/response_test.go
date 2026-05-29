@@ -158,6 +158,27 @@ func TestProcessStreamBody_HandlesDoneFinishReason(t *testing.T) {
 	}
 }
 
+func TestProcessStreamBody_ExposesShouldRefreshModelConfig(t *testing.T) {
+	var events []upstream.SSEMessage
+
+	finishPayload := appendBytesField(2, nil)
+	finishPayload = append(finishPayload, appendVarintField(9, 1)...)
+	finishFrame := wrapFrame(appendBytesField(3, finishPayload))
+
+	err := processStreamBody(context.Background(), bytes.NewReader(finishFrame), func(msg upstream.SSEMessage) {
+		events = append(events, msg)
+	}, nil)
+	if err != nil {
+		t.Fatalf("processStreamBody error: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != "model.finish" {
+		t.Fatalf("events=%#v want one finish event", events)
+	}
+	if got, _ := events[0].Event["shouldRefreshModelConfig"].(bool); !got {
+		t.Fatalf("shouldRefreshModelConfig=%v want true", events[0].Event["shouldRefreshModelConfig"])
+	}
+}
+
 func TestProcessStreamBody_ReturnsQuotaLimitFinishReason(t *testing.T) {
 	finishFrame := wrapFrame(appendBytesField(3, appendBytesField(4, nil)))
 

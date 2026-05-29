@@ -33,10 +33,11 @@ type toolCall struct {
 }
 
 type finishInfo struct {
-	InputTokens  int
-	OutputTokens int
-	Reason       string
-	Message      string
+	InputTokens              int
+	OutputTokens             int
+	Reason                   string
+	Message                  string
+	ShouldRefreshModelConfig bool
 }
 
 type nonProtobufStreamError struct {
@@ -391,6 +392,9 @@ func emitWarpPayload(frame []byte, onMessage func(upstream.SSEMessage), sawToolC
 					"inputTokens":  parsed.Finish.InputTokens,
 					"outputTokens": parsed.Finish.OutputTokens,
 				}
+			}
+			if parsed.Finish.ShouldRefreshModelConfig {
+				finish["shouldRefreshModelConfig"] = true
 			}
 			onMessage(upstream.SSEMessage{Type: "model.finish", Event: finish})
 			return true, true, nil
@@ -2114,6 +2118,18 @@ func parseNestedStreamFinished(data []byte, out *parsedEvent) {
 		field, wire, err := d.readKey()
 		if err != nil {
 			break
+		}
+		if field == 9 {
+			if wire != 0 {
+				_ = d.skip(wire)
+				continue
+			}
+			v, err := d.readVarint()
+			if err != nil {
+				break
+			}
+			finish.ShouldRefreshModelConfig = v != 0
+			continue
 		}
 		if wire != 2 {
 			_ = d.skip(wire)

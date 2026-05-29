@@ -3975,6 +3975,9 @@ func (h *streamHandler) handleMessage(msg upstream.SSEMessage) {
 
 	case "model.finish":
 		stopReason := "end_turn"
+		if shouldRefresh, ok := msg.Event["shouldRefreshModelConfig"].(bool); ok && shouldRefresh {
+			slog.Warn("Warp upstream requested model config refresh")
+		}
 		if usage, ok := msg.Event["usage"].(map[string]interface{}); ok {
 			inputTokens, hasIn := getUsageInt(usage, "inputTokens")
 			outputTokens, hasOut := getUsageInt(usage, "outputTokens")
