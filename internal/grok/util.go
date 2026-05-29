@@ -223,7 +223,7 @@ func extractImageURLs(value interface{}) []string {
 		case map[string]interface{}:
 			for k, item := range x {
 				lk := strings.ToLower(k)
-				if lk == "jsondata" {
+				if lk == "jsondata" || lk == "cardattachmentsjson" {
 					walk(parseGrokJSONData(item))
 					continue
 				}
@@ -2142,6 +2142,8 @@ func extractUpstreamModelResponse(resp map[string]interface{}) map[string]interf
 	return mapAtAnyPath(resp,
 		[]string{"modelResponse"},
 		[]string{"model_response"},
+		[]string{"userResponse"},
+		[]string{"user_response"},
 		[]string{"messageResponse"},
 		[]string{"message_response"},
 		[]string{"output"},

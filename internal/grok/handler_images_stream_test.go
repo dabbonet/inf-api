@@ -92,3 +92,19 @@ func TestAppendImageResultURLs_AcceptsCardAttachmentImageChunk(t *testing.T) {
 		t.Fatalf("url=%q want %q", urls[0], want)
 	}
 }
+
+func TestAppendImageResultURLs_AcceptsUserResponseCardAttachmentsJSON(t *testing.T) {
+	resp := map[string]interface{}{
+		"userResponse": map[string]interface{}{
+			"cardAttachmentsJson": `[{"jsonData":{"image_chunk":{"imageUrl":"users/u-1/generated/a2/image.png","progress":100}}}]`,
+		},
+	}
+
+	urls := appendImageResultURLs(nil, resp)
+	if len(urls) != 1 {
+		t.Fatalf("urls len=%d want 1: %#v", len(urls), urls)
+	}
+	if want := "https://assets.grok.com/users/u-1/generated/a2/image.png"; urls[0] != want {
+		t.Fatalf("url=%q want %q", urls[0], want)
+	}
+}
