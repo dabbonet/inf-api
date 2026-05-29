@@ -23,8 +23,8 @@ func TestImagineErrorRetryDelay_UsesLongDelayForRateLimit(t *testing.T) {
 	if got := imagineErrorRetryDelay(errors.New("grok upstream status=429 body=too many requests")); got != time.Minute {
 		t.Fatalf("delay=%v want 1m", got)
 	}
-	if got := imagineErrorRetryDelay(errors.New("no image generated")); got != 1500*time.Millisecond {
-		t.Fatalf("delay=%v want short retry", got)
+	if got := imagineErrorRetryDelay(errors.New("no image generated")); got != time.Minute {
+		t.Fatalf("delay=%v want 1m", got)
 	}
 }
 

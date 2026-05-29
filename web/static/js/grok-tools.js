@@ -972,6 +972,11 @@
       if (errorImageId && imagineStreamImageMap.has(errorImageId)) {
         setImagineImageStatus(imagineStreamImageMap.get(errorImageId), "error", "失败");
       }
+      const lower = String(message || "").toLowerCase();
+      if (lower.includes("no image generated") || lower.includes("429") || lower.includes("rate-limited") || lower.includes("cooling down")) {
+        setImagineStatus("等待重试");
+        return;
+      }
       showToast(String(message || "Imagine 运行出错"), "error");
       setImagineStatus("错误");
     }

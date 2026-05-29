@@ -443,6 +443,7 @@ func imagineErrorRetryDelay(err error) time.Duration {
 	if strings.Contains(msg, "429") ||
 		strings.Contains(msg, "rate-limited") ||
 		strings.Contains(msg, "cooling down") ||
+		strings.Contains(msg, "no image generated") ||
 		strings.Contains(msg, "no enabled accounts available for channel: grok") {
 		return time.Minute
 	}
