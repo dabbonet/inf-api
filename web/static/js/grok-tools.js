@@ -686,6 +686,12 @@
     return quality === "quality" ? "grok-imagine-image" : "grok-imagine-image-lite";
   }
 
+  function imagineQualityModels(quality) {
+    return quality === "quality"
+      ? ["grok-imagine-image"]
+      : ["grok-imagine-image-lite", "grok-imagine-image"];
+  }
+
   function syncImagineRatioUI() {
     const ratio = String(document.getElementById("imagineRatio")?.value || "2:3");
     const wrap = document.getElementById("imagineRatioWrap");
@@ -837,11 +843,8 @@
     slot.tile.dataset.imageUrl = src;
     if (imagineSelectionMode) slot.tile.classList.add("selection-mode");
 
-    const link = document.createElement("a");
+    const link = document.createElement("div");
     link.className = "imagine-masonry-tile-link";
-    link.href = src;
-    link.target = "_blank";
-    link.rel = "noopener";
     const img = document.createElement("img");
     img.loading = "lazy";
     img.decoding = "async";
@@ -872,7 +875,29 @@
     return String(item.url || item.b64_json || item.base64 || item.b64 || "");
   }
 
-  async function runImagineSlot(batch, slot, prompt, ratio, model, nsfw, signal) {
+  async function requestImagineImage(prompt, ratio, model, nsfw, signal) {
+    const res = await fetch("/grok/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal,
+      body: JSON.stringify({
+        model,
+        prompt,
+        n: 1,
+        size: imagineSizeForRatio(ratio),
+        response_format: "url",
+        nsfw,
+      }),
+    });
+    if (handleUnauthorized(res)) throw new Error("unauthorized");
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    const image = extractImagineImageValue(data);
+    if (!image) throw new Error("no image generated");
+    return image;
+  }
+
+  async function runImagineSlot(batch, slot, prompt, ratio, models, nsfw, signal) {
     const startedAt = Date.now();
     let tick = 0;
     const timer = window.setInterval(() => {
@@ -880,24 +905,22 @@
       setImagineSlotProgress(slot, Math.min(92, 8 + tick * 7));
     }, 900);
     try {
-      const res = await fetch("/grok/v1/images/generations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal,
-        body: JSON.stringify({
-          model,
-          prompt,
-          n: 1,
-          size: imagineSizeForRatio(ratio),
-          response_format: "url",
-          nsfw,
-        }),
-      });
-      if (handleUnauthorized(res)) throw new Error("unauthorized");
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      const image = extractImagineImageValue(data);
-      if (!image) throw new Error("no image generated");
+      const candidates = Array.isArray(models) && models.length ? models : [String(models || "grok-imagine-image-lite")];
+      let image = "";
+      let lastErr = null;
+      for (let i = 0; i < candidates.length; i += 1) {
+        try {
+          image = await requestImagineImage(prompt, ratio, candidates[i], nsfw, signal);
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (signal?.aborted || String(err?.message || err) === "unauthorized") throw err;
+          if (i < candidates.length - 1) {
+            setImagineSlotProgress(slot, Math.max(slot.progress || 0, 35));
+          }
+        }
+      }
+      if (!image) throw lastErr || new Error("no image generated");
       finishImagineSlot(slot, image, { elapsed_ms: Date.now() - startedAt });
       if (batch) {
         batch.ready += 1;
@@ -1684,7 +1707,8 @@
     const ratio = String(document.getElementById("imagineRatio")?.value || "2:3");
     const runMode = imagineReadToggle("#imagineRunModeToggle", "imagineRunMode", "single");
     const quality = imagineReadToggle("#imagineQualityToggle", "imagineQuality", "speed");
-    const model = imagineQualityModel(quality);
+    const models = imagineQualityModels(quality);
+    const model = models[0];
     const nsfw = String(document.getElementById("imagineNSFW")?.value || "true") === "true";
 
     saveGrokToolsUIState({
@@ -1712,7 +1736,7 @@
         if (!batch) throw new Error("瀑布流容器不存在");
         setImagineStatus(`生成中 · 第 ${round} 轮`);
         const signal = imagineState.abortController?.signal;
-        const results = await Promise.all(batch.slots.map((slot) => runImagineSlot(batch, slot, prompt, ratio, model, nsfw, signal)));
+        const results = await Promise.all(batch.slots.map((slot) => runImagineSlot(batch, slot, prompt, ratio, models, nsfw, signal)));
         batch.ready = results.filter(Boolean).length;
         batch.failed = results.length - batch.ready;
         updateImagineBatchMeta(batch, true);
