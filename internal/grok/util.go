@@ -2008,6 +2008,64 @@ func appendImageResultURLs(urls []string, resp map[string]interface{}) []string 
 	return urls
 }
 
+func imageDebugShape(resp map[string]interface{}) string {
+	if resp == nil {
+		return "nil"
+	}
+	var parts []string
+	var walk func(interface{}, string, int)
+	walk = func(v interface{}, prefix string, depth int) {
+		if depth > 4 || len(parts) >= 40 {
+			return
+		}
+		switch x := v.(type) {
+		case map[string]interface{}:
+			keys := make([]string, 0, len(x))
+			for k := range x {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			if prefix != "" {
+				parts = append(parts, prefix+"{"+strings.Join(keys, ",")+"}")
+			} else {
+				parts = append(parts, "{"+strings.Join(keys, ",")+"}")
+			}
+			for _, k := range keys {
+				lk := strings.ToLower(k)
+				if strings.Contains(lk, "image") ||
+					strings.Contains(lk, "card") ||
+					strings.Contains(lk, "error") ||
+					strings.Contains(lk, "message") ||
+					strings.Contains(lk, "moderation") ||
+					strings.Contains(lk, "progress") ||
+					strings.Contains(lk, "response") ||
+					strings.Contains(lk, "result") {
+					next := k
+					if prefix != "" {
+						next = prefix + "." + k
+					}
+					walk(x[k], next, depth+1)
+				}
+			}
+		case []interface{}:
+			parts = append(parts, prefix+"[]")
+			if len(x) > 0 {
+				walk(x[0], prefix+"[]", depth+1)
+			}
+		case string:
+			if prefix != "" {
+				parts = append(parts, prefix+"=string")
+			}
+		case float64, bool, nil:
+			if prefix != "" {
+				parts = append(parts, prefix+"="+fmt.Sprintf("%T", x))
+			}
+		}
+	}
+	walk(resp, "", 0)
+	return strings.Join(parts, " ")
+}
+
 func interfaceToInt(v interface{}) int {
 	switch x := v.(type) {
 	case int:

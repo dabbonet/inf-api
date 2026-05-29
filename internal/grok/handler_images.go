@@ -300,6 +300,7 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 	var urls []string
 	var debugHTTP []string
 	var debugAsset []string
+	var debugShapes []string
 
 	// Grok upstream may return only 2 images per call and may repeat.
 	// To reach N, request 1 image per call without rewriting the user's prompt.
@@ -327,6 +328,9 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 		}
 		h.syncGrokQuota(sess.acc, resp.Header)
 		err = parseUpstreamLines(resp.Body, func(line map[string]interface{}) error {
+			if len(debugShapes) < 20 {
+				debugShapes = append(debugShapes, imageDebugShape(line))
+			}
 			if mr := extractUpstreamModelResponse(line); mr != nil {
 				debugHTTP = append(debugHTTP, collectHTTPStrings(mr, 50)...)
 				debugAsset = append(debugAsset, collectAssetLikeStrings(mr, 100)...)
@@ -348,6 +352,13 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 		urls = appendImageCandidates(urls, uniqueStrings(debugHTTP), uniqueStrings(debugAsset), req.N)
 	}
 	if len(urls) == 0 {
+		slog.Warn("grok image generation returned no images",
+			"model", req.Model,
+			"attempts", maxAttempts,
+			"event_shapes", uniqueStrings(debugShapes),
+			"http_candidates", len(uniqueStrings(debugHTTP)),
+			"asset_candidates", len(uniqueStrings(debugAsset)),
+		)
 		http.Error(w, "no image generated", http.StatusBadGateway)
 		return
 	}
