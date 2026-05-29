@@ -222,6 +222,7 @@ func (c *Client) handleStreamResponse(ctx context.Context, req upstream.Upstream
 			Operation:  op,
 			StatusCode: resp.StatusCode,
 			RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"), time.Now()),
+			Body:       bodyText,
 		}
 	}
 
