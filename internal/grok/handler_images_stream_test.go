@@ -126,6 +126,11 @@ func TestPrepareAppChatImageGenerationPayload_MatchesLiteImageShape(t *testing.T
 	if got, _ := payload["imageGenerationCount"].(int); got != 1 {
 		t.Fatalf("imageGenerationCount=%d want 1", got)
 	}
+	for _, key := range []string{"modelName", "modelMode", "isReasoning"} {
+		if _, ok := payload[key]; ok {
+			t.Fatalf("%s should be removed for app-chat image payload", key)
+		}
+	}
 	toolOverrides := payload["toolOverrides"].(map[string]interface{})
 	if got, _ := toolOverrides["webSearch"].(bool); got {
 		t.Fatalf("webSearch=%v want false", got)

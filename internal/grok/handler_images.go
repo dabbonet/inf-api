@@ -308,7 +308,9 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 	// Grok upstream may return only 2 images per call and may repeat.
 	// To reach N, request 1 image per call without rewriting the user's prompt.
 	maxAttempts := req.N * 4
-	if maxAttempts < 4 {
+	if imageModelUsesAppChatOnly(req.Model) {
+		maxAttempts = 1
+	} else if maxAttempts < 4 {
 		maxAttempts = 4
 	}
 	deadline := time.Now().Add(60 * time.Second)
@@ -321,8 +323,12 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 		if time.Now().After(deadline) {
 			break
 		}
-		payload := h.client.chatPayload(spec, strings.TrimSpace(req.Prompt), true, 1)
-		prepareAppChatImageGenerationPayload(payload, 1)
+		count := 1
+		if imageModelUsesAppChatOnly(req.Model) {
+			count = req.N
+		}
+		payload := h.client.chatPayload(spec, strings.TrimSpace(req.Prompt), true, count)
+		prepareAppChatImageGenerationPayload(payload, count)
 		if !imageModelUsesAppChatOnly(req.Model) {
 			ensureImageAspectRatio(payload, resolveAspectRatio(req.Size))
 			ensureImageNSFW(payload, nsfw)
@@ -410,6 +416,9 @@ func prepareAppChatImageGenerationPayload(payload map[string]interface{}, count 
 	payload["enableImageStreaming"] = true
 	payload["imageGenerationCount"] = count
 	payload["responseMetadata"] = map[string]interface{}{}
+	delete(payload, "modelName")
+	delete(payload, "modelMode")
+	delete(payload, "isReasoning")
 	toolOverrides, _ := payload["toolOverrides"].(map[string]interface{})
 	if toolOverrides == nil {
 		toolOverrides = map[string]interface{}{}
