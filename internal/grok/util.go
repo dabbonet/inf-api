@@ -246,6 +246,10 @@ func extractImageURLs(value interface{}) []string {
 			for _, item := range x {
 				walk(item)
 			}
+		case string:
+			if parsed := parseGrokJSONText(x); parsed != nil {
+				walk(parsed)
+			}
 		}
 	}
 	walk(value)
@@ -271,6 +275,21 @@ func parseGrokJSONData(v interface{}) interface{} {
 	}
 }
 
+func parseGrokJSONText(raw string) interface{} {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return nil
+	}
+	if !strings.HasPrefix(s, "{") && !strings.HasPrefix(s, "[") {
+		return nil
+	}
+	var parsed interface{}
+	if err := json.Unmarshal([]byte(s), &parsed); err != nil {
+		return nil
+	}
+	return parsed
+}
+
 func normalizeGrokAssetURL(raw string) string {
 	s := strings.TrimSpace(raw)
 	if s == "" || s == "<nil>" {
@@ -283,7 +302,7 @@ func normalizeGrokAssetURL(raw string) string {
 	if strings.HasPrefix(s, "/") {
 		return defaultAssetsBaseURL + s
 	}
-	if strings.HasPrefix(lower, "users/") || strings.Contains(lower, "/generated/") || strings.Contains(lower, "/image/") {
+	if strings.HasPrefix(lower, "users/") || strings.HasPrefix(lower, "generated/") || strings.Contains(lower, "/generated/") || strings.Contains(lower, "/image/") {
 		return defaultAssetsBaseURL + "/" + strings.TrimLeft(s, "/")
 	}
 	return s

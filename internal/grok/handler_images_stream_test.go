@@ -97,7 +97,7 @@ func TestAppendImageResultURLs_AcceptsCardAttachmentImageChunk(t *testing.T) {
 func TestAppendImageResultURLs_AcceptsUserResponseCardAttachmentsJSON(t *testing.T) {
 	resp := map[string]interface{}{
 		"userResponse": map[string]interface{}{
-			"cardAttachmentsJson": `[{"jsonData":{"image_chunk":{"imageUrl":"users/u-1/generated/a2/image.png","progress":100}}}]`,
+			"cardAttachmentsJson": `["{\"jsonData\":\"{\\\"image_chunk\\\":{\\\"imageUrl\\\":\\\"users/u-1/generated/a2/image.png\\\",\\\"progress\\\":100}}\"}"]`,
 		},
 	}
 
