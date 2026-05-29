@@ -26,7 +26,10 @@ type Client struct {
 	session    *session
 }
 
-const defaultRequestTimeout = 300 * time.Second
+const (
+	defaultRequestTimeout = 120 * time.Second
+	maxRequestTimeout     = 120 * time.Second
+)
 
 func NewFromAccount(acc *store.Account, cfg *config.Config) *Client {
 	if acc == nil {
@@ -58,6 +61,9 @@ func newHTTPClient(timeout time.Duration, cfg *config.Config) *http.Client {
 		timeout = defaultRequestTimeout
 		if cfg != nil && cfg.RequestTimeout > 0 {
 			timeout = time.Duration(cfg.RequestTimeout) * time.Second
+		}
+		if timeout > maxRequestTimeout {
+			timeout = maxRequestTimeout
 		}
 	}
 
@@ -297,10 +303,14 @@ func (c *Client) SyncAccountState() bool {
 }
 
 func (c *Client) requestTimeout() time.Duration {
+	timeout := defaultRequestTimeout
 	if c != nil && c.config != nil && c.config.RequestTimeout > 0 {
-		return time.Duration(c.config.RequestTimeout) * time.Second
+		timeout = time.Duration(c.config.RequestTimeout) * time.Second
 	}
-	return defaultRequestTimeout
+	if timeout > maxRequestTimeout {
+		return maxRequestTimeout
+	}
+	return timeout
 }
 
 func (c *Client) authHTTPClient() *http.Client {
