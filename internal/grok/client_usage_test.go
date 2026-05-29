@@ -149,6 +149,12 @@ func TestChatPayload_UsesCurrentAppChatModelFields(t *testing.T) {
 	if got, _ := payload["modelMode"].(string); got != "MODEL_MODE_FAST" {
 		t.Fatalf("modelMode=%q want legacy compatibility value", got)
 	}
+	if _, ok := payload["collectionIds"].([]string); !ok {
+		t.Fatalf("collectionIds missing")
+	}
+	if _, ok := payload["connectors"].([]string); !ok {
+		t.Fatalf("connectors missing")
+	}
 	toolOverrides, ok := payload["toolOverrides"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("toolOverrides missing")

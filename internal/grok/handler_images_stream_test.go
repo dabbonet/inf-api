@@ -2,6 +2,7 @@ package grok
 
 import (
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -106,5 +107,27 @@ func TestAppendImageResultURLs_AcceptsUserResponseCardAttachmentsJSON(t *testing
 	}
 	if want := "https://assets.grok.com/users/u-1/generated/a2/image.png"; urls[0] != want {
 		t.Fatalf("url=%q want %q", urls[0], want)
+	}
+}
+
+func TestPrepareAppChatImageGenerationPayload_MatchesLiteImageShape(t *testing.T) {
+	payload := map[string]interface{}{
+		"responseMetadata": map[string]interface{}{
+			"requestModelDetails": map[string]interface{}{"modelId": "grok-3"},
+		},
+		"toolOverrides": map[string]interface{}{"webSearch": true},
+	}
+
+	prepareAppChatImageGenerationPayload(payload, 1)
+
+	if !reflect.DeepEqual(payload["responseMetadata"], map[string]interface{}{}) {
+		t.Fatalf("responseMetadata=%#v want empty object", payload["responseMetadata"])
+	}
+	if got, _ := payload["imageGenerationCount"].(int); got != 1 {
+		t.Fatalf("imageGenerationCount=%d want 1", got)
+	}
+	toolOverrides := payload["toolOverrides"].(map[string]interface{})
+	if got, _ := toolOverrides["webSearch"].(bool); got {
+		t.Fatalf("webSearch=%v want false", got)
 	}
 }

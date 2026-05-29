@@ -230,6 +230,8 @@ func (c *Client) chatPayload(spec ModelSpec, text string, noMemory bool, imageCo
 		noMemory = c.cfg.GrokChatDisableMemory(noMemory)
 	}
 	payload := map[string]interface{}{
+		"collectionIds":               []string{},
+		"connectors":                  []string{},
 		"temporary":                   temporary,
 		"modelName":                   spec.UpstreamModel,
 		"message":                     text,

@@ -283,6 +283,7 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 	}
 
 	onePayload := h.client.chatPayload(spec, req.Prompt, true, req.N)
+	prepareAppChatImageGenerationPayload(onePayload, req.N)
 	ensureImageAspectRatio(onePayload, resolveAspectRatio(req.Size))
 	ensureImageNSFW(onePayload, nsfw)
 	if req.Stream {
@@ -319,6 +320,7 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 			break
 		}
 		payload := h.client.chatPayload(spec, strings.TrimSpace(req.Prompt), true, 1)
+		prepareAppChatImageGenerationPayload(payload, 1)
 		ensureImageAspectRatio(payload, resolveAspectRatio(req.Size))
 		ensureImageNSFW(payload, nsfw)
 		resp, err := h.doChatWithAutoSwitch(ctx, sess, payload)
@@ -391,4 +393,28 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+func prepareAppChatImageGenerationPayload(payload map[string]interface{}, count int) {
+	if payload == nil {
+		return
+	}
+	if count < 1 {
+		count = 1
+	}
+	payload["enableImageGeneration"] = true
+	payload["enableImageStreaming"] = true
+	payload["imageGenerationCount"] = count
+	payload["responseMetadata"] = map[string]interface{}{}
+	toolOverrides, _ := payload["toolOverrides"].(map[string]interface{})
+	if toolOverrides == nil {
+		toolOverrides = map[string]interface{}{}
+		payload["toolOverrides"] = toolOverrides
+	}
+	toolOverrides["imageGen"] = false
+	toolOverrides["webSearch"] = false
+	toolOverrides["xSearch"] = false
+	toolOverrides["xMediaSearch"] = false
+	toolOverrides["trendsSearch"] = false
+	toolOverrides["xPostAnalyze"] = false
 }
