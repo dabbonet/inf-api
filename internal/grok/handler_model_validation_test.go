@@ -127,6 +127,37 @@ func TestEnsureModelEnabled_AcceptsLegacyGrok43StoreRecord(t *testing.T) {
 	}
 }
 
+func TestEnsureModelEnabled_FallsBackToEnabledLegacyGrok43WhenBetaOffline(t *testing.T) {
+	h, s, mini := setupValidationHandler(t)
+	defer func() {
+		_ = s.Close()
+		mini.Close()
+	}()
+
+	if err := s.CreateModel(context.Background(), &store.Model{
+		Channel:  "Grok",
+		ModelID:  "grok-4.3-beta",
+		Name:     "Grok 4.3 Beta",
+		Status:   store.ModelStatusOffline,
+		Verified: true,
+	}); err != nil {
+		t.Fatalf("CreateModel(beta) error = %v", err)
+	}
+	if err := s.CreateModel(context.Background(), &store.Model{
+		Channel:  "Grok",
+		ModelID:  "grok-4.3",
+		Name:     "Grok 4.3",
+		Status:   store.ModelStatusAvailable,
+		Verified: true,
+	}); err != nil {
+		t.Fatalf("CreateModel(legacy) error = %v", err)
+	}
+
+	if err := h.ensureModelEnabled(context.Background(), "grok-4.3"); err != nil {
+		t.Fatalf("ensureModelEnabled(grok-4.3) error = %v", err)
+	}
+}
+
 func TestOpenChatAccountSessionForModel_UsesGrok2APIPoolCandidates(t *testing.T) {
 	h, s, mini := setupValidationHandler(t)
 	defer func() {

@@ -139,6 +139,9 @@ func (h *Handler) ensureModelEnabled(ctx context.Context, modelID string) error 
 			m, err = h.lb.Store.GetModelByModelID(ctx, rawID)
 		}
 	}
+	if (err != nil || m == nil || !m.Status.Enabled()) && id == "grok-4.3-beta" {
+		m, err = h.lb.Store.GetModelByModelID(ctx, "grok-4.3")
+	}
 	if err != nil || m == nil {
 		return fmt.Errorf("model not found")
 	}
