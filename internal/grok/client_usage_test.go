@@ -127,3 +127,44 @@ func TestRateLimitModelName_UsesModeAcceptedByUpstream(t *testing.T) {
 		})
 	}
 }
+
+func TestChatPayload_UsesCurrentAppChatModelFields(t *testing.T) {
+	c := New(nil)
+	spec := ModelSpec{
+		ID:            "grok-imagine-image-lite",
+		UpstreamModel: "grok-3",
+		ModelMode:     "MODEL_MODE_FAST",
+		Tier:          grokTierBasic,
+		IsImage:       true,
+	}
+
+	payload := c.chatPayload(spec, "draw an apple", true, 1)
+
+	if got, _ := payload["modeId"].(string); got != "fast" {
+		t.Fatalf("modeId=%q want fast", got)
+	}
+	if got, _ := payload["modelTier"].(string); got != "basic" {
+		t.Fatalf("modelTier=%q want basic", got)
+	}
+	if got, _ := payload["modelMode"].(string); got != "MODEL_MODE_FAST" {
+		t.Fatalf("modelMode=%q want legacy compatibility value", got)
+	}
+	toolOverrides, ok := payload["toolOverrides"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("toolOverrides missing")
+	}
+	if got, _ := toolOverrides["webSearch"].(bool); got {
+		t.Fatalf("webSearch=%v want false for image generation", got)
+	}
+}
+
+func TestAppChatModeID_UsesCustomModeID(t *testing.T) {
+	spec := ModelSpec{ID: "grok-4.3-beta", UpstreamModel: "grok-4.3-beta", ModelMode: "grok-420-computer-use-sa", Tier: grokTierSuper}
+
+	if got := appChatModeID(spec); got != "grok-420-computer-use-sa" {
+		t.Fatalf("appChatModeID()=%q want custom mode", got)
+	}
+	if got := appChatModelTier(spec); got != "super" {
+		t.Fatalf("appChatModelTier()=%q want super", got)
+	}
+}

@@ -74,3 +74,21 @@ func TestStreamImageGeneration_AcceptsAlternateProgressShape(t *testing.T) {
 		t.Fatalf("expected estimated usage to be included, raw=%q", raw)
 	}
 }
+
+func TestAppendImageResultURLs_AcceptsCardAttachmentImageChunk(t *testing.T) {
+	resp := map[string]interface{}{
+		"modelResponse": map[string]interface{}{
+			"cardAttachment": map[string]interface{}{
+				"jsonData": `{"image_chunk":{"imageUrl":"/users/u-1/generated/a1/image.jpg","progress":100}}`,
+			},
+		},
+	}
+
+	urls := appendImageResultURLs(nil, resp)
+	if len(urls) != 1 {
+		t.Fatalf("urls len=%d want 1: %#v", len(urls), urls)
+	}
+	if want := "https://assets.grok.com/users/u-1/generated/a1/image.jpg"; urls[0] != want {
+		t.Fatalf("url=%q want %q", urls[0], want)
+	}
+}

@@ -206,30 +206,37 @@ func parseUpstreamLines(body io.Reader, onLine func(map[string]interface{}) erro
 func extractImageURLs(value interface{}) []string {
 	seen := map[string]struct{}{}
 	var out []string
+	add := func(raw string) {
+		s := normalizeGrokAssetURL(raw)
+		if s == "" {
+			return
+		}
+		if _, exists := seen[s]; exists {
+			return
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
 	var walk func(interface{})
 	walk = func(v interface{}) {
 		switch x := v.(type) {
 		case map[string]interface{}:
 			for k, item := range x {
 				lk := strings.ToLower(k)
-				if lk == "generatedimageurls" || lk == "imageurls" || lk == "image_urls" || lk == "imageurl" {
+				if lk == "jsondata" {
+					walk(parseGrokJSONData(item))
+					continue
+				}
+				if lk == "generatedimageurls" || lk == "imageurls" || lk == "image_urls" || lk == "imageurl" || lk == "image_url" {
 					switch vv := item.(type) {
 					case []interface{}:
 						for _, one := range vv {
 							if s, ok := one.(string); ok && s != "" {
-								if _, exists := seen[s]; !exists {
-									seen[s] = struct{}{}
-									out = append(out, s)
-								}
+								add(s)
 							}
 						}
 					case string:
-						if vv != "" {
-							if _, exists := seen[vv]; !exists {
-								seen[vv] = struct{}{}
-								out = append(out, vv)
-							}
-						}
+						add(vv)
 					}
 					continue
 				}
@@ -243,6 +250,43 @@ func extractImageURLs(value interface{}) []string {
 	}
 	walk(value)
 	return out
+}
+
+func parseGrokJSONData(v interface{}) interface{} {
+	switch x := v.(type) {
+	case map[string]interface{}, []interface{}:
+		return x
+	case string:
+		raw := strings.TrimSpace(x)
+		if raw == "" {
+			return nil
+		}
+		var parsed interface{}
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			return parsed
+		}
+		return x
+	default:
+		return x
+	}
+}
+
+func normalizeGrokAssetURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" || s == "<nil>" {
+		return ""
+	}
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return s
+	}
+	if strings.HasPrefix(s, "/") {
+		return defaultAssetsBaseURL + s
+	}
+	if strings.HasPrefix(lower, "users/") || strings.Contains(lower, "/generated/") || strings.Contains(lower, "/image/") {
+		return defaultAssetsBaseURL + "/" + strings.TrimLeft(s, "/")
+	}
+	return s
 }
 
 // extractRenderableImageLinks is a broad fallback for Grok tool/card payloads.
@@ -1927,18 +1971,38 @@ func extractImageAssetIDs(resp map[string]interface{}) []string {
 }
 
 func appendImageResultURLs(urls []string, resp map[string]interface{}) []string {
+	added := make(map[string]struct{}, len(urls)+8)
+	for _, u := range urls {
+		added[u] = struct{}{}
+	}
+	addURL := func(u string) {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			return
+		}
+		if _, exists := added[u]; exists {
+			return
+		}
+		added[u] = struct{}{}
+		urls = append(urls, u)
+	}
+	addURLs := func(items []string) {
+		for _, u := range items {
+			addURL(u)
+		}
+	}
 	if mr := extractUpstreamModelResponse(resp); mr != nil {
-		urls = append(urls, extractImageURLs(mr)...)
+		addURLs(extractImageURLs(mr))
 		for _, assetID := range extractImageAssetIDs(mr) {
 			if u := imageURLFromAssetID(assetID); u != "" {
-				urls = append(urls, u)
+				addURL(u)
 			}
 		}
 	}
-	urls = append(urls, extractImageURLs(resp)...)
+	addURLs(extractImageURLs(resp))
 	for _, assetID := range extractImageAssetIDs(resp) {
 		if u := imageURLFromAssetID(assetID); u != "" {
-			urls = append(urls, u)
+			addURL(u)
 		}
 	}
 	return urls
