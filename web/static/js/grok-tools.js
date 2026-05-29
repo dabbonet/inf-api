@@ -20,6 +20,7 @@
   const imagineSelectedImages = new Set();
   const imagineStreamImageMap = new Map();
   const IMAGINE_BATCH_SIZE = 6;
+  const IMAGINE_BATCH_PARALLELISM = 2;
 
   const cacheOnlineState = {
     selectedTokens: new Set(),
@@ -943,6 +944,23 @@
     }
   }
 
+  async function runImagineBatchSlots(batch, prompt, ratio, models, nsfw, signal) {
+    if (!batch || !Array.isArray(batch.slots)) return [];
+    const results = new Array(batch.slots.length).fill(false);
+    let cursor = 0;
+    const workerCount = Math.min(IMAGINE_BATCH_PARALLELISM, batch.slots.length);
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (cursor < batch.slots.length) {
+        if (signal?.aborted) break;
+        const index = cursor;
+        cursor += 1;
+        results[index] = await runImagineSlot(batch, batch.slots[index], prompt, ratio, models, nsfw, signal);
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
   function dataUrlToBlob(dataUrl) {
     const parts = String(dataUrl || "").split(",");
     if (parts.length < 2) return null;
@@ -1678,7 +1696,7 @@
         if (!batch) throw new Error("瀑布流容器不存在");
         setImagineStatus(`生成中 · 第 ${round} 轮`);
         const signal = imagineState.abortController?.signal;
-        const results = await Promise.all(batch.slots.map((slot) => runImagineSlot(batch, slot, prompt, ratio, models, nsfw, signal)));
+        const results = await runImagineBatchSlots(batch, prompt, ratio, models, nsfw, signal);
         batch.ready = results.filter(Boolean).length;
         batch.failed = results.length - batch.ready;
         updateImagineBatchMeta(batch, true);
