@@ -79,7 +79,21 @@ func TestClassifyUpstreamError(t *testing.T) {
 		{
 			name:         "warp llm unavailable is server error",
 			errStr:       "warp stream finished with llm_unavailable: model unavailable",
-			wantCategory: "server",
+			wantCategory: "model_unavailable",
+			wantRetry:    true,
+			wantSwitch:   true,
+		},
+		{
+			name:         "warp 400 model not allowed switches account",
+			errStr:       `warp stream request failed: HTTP 400: {"error":"Invalid request: the requested base model (claude-4-5-opus) is not allowed for your account"}`,
+			wantCategory: "model_unavailable",
+			wantRetry:    true,
+			wantSwitch:   true,
+		},
+		{
+			name:         "warp 400 no model available switches account",
+			errStr:       `warp stream request failed: HTTP 400: {"error":"Invalid request: the requested base model (gemini-3-1-pro) has no model available"}`,
+			wantCategory: "model_unavailable",
 			wantRetry:    true,
 			wantSwitch:   true,
 		},

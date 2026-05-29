@@ -891,7 +891,7 @@ func applyModelRefresh(ctx context.Context, s *store.Store, channel string, sour
 
 func shouldDeleteMissingModelsOnRefresh(channel, source string) bool {
 	return strings.EqualFold(strings.TrimSpace(channel), "warp") &&
-		strings.HasPrefix(strings.TrimSpace(source), "warp_graphql")
+		strings.Contains(strings.TrimSpace(source), "agent_mode_llms")
 }
 
 func chooseRefreshedDefaultModel(channel string, existing map[string]*store.Model, ordered []discoveredModel) string {

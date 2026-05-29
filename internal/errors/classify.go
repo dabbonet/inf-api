@@ -121,6 +121,8 @@ func ClassifyUpstreamError(errStr string) UpstreamErrorClass {
 		return UpstreamErrorClass{Category: "auth_blocked", Retryable: true, SwitchAccount: true}
 	case HasExplicitHTTPStatus(lower, "404"):
 		return UpstreamErrorClass{Category: "auth_blocked", Retryable: false, SwitchAccount: false}
+	case isWarpModelUnavailableError(lower):
+		return UpstreamErrorClass{Category: "model_unavailable", Retryable: true, SwitchAccount: true}
 	case strings.Contains(lower, "input is too long") || HasExplicitHTTPStatus(lower, "400"):
 		return UpstreamErrorClass{Category: "client", Retryable: false, SwitchAccount: false}
 	case HasExplicitHTTPStatus(lower, "429") ||
@@ -149,4 +151,15 @@ func ClassifyUpstreamError(errStr string) UpstreamErrorClass {
 	default:
 		return UpstreamErrorClass{Category: "unknown", Retryable: true, SwitchAccount: true}
 	}
+}
+
+func isWarpModelUnavailableError(lower string) bool {
+	if !strings.Contains(lower, "warp") {
+		return false
+	}
+	if strings.Contains(lower, "requested base model") &&
+		(strings.Contains(lower, "not allowed") || strings.Contains(lower, "no model available")) {
+		return true
+	}
+	return strings.Contains(lower, "llm_unavailable") || strings.Contains(lower, "model unavailable")
 }

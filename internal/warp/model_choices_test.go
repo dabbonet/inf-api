@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFetchUserAgentModeLLMChoices_NormalizesIDsAndDefault(t *testing.T) {
@@ -96,6 +97,77 @@ func TestFetchWorkspaceAvailableLLMChoices_ReturnsChoices(t *testing.T) {
 	}
 	gotIDs := []string{choices[0].ID, choices[1].ID}
 	wantIDs := []string{"auto-open", "gpt-5-1-codex-medium"}
+	if !slices.Equal(gotIDs, wantIDs) {
+		t.Fatalf("choice ids=%+v want %+v", gotIDs, wantIDs)
+	}
+}
+
+func TestFetchDiscoveredModelChoices_PrefersAgentModeOverWorkspaceCatalog(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("op") {
+		case "GetUserAgentModeLlms":
+			_, _ = w.Write([]byte(`{
+				"data": {
+					"user": {
+						"__typename": "UserOutput",
+						"user": {
+							"llms": {
+								"agentMode": {
+									"defaultId": "auto",
+									"choices": [
+										{"id": "auto", "displayName": "Auto"},
+										{"id": "gpt-5.2-medium", "displayName": "GPT 5.2 Medium"}
+									]
+								}
+							}
+						}
+					}
+				}
+			}`))
+		case "GetWorkspaceLlmModelRoutingSettings":
+			_, _ = w.Write([]byte(`{
+				"data": {
+					"user": {
+						"__typename": "UserOutput",
+						"user": {
+							"workspaces": [
+								{
+									"availableLlms": {
+										"choices": [
+											{"id": "claude-4.6-opus-high", "displayName": "Claude 4.6 Opus"},
+											{"id": "gemini-3.1-pro", "displayName": "Gemini 3.1 Pro"}
+										]
+									}
+								}
+							]
+						}
+					}
+				}
+			}`))
+		default:
+			t.Fatalf("unexpected op=%q", r.URL.Query().Get("op"))
+		}
+	}))
+	defer server.Close()
+
+	client := &Client{
+		authClient: warpRewriteClient(t, server.URL),
+		session: &session{
+			jwt:       "jwt",
+			expiresAt: time.Now().Add(time.Hour),
+		},
+	}
+
+	choices, source, err := client.FetchDiscoveredModelChoices(context.Background())
+	if err != nil {
+		t.Fatalf("FetchDiscoveredModelChoices() error: %v", err)
+	}
+	if source != "agent_mode_llms" {
+		t.Fatalf("source=%q want agent_mode_llms", source)
+	}
+	gotIDs := []string{choices[0].ID, choices[1].ID}
+	wantIDs := []string{"auto-open", "gpt-5-2-medium"}
 	if !slices.Equal(gotIDs, wantIDs) {
 		t.Fatalf("choice ids=%+v want %+v", gotIDs, wantIDs)
 	}

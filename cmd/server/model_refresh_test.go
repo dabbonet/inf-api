@@ -448,6 +448,35 @@ func TestApplyModelRefresh_DeletesMissingWarpGraphQLModels(t *testing.T) {
 	}
 }
 
+func TestApplyModelRefresh_PreservesMissingWarpWorkspaceFallbackModels(t *testing.T) {
+	s, cleanup := setupModelRefreshStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	clearModelsForChannel(t, ctx, s, "Warp")
+	for _, record := range []*store.Model{
+		{Channel: "Warp", ModelID: "claude-4-5-opus", Name: "Old Opus", Status: store.ModelStatusAvailable, Verified: true, IsDefault: false, SortOrder: 0},
+		{Channel: "Warp", ModelID: "auto-open", Name: "Auto Open", Status: store.ModelStatusAvailable, Verified: true, IsDefault: true, SortOrder: 1},
+	} {
+		if err := s.CreateModel(ctx, record); err != nil {
+			t.Fatalf("CreateModel() error = %v", err)
+		}
+	}
+
+	result, err := applyModelRefresh(ctx, s, "Warp", "warp_graphql_workspace_available_llms_fallback", []discoveredModel{
+		{ID: "auto-open", Name: "Auto Open", SortOrder: 0},
+	})
+	if err != nil {
+		t.Fatalf("applyModelRefresh() error = %v", err)
+	}
+	if result.Deleted != 0 {
+		t.Fatalf("Deleted=%d want 0", result.Deleted)
+	}
+	if _, err := s.GetModelByChannelAndModelID(ctx, "Warp", "claude-4-5-opus"); err != nil {
+		t.Fatal("expected workspace fallback refresh to preserve missing model")
+	}
+}
+
 func TestApplyModelRefresh_PreservesExistingModelSettings(t *testing.T) {
 	s, cleanup := setupModelRefreshStore(t)
 	defer cleanup()
