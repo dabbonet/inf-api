@@ -41,3 +41,10 @@ func TestAppendImageCandidatesPrefersGrokPath(t *testing.T) {
 		t.Fatalf("got=%q want grok asset url", got[0])
 	}
 }
+
+func TestNormalizeGeneratedImageURLsRejectsEmptyExtensionPlaceholder(t *testing.T) {
+	got := normalizeGeneratedImageURLs([]string{"https://assets.grok.com/.png"}, 1)
+	if len(got) != 0 {
+		t.Fatalf("got=%#v want no placeholder urls", got)
+	}
+}

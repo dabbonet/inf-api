@@ -3,6 +3,7 @@ package grok
 import (
 	"github.com/goccy/go-json"
 	"net/url"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -306,6 +307,13 @@ func isLikelyImageURL(u string) bool {
 	}
 	lu := strings.ToLower(u)
 	if strings.HasPrefix(lu, "http://") || strings.HasPrefix(lu, "https://") {
+		parsed, err := url.Parse(u)
+		if err == nil {
+			base := strings.TrimSpace(path.Base(parsed.EscapedPath()))
+			if strings.HasPrefix(base, ".") {
+				return false
+			}
+		}
 		// Quick allow if it clearly ends with an image extension (ignore query).
 		cut := lu
 		if q := strings.IndexByte(cut, '?'); q >= 0 {
@@ -326,6 +334,9 @@ func isLikelyImageURL(u string) bool {
 func isLikelyImageAssetPath(p string) bool {
 	p = strings.TrimSpace(p)
 	if p == "" {
+		return false
+	}
+	if strings.HasPrefix(path.Base(p), ".") {
 		return false
 	}
 	// Reject JSON blobs or echoed prompts.
