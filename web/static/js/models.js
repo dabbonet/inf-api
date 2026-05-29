@@ -193,7 +193,7 @@ function renderModelRefreshSummary() {
 
   summary.hidden = false;
   title.textContent = `${result.channel || channel} 最近一次刷新结果`;
-  meta.textContent = `来源：${modelRefreshSourceLabel(result.source)}。并发数 ${result.concurrency || modelRefreshConcurrency}。发现到的模型会写入当前渠道，来源列表里暂时缺失的模型会标记为离线并保留记录。`;
+  meta.textContent = `来源：${modelRefreshSourceLabel(result.source)}。并发数 ${result.concurrency || modelRefreshConcurrency}。刷新只会补充新模型，已有模型的状态、名称、排序和默认项会保持不变。`;
 
   const stats = [
     { label: "发现", value: result.discovered },
