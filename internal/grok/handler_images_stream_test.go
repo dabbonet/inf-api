@@ -113,7 +113,7 @@ func TestAppendImageResultURLs_AcceptsUserResponseCardAttachmentsJSON(t *testing
 func TestPrepareAppChatImageGenerationPayload_MatchesLiteImageShape(t *testing.T) {
 	payload := map[string]interface{}{
 		"responseMetadata": map[string]interface{}{
-			"requestModelDetails": map[string]interface{}{"modelId": "grok-3"},
+			"requestModelDetails": map[string]interface{}{"modelId": "grok-imagine-image-lite"},
 		},
 		"toolOverrides": map[string]interface{}{"webSearch": true},
 	}

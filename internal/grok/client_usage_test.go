@@ -132,7 +132,7 @@ func TestChatPayload_UsesCurrentAppChatModelFields(t *testing.T) {
 	c := New(nil)
 	spec := ModelSpec{
 		ID:            "grok-imagine-image-lite",
-		UpstreamModel: "grok-3",
+		UpstreamModel: "grok-imagine-image-lite",
 		ModelMode:     "MODEL_MODE_FAST",
 		Tier:          grokTierBasic,
 		IsImage:       true,
