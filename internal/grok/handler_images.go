@@ -309,7 +309,7 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 		nsfw = &v
 	}
 
-	if imageModelUsesImagineWS(req.Model) {
+	if imageModelUsesImagineWSForAccount(req.Model, sess.acc) {
 		h.serveImagineWSImages(ctx, w, sess, req, publicBase, *nsfw, imageModelUsesProImagineWS(req.Model))
 		return
 	}
