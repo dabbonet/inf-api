@@ -175,8 +175,8 @@ func TestEnsureImageConfig_UsesTopLevelModelOverride(t *testing.T) {
 	payload := map[string]interface{}{}
 	nsfw := true
 
-	ensureImageAspectRatio(payload, "grok-imagine-image-lite", "3:2")
-	ensureImageNSFW(payload, "grok-imagine-image-lite", &nsfw)
+	ensureImageAspectRatio(payload, "grok-imagine-image", "3:2")
+	ensureImageNSFW(payload, "grok-imagine-image", &nsfw)
 
 	override, ok := payload["modelConfigOverride"].(map[string]interface{})
 	if !ok {
@@ -186,8 +186,8 @@ func TestEnsureImageConfig_UsesTopLevelModelOverride(t *testing.T) {
 	if !ok {
 		t.Fatalf("modelMap missing: %#v", override)
 	}
-	if got := modelMap["imageGenModel"]; got != "grok-imagine-image-lite" {
-		t.Fatalf("imageGenModel=%v want grok-imagine-image-lite", got)
+	if got := modelMap["imageGenModel"]; got != "grok-imagine-image" {
+		t.Fatalf("imageGenModel=%v want grok-imagine-image", got)
 	}
 	cfg, ok := modelMap["imageGenModelConfig"].(map[string]interface{})
 	if !ok {
@@ -201,6 +201,27 @@ func TestEnsureImageConfig_UsesTopLevelModelOverride(t *testing.T) {
 	}
 	if _, ok := payload["responseMetadata"]; ok {
 		t.Fatalf("responseMetadata should not be created for image config: %#v", payload["responseMetadata"])
+	}
+}
+
+func TestEnsureImageNSFW_OmitsUnsupportedLiteConfig(t *testing.T) {
+	payload := map[string]interface{}{}
+	nsfw := true
+
+	ensureImageAspectRatio(payload, "grok-imagine-image-lite", "2:3")
+	ensureImageNSFW(payload, "grok-imagine-image-lite", &nsfw)
+
+	override := payload["modelConfigOverride"].(map[string]interface{})
+	modelMap := override["modelMap"].(map[string]interface{})
+	cfg := modelMap["imageGenModelConfig"].(map[string]interface{})
+	if _, ok := cfg["enableNsfw"]; ok {
+		t.Fatalf("lite app-chat payload should not include enableNsfw: %#v", cfg)
+	}
+	if _, ok := cfg["enable_nsfw"]; ok {
+		t.Fatalf("lite app-chat payload should not include enable_nsfw: %#v", cfg)
+	}
+	if got := cfg["aspectRatio"]; got != "2:3" {
+		t.Fatalf("aspectRatio=%v want 2:3", got)
 	}
 }
 

@@ -281,9 +281,18 @@ func ensureImageNSFW(payload map[string]interface{}, modelID string, nsfw *bool)
 	if imageGenCfg == nil {
 		return
 	}
+	if !supportsAppChatImageNSFW(modelID) {
+		delete(imageGenCfg, "enableNsfw")
+		delete(imageGenCfg, "enable_nsfw")
+		return
+	}
 	// Keep both key styles for compatibility with different upstream parsers.
 	imageGenCfg["enableNsfw"] = *nsfw
 	imageGenCfg["enable_nsfw"] = *nsfw
+}
+
+func supportsAppChatImageNSFW(modelID string) bool {
+	return normalizeModelID(modelID) != "grok-imagine-image-lite"
 }
 
 func (h *Handler) generateImagineBatch(ctx context.Context, prompt, aspectRatio, model string, n int, nsfw *bool) ([]imagineImage, int, error) {
