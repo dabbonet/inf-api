@@ -584,6 +584,22 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 		} else if limitErr != nil {
 			slog.Warn("Warp quota sync failed after refresh; keeping account available", "account_id", acc.ID, "error", limitErr)
 		}
+		if a.store != nil && acc.ID != 0 {
+			modelCtx, modelCancel := context.WithTimeout(ctx, 15*time.Second)
+			choices, source, modelErr := warpClient.FetchDiscoveredModelChoices(modelCtx)
+			modelCancel()
+			if modelErr == nil && len(choices) > 0 {
+				models := make([]string, 0, len(choices))
+				for _, choice := range choices {
+					models = append(models, choice.ID)
+				}
+				if err := warp.SaveAccountModelChoicesForAccount(ctx, a.store, acc.ID, models); err != nil {
+					slog.Warn("Warp model choices sync failed after refresh", "account_id", acc.ID, "source", source, "error", err)
+				}
+			} else if modelErr != nil {
+				slog.Warn("Warp model choices fetch failed after refresh", "account_id", acc.ID, "error", modelErr)
+			}
+		}
 		return "", 0, nil
 	}
 
