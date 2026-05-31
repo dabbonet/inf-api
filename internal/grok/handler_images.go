@@ -69,8 +69,15 @@ func (h *Handler) streamImageGeneration(w http.ResponseWriter, body io.Reader, t
 		val, err := h.imageOutputValue(context.Background(), token, u, format)
 		if err != nil {
 			slog.Warn("grok image stream convert failed", "url", u, "error", err)
-			if field == "url" {
+			if field == "url" && !mustCacheImageURL(u) {
 				val = u
+			} else {
+				writeSSEError(w, "image cache failed: "+err.Error(), "server_error", "image_cache_failed")
+				writeSSEBytes(w, "", []byte("[DONE]"))
+				if flusher != nil {
+					flusher.Flush()
+				}
+				return
 			}
 		}
 		if field == "url" && publicBase != "" && strings.HasPrefix(val, "/") {
@@ -122,7 +129,7 @@ func (h *Handler) serveImagineWSImages(ctx context.Context, w http.ResponseWrite
 			val, err := h.imagineImageOutputValue(ctx, sess.token, ev, req.ResponseFormat)
 			if err != nil {
 				slog.Warn("grok imagine ws convert failed", "url", ev.URL, "image_id", ev.ImageID, "error", err)
-				if field == "url" {
+				if field == "url" && !mustCacheImageURL(ev.URL) {
 					val = ev.URL
 				} else {
 					val = ""
@@ -196,10 +203,15 @@ func (h *Handler) streamImagineWSImageGeneration(ctx context.Context, w http.Res
 			val, err := h.imagineImageOutputValue(ctx, sess.token, ev, req.ResponseFormat)
 			if err != nil {
 				slog.Warn("grok imagine ws stream convert failed", "url", ev.URL, "image_id", ev.ImageID, "error", err)
-				if field == "url" {
+				if field == "url" && !mustCacheImageURL(ev.URL) {
 					val = ev.URL
 				} else {
-					val = ""
+					writeSSEError(w, "image cache failed: "+err.Error(), "server_error", "image_cache_failed")
+					writeSSEBytes(w, "", []byte("[DONE]"))
+					if flusher != nil {
+						flusher.Flush()
+					}
+					return
 				}
 			}
 			if field == "url" && publicBase != "" && strings.HasPrefix(val, "/") {
@@ -416,10 +428,11 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 		val, err := h.imageOutputValue(ctx, sess.token, u, req.ResponseFormat)
 		if err != nil {
 			slog.Warn("grok image convert failed", "url", u, "error", err)
-			if field == "url" {
+			if field == "url" && !mustCacheImageURL(u) {
 				val = u
 			} else {
-				val = ""
+				http.Error(w, "image cache failed: "+err.Error(), http.StatusBadGateway)
+				return
 			}
 		}
 		if field == "url" && publicBase != "" && strings.HasPrefix(val, "/") {

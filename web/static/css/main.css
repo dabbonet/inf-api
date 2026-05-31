@@ -2992,7 +2992,7 @@ body::before,
 .sidebar-header {
   padding: 0;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -3021,7 +3021,7 @@ body::before,
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
 }
 
 .sidebar-subtitle {
@@ -3029,7 +3029,7 @@ body::before,
   color: var(--text-secondary);
   font-size: 0.72rem;
   letter-spacing: 0;
-  line-height: 1.12;
+  line-height: 1.05;
   text-transform: none;
 }
 

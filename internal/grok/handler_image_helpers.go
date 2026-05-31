@@ -123,19 +123,34 @@ func isRasterImageMime(mimeType string) bool {
 	}
 }
 
+func mustCacheImageURL(rawURL string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(rawURL)), "assets.grok.com/")
+}
+
 func (h *Handler) imageOutputValue(ctx context.Context, token, url, format string) (string, error) {
 	if normalizeImageResponseFormat(format) == "url" {
 		trim := strings.TrimSpace(url)
+		var cacheErr error
 		// Stable contract: prefer full over -part-0. If we only got a preview URL,
 		// try the full variant first.
 		if strings.Contains(trim, "-part-0/") {
 			full := strings.ReplaceAll(trim, "-part-0/", "/")
 			if name, err := h.cacheMediaURL(ctx, token, full, "image"); err == nil && name != "" {
 				return "/grok/v1/files/image/" + name, nil
+			} else if err != nil {
+				cacheErr = err
 			}
 		}
 		if name, err := h.cacheMediaURL(ctx, token, trim, "image"); err == nil && name != "" {
 			return "/grok/v1/files/image/" + name, nil
+		} else if err != nil {
+			cacheErr = err
+		}
+		if mustCacheImageURL(trim) {
+			if cacheErr != nil {
+				return "", fmt.Errorf("cache grok image locally: %w", cacheErr)
+			}
+			return "", fmt.Errorf("cache grok image locally failed")
 		}
 		return trim, nil
 	}

@@ -104,6 +104,12 @@ func imagineImageB64FromURL(raw string) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
+func isLocalImagineImageURL(raw string) bool {
+	u := normalizeImagineImageURL(raw)
+	mediaType, fileName, ok := parseFilesPath(u)
+	return ok && mediaType == "image" && strings.TrimSpace(fileName) != ""
+}
+
 func cleanupImagineSessionsLocked(now time.Time) {
 	for id, session := range imagineSessions {
 		if now.Sub(session.CreatedAt) > imagineSessionTTL {
@@ -316,7 +322,7 @@ func (h *Handler) generateImagineBatch(ctx context.Context, prompt, aspectRatio,
 		strings.TrimSpace(prompt),
 		n,
 		size,
-		"b64_json",
+		"url",
 		nsfw,
 	)
 	if err != nil {
@@ -334,6 +340,9 @@ func (h *Handler) generateImagineBatch(ctx context.Context, prompt, aspectRatio,
 		}
 		if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "/") {
 			if imgURL := normalizeImagineImageURL(raw); imgURL != "" {
+				if !isLocalImagineImageURL(imgURL) {
+					return nil, 0, fmt.Errorf("image was not cached locally")
+				}
 				images = append(images, imagineImage{URL: imgURL})
 			}
 			continue

@@ -1,11 +1,48 @@
 package grok
 
 import (
+	"bytes"
+	"context"
+	"image"
+	"image/color"
+	"image/png"
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func testPNGBytes(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	img.Set(0, 0, color.RGBA{R: 255, A: 255})
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode png: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func testGrokImageHandler(t *testing.T) *Handler {
+	t.Helper()
+	raw := testPNGBytes(t)
+	return &Handler{
+		client: &Client{
+			assetClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"image/png"}},
+					Body:       io.NopCloser(bytes.NewReader(raw)),
+					Request:    req,
+				}, nil
+			})},
+		},
+	}
+}
 
 func TestStreamImageGeneration_ParseErrorUsesSSEErrorEvent(t *testing.T) {
 	h := &Handler{}
@@ -26,7 +63,11 @@ func TestStreamImageGeneration_ParseErrorUsesSSEErrorEvent(t *testing.T) {
 }
 
 func TestStreamImageGeneration_SuccessEndsWithDone(t *testing.T) {
-	h := &Handler{client: New(nil)}
+	oldBase := cacheBaseDir
+	cacheBaseDir = t.TempDir()
+	t.Cleanup(func() { cacheBaseDir = oldBase })
+
+	h := testGrokImageHandler(t)
 	rec := httptest.NewRecorder()
 
 	h.streamImageGeneration(rec, strings.NewReader(`{"result":{"response":{"modelResponse":{"generatedImageUrls":["https://assets.grok.com/users/u-1/generated/a1/image.png"]}}}}`), "", "test prompt", "url", 1, "")
@@ -35,8 +76,34 @@ func TestStreamImageGeneration_SuccessEndsWithDone(t *testing.T) {
 	if !strings.Contains(raw, "image_generation.completed") {
 		t.Fatalf("expected completed image event, raw=%q", raw)
 	}
+	if !strings.Contains(raw, "/grok/v1/files/image/") {
+		t.Fatalf("expected local cached image url, raw=%q", raw)
+	}
 	if !strings.Contains(raw, "[DONE]") {
 		t.Fatalf("expected DONE after success, raw=%q", raw)
+	}
+}
+
+func TestImageOutputValue_CachesGrokAssetURL(t *testing.T) {
+	oldBase := cacheBaseDir
+	cacheBaseDir = t.TempDir()
+	t.Cleanup(func() { cacheBaseDir = oldBase })
+
+	h := testGrokImageHandler(t)
+
+	got, err := h.imageOutputValue(context.Background(), "token", "https://assets.grok.com/users/u/generated/a/image.png", "url")
+	if err != nil {
+		t.Fatalf("imageOutputValue error: %v", err)
+	}
+	if !strings.HasPrefix(got, "/grok/v1/files/image/") {
+		t.Fatalf("url=%q want local file url", got)
+	}
+	_, fileName, ok := parseFilesPath(got)
+	if !ok {
+		t.Fatalf("parse local file url failed: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(cacheBaseDir, "image", fileName)); err != nil {
+		t.Fatalf("cached file missing: %v", err)
 	}
 }
 
@@ -59,7 +126,11 @@ func TestStreamImageGeneration_NoImageUsesSSEErrorEvent(t *testing.T) {
 }
 
 func TestStreamImageGeneration_AcceptsAlternateProgressShape(t *testing.T) {
-	h := &Handler{client: New(nil)}
+	oldBase := cacheBaseDir
+	cacheBaseDir = t.TempDir()
+	t.Cleanup(func() { cacheBaseDir = oldBase })
+
+	h := testGrokImageHandler(t)
 	rec := httptest.NewRecorder()
 
 	h.streamImageGeneration(rec, strings.NewReader(
