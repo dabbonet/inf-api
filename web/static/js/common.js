@@ -67,8 +67,19 @@ function getSidebarQuotaStats(acc) {
   return { supported: true, limit, remaining };
 }
 
+function isPuterQuotaOnlyStatus(acc) {
+  if (!acc || normalizeSidebarAccountType(acc) !== "puter") return false;
+  const quota = getSidebarQuotaStats(acc);
+  const statusCode = normalizeSidebarStatusCode(acc.status_code);
+  return statusCode === "402" || Boolean(quota && quota.limit > 0 && quota.remaining <= 0);
+}
+
 function isSidebarAccountAbnormal(acc) {
   if (!acc || !acc.enabled) return true;
+
+  if (isPuterQuotaOnlyStatus(acc)) {
+    return false;
+  }
 
   if (normalizeSidebarStatusCode(acc.status_code)) {
     return true;
@@ -86,7 +97,7 @@ function isSidebarAccountAbnormal(acc) {
   }
 
   const quota = getSidebarQuotaStats(acc);
-  if (quota && quota.limit > 0 && quota.remaining <= 0) {
+  if (quota && quota.limit > 0 && quota.remaining <= 0 && !isPuterQuotaOnlyStatus(acc)) {
     return true;
   }
 
