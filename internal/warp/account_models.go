@@ -19,6 +19,7 @@ const accountModelUnavailableTTL = 6 * time.Hour
 
 type AccountModelChoices struct {
 	Accounts map[string][]string `json:"accounts"`
+	Sources  map[string]string   `json:"sources,omitempty"`
 }
 
 type AccountModelUnavailable struct {
@@ -59,6 +60,9 @@ func SaveAccountModelChoices(ctx context.Context, s *store.Store, choices *Accou
 		return s.SetSetting(ctx, accountModelChoicesSettingKey, "")
 	}
 	normalized := &AccountModelChoices{Accounts: make(map[string][]string, len(choices.Accounts))}
+	if len(choices.Sources) > 0 {
+		normalized.Sources = make(map[string]string, len(choices.Sources))
+	}
 	for accountID, models := range choices.Accounts {
 		key := strings.TrimSpace(accountID)
 		if key == "" {
@@ -69,6 +73,11 @@ func SaveAccountModelChoices(ctx context.Context, s *store.Store, choices *Accou
 			continue
 		}
 		normalized.Accounts[key] = normalizedModels
+		if normalized.Sources != nil {
+			if source := strings.TrimSpace(choices.Sources[key]); source != "" {
+				normalized.Sources[key] = source
+			}
+		}
 	}
 	payload, err := json.Marshal(normalized)
 	if err != nil {
@@ -103,6 +112,11 @@ func SaveAccountModelChoicesForAccount(ctx context.Context, s *store.Store, acco
 
 func EffectiveAccountModelIDs(acc *store.Account, choices *AccountModelChoices) []string {
 	if AccountFreeOnly(acc) {
+		if choices != nil && acc != nil && acc.ID != 0 && strings.Contains(strings.TrimSpace(choices.Sources[strconv.FormatInt(acc.ID, 10)]), "free_probe") {
+			if models := choices.Accounts[strconv.FormatInt(acc.ID, 10)]; len(models) > 0 {
+				return models
+			}
+		}
 		return FreeOnlyModelIDs()
 	}
 	if choices == nil || acc == nil || acc.ID == 0 {
@@ -139,11 +153,10 @@ func AccountSupportsModelForAccount(choices *AccountModelChoices, acc *store.Acc
 	if modelID == "" {
 		return true
 	}
-	if AccountFreeOnly(acc) {
-		return modelID == defaultModel
-	}
 	if choices == nil || len(choices.Accounts) == 0 {
-		return true
+		if !AccountFreeOnly(acc) {
+			return true
+		}
 	}
 	models := EffectiveAccountModelIDs(acc, choices)
 	if len(models) == 0 {

@@ -95,6 +95,13 @@ func TestAccountModelChoices_RoundTripAndSupport(t *testing.T) {
 	if AccountSupportsModelForAccount(choices, free, "gpt-5.2-medium") {
 		t.Fatal("expected free account to reject paid model despite cached paid pool")
 	}
+	probedChoices := &AccountModelChoices{
+		Accounts: map[string][]string{"1": {DefaultModel(), "gpt-5-2-low"}},
+		Sources:  map[string]string{"1": "free_probe"},
+	}
+	if !AccountSupportsModelForAccount(probedChoices, free, "gpt-5.2-low") {
+		t.Fatal("expected free account to support model confirmed by free probe")
+	}
 }
 
 func TestAccountModelUnavailable_TTLAndFilter(t *testing.T) {
