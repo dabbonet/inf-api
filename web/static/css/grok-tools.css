@@ -753,6 +753,11 @@
   font-size: 0.82rem;
 }
 
+.voice-instruction-input {
+  min-height: 96px;
+  resize: vertical;
+}
+
 .visualizer {
   display: flex;
   align-items: flex-end;

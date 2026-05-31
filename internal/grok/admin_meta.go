@@ -1,7 +1,9 @@
 package grok
 
 import (
+	"fmt"
 	"github.com/goccy/go-json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -34,23 +36,54 @@ func (h *Handler) HandleAdminStorage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleAdminVoiceToken(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	voice := strings.TrimSpace(r.URL.Query().Get("voice"))
+
+	var body struct {
+		Voice       string  `json:"voice"`
+		Personality string  `json:"personality"`
+		Speed       float64 `json:"speed"`
+		Instruction string  `json:"instruction"`
+	}
+	if r.Method == http.MethodPost && r.Body != nil {
+		raw, _ := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+		if len(strings.TrimSpace(string(raw))) > 0 {
+			if err := json.Unmarshal(raw, &body); err != nil {
+				http.Error(w, "invalid voice token request: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+	}
+
+	query := r.URL.Query()
+	voice := strings.TrimSpace(body.Voice)
+	if voice == "" {
+		voice = strings.TrimSpace(query.Get("voice"))
+	}
 	if voice == "" {
 		voice = "ara"
 	}
-	personality := strings.TrimSpace(r.URL.Query().Get("personality"))
+	personality := strings.TrimSpace(body.Personality)
+	if personality == "" {
+		personality = strings.TrimSpace(query.Get("personality"))
+	}
 	if personality == "" {
 		personality = "assistant"
 	}
-	speed := 1.0
-	if raw := strings.TrimSpace(r.URL.Query().Get("speed")); raw != "" {
+	speed := body.Speed
+	if speed <= 0 {
+		speed = 1.0
+	}
+	if raw := strings.TrimSpace(query.Get("speed")); raw != "" && (r.Method == http.MethodGet || body.Speed <= 0) {
 		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
 			speed = v
 		}
+	}
+	instruction := strings.TrimSpace(body.Instruction)
+	if instruction == "" {
+		instruction = strings.TrimSpace(query.Get("instruction"))
 	}
 
 	acc, token, err := h.selectAccount(r.Context())
@@ -59,7 +92,12 @@ func (h *Handler) HandleAdminVoiceToken(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	data, err := h.client.getVoiceToken(r.Context(), token, voice, personality, speed)
+	client := h.currentClient()
+	if client == nil {
+		http.Error(w, "grok client not configured", http.StatusServiceUnavailable)
+		return
+	}
+	data, err := client.getVoiceToken(r.Context(), token, voice, personality, speed, instruction)
 	if err != nil {
 		h.markAccountStatus(r.Context(), acc, err)
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -74,10 +112,22 @@ func (h *Handler) HandleAdminVoiceToken(w http.ResponseWriter, r *http.Request) 
 
 	out := map[string]interface{}{
 		"token":            respToken,
-		"url":              "wss://livekit.grok.com",
-		"participant_name": "",
-		"room_name":        "",
+		"url":              firstVoiceString(data, "livekitUrl", "url"),
+		"participant_name": firstVoiceString(data, "participantName", "participant_name", "identity"),
+		"room_name":        firstVoiceString(data, "roomName", "room_name", "room"),
+	}
+	if strings.TrimSpace(out["url"].(string)) == "" {
+		out["url"] = "wss://livekit.grok.com"
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+func firstVoiceString(data map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(strings.Trim(strings.TrimSpace(fmt.Sprint(data[key])), `"`)); value != "" && value != "<nil>" {
+			return value
+		}
+	}
+	return ""
 }

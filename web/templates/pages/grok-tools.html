@@ -7,7 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{.Title}}</title>
   <link rel="stylesheet" href="{{.AdminPath}}/css/main.css?v=20260601-1">
-  <link rel="stylesheet" href="{{.AdminPath}}/css/grok-tools.css?v=20260601-2">
+  <link rel="stylesheet" href="{{.AdminPath}}/css/grok-tools.css?v=20260601-3">
 </head>
 
 <body>
@@ -404,7 +404,11 @@
                 </div>
                 <input id="voiceSpeed" class="range-input" type="range" min="0.5" max="2" step="0.1" value="1.0">
               </div>
-              <p class="voice-hint voice-hint-spaced">提示：Voice / Personality 会在建立连接前发送到服务端。</p>
+              <div class="function-settings-block">
+                <label class="field-label" for="voiceInstruction">自定义指令</label>
+                <textarea id="voiceInstruction" class="form-input voice-instruction-input" rows="4" placeholder="可选。填写后会按 Grok 原生 raw instructions 发送，优先于 Personality。"></textarea>
+              </div>
+              <p class="voice-hint voice-hint-spaced">提示：自定义指令为空时使用 Personality；填写后会使用 raw instructions。</p>
             </div>
 
             <div class="grok-panel voice-card">
@@ -435,7 +439,10 @@
             </div>
 
             <div class="grok-panel voice-card">
-              <div class="card-title">音频输出</div>
+              <div class="voice-log-header">
+                <div class="card-title">音频输出</div>
+                <button class="btn btn-outline" id="voiceMuteOutputBtn" type="button">静音输出</button>
+              </div>
               <div class="voice-hint">订阅到的音轨会自动插入此区域。</div>
               <div id="voiceAudioRoot" class="audio-root"></div>
             </div>
@@ -543,7 +550,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="{{.AdminPath}}/js/common.js?v=20260328-1"></script>
   <script src="{{.AdminPath}}/js/grok-imagine.js?v=20260601-1"></script>
-  <script src="{{.AdminPath}}/js/grok-tools.js?v=20260601-1"></script>
+  <script src="{{.AdminPath}}/js/grok-tools.js?v=20260601-2"></script>
 </body>
 
 </html>
