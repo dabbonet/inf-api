@@ -331,6 +331,7 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 	var debugShapes []string
 	var debugNoImage []string
 	var debugVariants []string
+	var successVariant string
 
 	// Grok upstream may return only 2 images per call and may repeat.
 	// To reach N, request 1 image per call without rewriting the user's prompt.
@@ -384,6 +385,9 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 			return
 		}
 		urls = normalizeGeneratedImageURLs(urls, 0)
+		if len(urls) > 0 && successVariant == "" {
+			successVariant = variant
+		}
 	}
 	urls = normalizeGeneratedImageURLs(urls, req.N)
 	if len(urls) == 0 {
@@ -398,6 +402,12 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 		)
 		http.Error(w, "no image generated", http.StatusBadGateway)
 		return
+	}
+	if successVariant != "" && successVariant != "webchat2api" {
+		slog.Info("grok image generation succeeded with fallback payload",
+			"model", req.Model,
+			"variant", successVariant,
+		)
 	}
 
 	field := imageResponseField(req.ResponseFormat)
