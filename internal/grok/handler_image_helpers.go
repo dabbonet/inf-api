@@ -8,6 +8,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -73,6 +76,27 @@ func imageDimsFromBytes(data []byte) (int, int) {
 	return cfg.Width, cfg.Height
 }
 
+func isLikelyRasterImageBytes(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	if len(data) >= 3 && data[0] == 0xff && data[1] == 0xd8 && data[2] == 0xff {
+		return true
+	}
+	if len(data) >= 8 &&
+		data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G' &&
+		data[4] == '\r' && data[5] == '\n' && data[6] == 0x1a && data[7] == '\n' {
+		return true
+	}
+	if len(data) >= 6 && (string(data[:6]) == "GIF87a" || string(data[:6]) == "GIF89a") {
+		return true
+	}
+	if len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
+		return true
+	}
+	return false
+}
+
 func (h *Handler) cacheMediaURL(ctx context.Context, token, rawURL, mediaType string) (string, error) {
 	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
 	if mediaType != "video" {
@@ -99,7 +123,9 @@ func (h *Handler) cacheMediaURL(ctx context.Context, token, rawURL, mediaType st
 		}
 		w, hgt := imageDimsFromBytes(data)
 		if w <= 0 || hgt <= 0 {
-			return "", fmt.Errorf("unsupported image data")
+			if !forceCache || !isLikelyRasterImageBytes(data) {
+				return "", fmt.Errorf("unsupported image data")
+			}
 		}
 		// For assets.grok.com, caching is required for display (clients may not reach grok CDN).
 		if forceCache {
