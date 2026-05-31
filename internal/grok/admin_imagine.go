@@ -316,23 +316,29 @@ func (h *Handler) generateImagineBatch(ctx context.Context, prompt, aspectRatio,
 		strings.TrimSpace(prompt),
 		n,
 		size,
-		"url",
+		"b64_json",
 		nsfw,
 	)
 	if err != nil {
 		return nil, 0, err
 	}
-	urls = normalizeGeneratedImageURLs(urls, n)
 	if len(urls) == 0 {
 		return nil, 0, fmt.Errorf("no image generated")
 	}
 
 	images := make([]imagineImage, 0, len(urls))
-	for _, u := range urls {
-		imgURL := normalizeImagineImageURL(u)
-		if imgURL != "" {
-			images = append(images, imagineImage{URL: imgURL})
+	for _, raw := range urls {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
 		}
+		if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "/") {
+			if imgURL := normalizeImagineImageURL(raw); imgURL != "" {
+				images = append(images, imagineImage{URL: imgURL})
+			}
+			continue
+		}
+		images = append(images, imagineImage{B64: raw})
 	}
 	if len(images) == 0 {
 		return nil, 0, fmt.Errorf("no usable image generated")
