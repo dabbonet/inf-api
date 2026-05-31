@@ -62,7 +62,6 @@
     running: false,
     stopping: false,
     room: null,
-    localTracks: [],
     visualizerTimer: null,
     outputMuted: false,
   };
@@ -3382,30 +3381,6 @@
     if (btn) btn.textContent = voiceState.outputMuted ? "恢复输出" : "静音输出";
   }
 
-  async function releaseVoiceLocalTracks() {
-    if (!Array.isArray(voiceState.localTracks) || voiceState.localTracks.length === 0) {
-      voiceState.localTracks = [];
-      return;
-    }
-    for (const track of voiceState.localTracks) {
-      try {
-        if (track && typeof track.stop === "function") {
-          track.stop();
-        }
-      } catch (err) {
-        // ignore track cleanup failures
-      }
-      try {
-        if (track && typeof track.detach === "function") {
-          track.detach();
-        }
-      } catch (err) {
-        // ignore detach failures
-      }
-    }
-    voiceState.localTracks = [];
-  }
-
   async function resetVoiceSession(reason, opts) {
     const options = opts || {};
     const skipDisconnect = !!options.skipDisconnect;
@@ -3422,7 +3397,6 @@
         // ignore disconnect failures during reset
       }
     }
-    await releaseVoiceLocalTracks();
     voiceState.room = null;
     voiceState.running = false;
     voiceState.stopping = false;
@@ -3484,34 +3458,6 @@
       ? "当前浏览器未暴露麦克风接口"
       : "当前页面不是 HTTPS 或 localhost，浏览器不会开放麦克风";
     throw new Error(secureHint);
-  }
-
-  async function requestVoiceMicrophonePermission() {
-    ensureVoiceMicSupport();
-    const isLocalhost = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
-    if (!window.isSecureContext && !isLocalhost) {
-      throw new Error("当前页面不是 HTTPS 或 localhost，浏览器会拒绝麦克风");
-    }
-    const policy = document.permissionsPolicy || document.featurePolicy;
-    if (policy && typeof policy.allowsFeature === "function" && !policy.allowsFeature("microphone")) {
-      throw new Error("当前页面权限策略禁止麦克风（Permissions-Policy）");
-    }
-    try {
-      if (navigator.permissions && typeof navigator.permissions.query === "function") {
-        const status = await navigator.permissions.query({ name: "microphone" });
-        if (status && status.state === "denied") {
-          throw new Error("麦克风权限被拒绝，请在浏览器设置中允许麦克风后重试");
-        }
-      }
-    } catch (err) {
-      if (err && err.message) {
-        throw err;
-      }
-    }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    if (stream && typeof stream.getTracks === "function") {
-      stream.getTracks().forEach((track) => track.stop());
-    }
   }
 
   function formatVoiceMicError(err) {
@@ -3680,18 +3626,10 @@
       await room.connect(payload.url, payload.token);
       appendVoiceLog("Connected to LiveKit signaling server");
       ensureVoiceMicSupport();
-      if (room.localParticipant && typeof room.localParticipant.setMicrophoneEnabled === "function") {
-        await room.localParticipant.setMicrophoneEnabled(true);
-        voiceState.localTracks = [];
-      } else if (typeof LiveKitSDK.createLocalTracks === "function") {
-        const tracks = await LiveKitSDK.createLocalTracks({ audio: true, video: false });
-        for (const track of tracks) {
-          await room.localParticipant.publishTrack(track);
-        }
-        voiceState.localTracks = tracks;
-      } else {
+      if (!room.localParticipant || typeof room.localParticipant.setMicrophoneEnabled !== "function") {
         throw new Error("LiveKit microphone API is unavailable");
       }
+      await room.localParticipant.setMicrophoneEnabled(true);
       setVoiceStatus(t("voice.connected"), "ok");
       setVoiceButtons(true);
       appendVoiceLog("Voice session connected");

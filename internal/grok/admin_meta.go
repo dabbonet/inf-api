@@ -5,7 +5,6 @@ import (
 	"github.com/goccy/go-json"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
@@ -36,7 +35,7 @@ func (h *Handler) HandleAdminStorage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleAdminVoiceToken(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -47,7 +46,7 @@ func (h *Handler) HandleAdminVoiceToken(w http.ResponseWriter, r *http.Request) 
 		Speed       float64 `json:"speed"`
 		Instruction string  `json:"instruction"`
 	}
-	if r.Method == http.MethodPost && r.Body != nil {
+	if r.Body != nil {
 		raw, _ := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 		if len(strings.TrimSpace(string(raw))) > 0 {
 			if err := json.Unmarshal(raw, &body); err != nil {
@@ -57,18 +56,11 @@ func (h *Handler) HandleAdminVoiceToken(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	query := r.URL.Query()
 	voice := strings.TrimSpace(body.Voice)
-	if voice == "" {
-		voice = strings.TrimSpace(query.Get("voice"))
-	}
 	if voice == "" {
 		voice = "ara"
 	}
 	personality := strings.TrimSpace(body.Personality)
-	if personality == "" {
-		personality = strings.TrimSpace(query.Get("personality"))
-	}
 	if personality == "" {
 		personality = "assistant"
 	}
@@ -76,15 +68,7 @@ func (h *Handler) HandleAdminVoiceToken(w http.ResponseWriter, r *http.Request) 
 	if speed <= 0 {
 		speed = 1.0
 	}
-	if raw := strings.TrimSpace(query.Get("speed")); raw != "" && (r.Method == http.MethodGet || body.Speed <= 0) {
-		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
-			speed = v
-		}
-	}
 	instruction := strings.TrimSpace(body.Instruction)
-	if instruction == "" {
-		instruction = strings.TrimSpace(query.Get("instruction"))
-	}
 
 	acc, token, err := h.selectAccount(r.Context())
 	if err != nil {

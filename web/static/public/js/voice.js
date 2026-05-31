@@ -32,7 +32,6 @@
     analyser: null,
     analyserSource: null,
     analyserData: null,
-    localTracks: [],
   };
 
   function setStatus(message, level) {
@@ -344,37 +343,26 @@
         },
       });
 
-      const roomEvent = lk.RoomEvent || {};
-      const trackObj = lk.Track || {};
-      const audioKind = trackObj.Kind && trackObj.Kind.Audio ? trackObj.Kind.Audio : "audio";
-      const evParticipantConnected = roomEvent.ParticipantConnected || "participantConnected";
-      const evParticipantDisconnected = roomEvent.ParticipantDisconnected || "participantDisconnected";
-      const evTrackSubscribed = roomEvent.TrackSubscribed || "trackSubscribed";
-      const evDisconnected = roomEvent.Disconnected || "disconnected";
-
-      room.on(evParticipantConnected, (participant) => {
+      room.on(lk.RoomEvent.ParticipantConnected, (participant) => {
         appendLog(`Participant connected: ${participant.identity || "unknown"}`);
       });
 
-      room.on(evParticipantDisconnected, (participant) => {
+      room.on(lk.RoomEvent.ParticipantDisconnected, (participant) => {
         appendLog(`Participant disconnected: ${participant.identity || "unknown"}`);
       });
 
-      room.on(evTrackSubscribed, (track) => {
-        if (track.kind !== audioKind && track.kind !== "audio") {
-          return;
-        }
+      room.on(lk.RoomEvent.TrackSubscribed, (track) => {
+        if (!track || track.kind !== "audio") return;
         const element = track.attach();
         element.autoplay = true;
         audioRootEl.appendChild(element);
         appendLog("Subscribed audio track");
       });
 
-      room.on(evDisconnected, () => {
+      room.on(lk.RoomEvent.Disconnected, () => {
         appendLog("Room disconnected");
         if (state.room === room) {
           state.room = null;
-          state.localTracks = [];
           setRunning(false);
           setStatus("Disconnected");
           stopVisualizer();
@@ -387,29 +375,18 @@
 
       appendLog("Enabling microphone...");
       let meterTrack = null;
-      if (room.localParticipant && typeof room.localParticipant.setMicrophoneEnabled === "function") {
-        await room.localParticipant.setMicrophoneEnabled(true);
-        const publications = room.localParticipant.audioTrackPublications;
-        if (publications && typeof publications.forEach === "function") {
-          publications.forEach((pub) => {
-            const track = pub && (pub.track || pub.audioTrack);
-            if (!meterTrack && track && track.mediaStreamTrack) {
-              meterTrack = track.mediaStreamTrack;
-            }
-          });
-        }
-        state.localTracks = [];
-      } else if (typeof lk.createLocalTracks === "function") {
-        const tracks = await lk.createLocalTracks({ audio: true, video: false });
-        state.localTracks = tracks;
-        for (const localTrack of tracks) {
-          await room.localParticipant.publishTrack(localTrack);
-          if (!meterTrack && localTrack && localTrack.kind === "audio" && localTrack.mediaStreamTrack) {
-            meterTrack = localTrack.mediaStreamTrack;
-          }
-        }
-      } else {
+      if (!room.localParticipant || typeof room.localParticipant.setMicrophoneEnabled !== "function") {
         throw new Error("LiveKit microphone API is unavailable");
+      }
+      await room.localParticipant.setMicrophoneEnabled(true);
+      const publications = room.localParticipant.audioTrackPublications;
+      if (publications && typeof publications.forEach === "function") {
+        publications.forEach((pub) => {
+          const track = pub && (pub.track || pub.audioTrack);
+          if (!meterTrack && track && track.mediaStreamTrack) {
+            meterTrack = track.mediaStreamTrack;
+          }
+        });
       }
       await startVisualizer(meterTrack);
 
@@ -425,7 +402,6 @@
         }
       }
       state.room = null;
-      state.localTracks = [];
       setRunning(false);
       stopVisualizer();
       appendLog(err.message || "Start session failed", true);
@@ -447,20 +423,6 @@
         // ignore
       }
     }
-
-    for (const track of state.localTracks) {
-      if (!track) continue;
-      try {
-        if (typeof track.stop === "function") {
-          track.stop();
-        } else if (track.mediaStreamTrack && typeof track.mediaStreamTrack.stop === "function") {
-          track.mediaStreamTrack.stop();
-        }
-      } catch (err) {
-        // ignore
-      }
-    }
-    state.localTracks = [];
 
     resetAudio();
     setRunning(false);
