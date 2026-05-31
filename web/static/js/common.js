@@ -38,9 +38,6 @@ function getSidebarAccountToken(acc) {
 function getSidebarQuotaStats(acc) {
   if (!acc) return null;
   const type = normalizeSidebarAccountType(acc);
-  if (type === "puter") {
-    return { supported: false, unknown: true };
-  }
   if (type === "warp") {
     const monthlyLimit = Math.max(0, Math.floor(acc.warp_monthly_limit || acc.usage_limit || 0));
     const monthlyRemainingRaw = acc.warp_monthly_remaining !== undefined && acc.warp_monthly_remaining !== null
