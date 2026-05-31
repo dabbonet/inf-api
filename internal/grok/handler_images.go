@@ -329,6 +329,7 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 	var debugHTTP []string
 	var debugAsset []string
 	var debugShapes []string
+	var debugNoImage []string
 
 	// Grok upstream may return only 2 images per call and may repeat.
 	// To reach N, request 1 image per call without rewriting the user's prompt.
@@ -366,6 +367,9 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 			if len(debugShapes) < 20 {
 				debugShapes = append(debugShapes, imageDebugShape(line))
 			}
+			if len(debugNoImage) < 20 {
+				debugNoImage = append(debugNoImage, appChatImageNoImageDiagnostics(line)...)
+			}
 			urls = append(urls, extractAppChatImageURLs(line)...)
 			return nil
 		})
@@ -382,6 +386,7 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 			"model", req.Model,
 			"attempts", maxAttempts,
 			"event_shapes", uniqueStrings(debugShapes),
+			"diagnostics", uniqueStrings(debugNoImage),
 			"http_candidates", len(uniqueStrings(debugHTTP)),
 			"asset_candidates", len(uniqueStrings(debugAsset)),
 		)
