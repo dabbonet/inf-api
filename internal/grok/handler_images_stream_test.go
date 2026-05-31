@@ -226,7 +226,7 @@ func TestEnsureImageNSFW_OmitsUnsupportedLiteConfig(t *testing.T) {
 }
 
 func TestGrokAppChatImagePrompt_PrefersDrawTrigger(t *testing.T) {
-	if got := grokAppChatImagePrompt("a red apple"); got != "Draw a red apple" {
+	if got := grokAppChatImagePrompt("a red apple"); got != "a red apple" {
 		t.Fatalf("prompt=%q", got)
 	}
 	if got := grokAppChatImagePrompt("Draw a red apple"); got != "Draw a red apple" {
@@ -239,7 +239,7 @@ func TestGrokAppChatImagePrompts_AddsSafePortraitFallbackForShortChinesePrompt(t
 	if len(got) != 2 {
 		t.Fatalf("len=%d want 2: %#v", len(got), got)
 	}
-	if got[0] != "Draw 美女图片" {
+	if got[0] != "美女图片" {
 		t.Fatalf("first=%q", got[0])
 	}
 	if !strings.Contains(got[1], "safe-for-work portrait photo of an adult woman") {

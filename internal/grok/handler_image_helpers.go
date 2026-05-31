@@ -94,7 +94,13 @@ func (h *Handler) cacheMediaURL(ctx context.Context, token, rawURL, mediaType st
 	}
 	// Heuristic: avoid caching tiny/low-res images (often thumbnails/previews).
 	if mediaType == "image" {
+		if !isRasterImageMime(mimeType) {
+			return "", fmt.Errorf("unsupported image mime type: %s", strings.TrimSpace(mimeType))
+		}
 		w, hgt := imageDimsFromBytes(data)
+		if w <= 0 || hgt <= 0 {
+			return "", fmt.Errorf("unsupported image data")
+		}
 		// For assets.grok.com, caching is required for display (clients may not reach grok CDN).
 		if forceCache {
 			// Always cache (even previews). We already avoid emitting -part-0 when full exists.
@@ -106,6 +112,15 @@ func (h *Handler) cacheMediaURL(ctx context.Context, token, rawURL, mediaType st
 		}
 	}
 	return h.cacheMediaBytes(rawURL, mediaType, data, mimeType)
+}
+
+func isRasterImageMime(mimeType string) bool {
+	switch strings.ToLower(strings.TrimSpace(strings.Split(mimeType, ";")[0])) {
+	case "image/jpeg", "image/png", "image/webp", "image/gif":
+		return true
+	default:
+		return false
+	}
 }
 
 func (h *Handler) imageOutputValue(ctx context.Context, token, url, format string) (string, error) {

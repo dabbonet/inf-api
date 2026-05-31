@@ -498,11 +498,5 @@ func grokAppChatImagePrompt(prompt string) string {
 	if prompt == "" {
 		return prompt
 	}
-	lower := strings.ToLower(prompt)
-	for _, prefix := range []string{"draw ", "draw:", "paint ", "paint:", "sketch ", "sketch:"} {
-		if strings.HasPrefix(lower, prefix) {
-			return prompt
-		}
-	}
-	return "Draw " + prompt
+	return prompt
 }
