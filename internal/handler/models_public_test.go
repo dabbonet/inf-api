@@ -261,6 +261,48 @@ func TestHandleModels_WarpExhaustedPaidAccountBecomesFreeOnly(t *testing.T) {
 	}
 }
 
+func TestHandleModels_WarpFreeAccountIsFreeOnlyWithRemainingQuota(t *testing.T) {
+	h, s, mini := setupModelValidationHandler(t)
+	defer func() {
+		_ = s.Close()
+		mini.Close()
+	}()
+
+	ctx := context.Background()
+	if err := s.CreateAccount(ctx, &store.Account{
+		AccountType:          "warp",
+		RefreshToken:         "warp-free-token",
+		Subscription:         "free",
+		UsageLimit:           60,
+		UsageCurrent:         2,
+		WarpMonthlyLimit:     60,
+		WarpMonthlyRemaining: 58,
+		WarpBonusRemaining:   0,
+		Enabled:              true,
+	}); err != nil {
+		t.Fatalf("CreateAccount() error = %v", err)
+	}
+	if err := warp.SaveAccountModelChoicesForAccount(ctx, s, 1, []string{"auto-open", "gpt-5-2-medium"}); err != nil {
+		t.Fatalf("SaveAccountModelChoicesForAccount() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/warp/v1/models", nil)
+	rec := httptest.NewRecorder()
+
+	h.HandleModels(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d want=%d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "auto-open") {
+		t.Fatalf("expected free model in body=%s", body)
+	}
+	if strings.Contains(body, "gpt-5-2-medium") {
+		t.Fatalf("expected paid model hidden for free account, body=%s", body)
+	}
+}
+
 func TestHandleModelByID_WarpRejectsModelOutsideAccountPool(t *testing.T) {
 	h, s, mini := setupModelValidationHandler(t)
 	defer func() {

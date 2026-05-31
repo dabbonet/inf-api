@@ -165,3 +165,63 @@ func TestAccountQuotaExhausted(t *testing.T) {
 		})
 	}
 }
+
+func TestAccountFreeOnly(t *testing.T) {
+	tests := []struct {
+		name string
+		acc  *store.Account
+		want bool
+	}{
+		{
+			name: "free subscription is free only even with remaining quota",
+			acc: &store.Account{
+				AccountType:          "warp",
+				Subscription:         "free",
+				WarpMonthlyLimit:     60,
+				WarpMonthlyRemaining: 58,
+				WarpBonusRemaining:   0,
+			},
+			want: true,
+		},
+		{
+			name: "free quota limit is free only",
+			acc: &store.Account{
+				AccountType:          "warp",
+				Subscription:         "unknown",
+				WarpMonthlyLimit:     60,
+				WarpMonthlyRemaining: 58,
+				WarpBonusRemaining:   0,
+			},
+			want: true,
+		},
+		{
+			name: "paid with remaining quota is not free only",
+			acc: &store.Account{
+				AccountType:          "warp",
+				Subscription:         "build/business",
+				WarpMonthlyLimit:     1500,
+				WarpMonthlyRemaining: 1,
+				WarpBonusRemaining:   0,
+			},
+			want: false,
+		},
+		{
+			name: "paid exhausted is free only",
+			acc: &store.Account{
+				AccountType:          "warp",
+				Subscription:         "build/business",
+				WarpMonthlyLimit:     1500,
+				WarpMonthlyRemaining: 0,
+				WarpBonusRemaining:   0,
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := AccountFreeOnly(tt.acc); got != tt.want {
+				t.Fatalf("AccountFreeOnly()=%v want %v", got, tt.want)
+			}
+		})
+	}
+}

@@ -136,3 +136,17 @@ func AccountQuotaExhausted(acc *store.Account) bool {
 	}
 	return false
 }
+
+func AccountFreeOnly(acc *store.Account) bool {
+	if acc == nil || !strings.EqualFold(strings.TrimSpace(acc.AccountType), "warp") {
+		return false
+	}
+	subscription := strings.ToLower(strings.TrimSpace(acc.Subscription))
+	if subscription == "free" || strings.HasPrefix(subscription, "free/") || strings.HasPrefix(subscription, "free ") {
+		return true
+	}
+	if acc.WarpMonthlyLimit > 0 && acc.WarpMonthlyLimit <= 60 {
+		return true
+	}
+	return AccountQuotaExhausted(acc)
+}

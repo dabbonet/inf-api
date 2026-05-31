@@ -102,7 +102,7 @@ func SaveAccountModelChoicesForAccount(ctx context.Context, s *store.Store, acco
 }
 
 func EffectiveAccountModelIDs(acc *store.Account, choices *AccountModelChoices) []string {
-	if AccountQuotaExhausted(acc) {
+	if AccountFreeOnly(acc) {
 		return FreeOnlyModelIDs()
 	}
 	if choices == nil || acc == nil || acc.ID == 0 {
@@ -139,7 +139,7 @@ func AccountSupportsModelForAccount(choices *AccountModelChoices, acc *store.Acc
 	if modelID == "" {
 		return true
 	}
-	if AccountQuotaExhausted(acc) {
+	if AccountFreeOnly(acc) {
 		return modelID == defaultModel
 	}
 	if choices == nil || len(choices.Accounts) == 0 {
