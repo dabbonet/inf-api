@@ -326,7 +326,7 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 	ensureImageAspectRatio(onePayload, spec.UpstreamModel, resolveAspectRatio(req.Size))
 	ensureImageNSFW(onePayload, spec.UpstreamModel, nsfw)
 	if req.Stream {
-		resp, err := h.doChatSingleAccount(ctx, sess, onePayload)
+		resp, err := h.doChatWithAutoSwitchRebuild(ctx, sess, &onePayload, nil)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
@@ -375,7 +375,7 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 		ensureImageAspectRatio(payload, spec.UpstreamModel, resolveAspectRatio(req.Size))
 		ensureImageNSFW(payload, spec.UpstreamModel, nsfw)
 		applyAppChatImagePayloadVariant(payload, spec, variant)
-		resp, err := h.doChatSingleAccount(ctx, sess, payload)
+		resp, err := h.doChatWithAutoSwitchRebuild(ctx, sess, &payload, nil)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
