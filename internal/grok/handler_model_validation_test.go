@@ -160,6 +160,36 @@ func TestEnsureModelEnabled_RejectsRemovedGrok43BetaEvenWhenStored(t *testing.T)
 	}
 }
 
+func TestHandleChatCompletions_Grok43NeverFallsBackToAppChat(t *testing.T) {
+	h, s, mini := setupValidationHandler(t)
+	defer func() {
+		_ = s.Close()
+		mini.Close()
+	}()
+
+	if err := s.CreateAccount(context.Background(), &store.Account{
+		AccountType:  "grok",
+		ClientCookie: "sso=super-token",
+		Subscription: "super",
+		Enabled:      true,
+	}); err != nil {
+		t.Fatalf("CreateAccount() error = %v", err)
+	}
+
+	body := `{"model":"grok-4.3","messages":[{"role":"user","content":[{"type":"text","text":"hello"},{"type":"image_url","image_url":{"url":"data:image/png;base64,aGVsbG8="}}]}],"stream":false}`
+	req := httptest.NewRequest(http.MethodPost, "/grok/v1/chat/completions", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h.HandleChatCompletions(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d want=%d body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "console.x.ai") {
+		t.Fatalf("body=%q want console.x.ai guidance", rec.Body.String())
+	}
+}
+
 func TestOpenChatAccountSessionForModel_UsesGrok2APIPoolCandidates(t *testing.T) {
 	h, s, mini := setupValidationHandler(t)
 	defer func() {
