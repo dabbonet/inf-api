@@ -326,8 +326,13 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 	ensureImageAspectRatio(onePayload, spec.UpstreamModel, resolveAspectRatio(req.Size))
 	ensureImageNSFW(onePayload, spec.UpstreamModel, nsfw)
 	if req.Stream {
-		resp, err := h.doChatWithAutoSwitchRebuild(ctx, sess, &onePayload, nil)
+		resp, err := h.doChatWithAutoSwitchRebuildWithStatusPolicy(ctx, sess, &onePayload, nil, skipAppChatImageGrokAccountStatus)
 		if err != nil {
+			slog.Warn("grok app-chat image stream upstream failed",
+				"model", req.Model,
+				"status", parseUpstreamStatus(err),
+				"error", err,
+			)
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
@@ -369,8 +374,13 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 		prepareAppChatImageGenerationPayload(payload, count)
 		ensureImageAspectRatio(payload, spec.UpstreamModel, resolveAspectRatio(req.Size))
 		ensureImageNSFW(payload, spec.UpstreamModel, nsfw)
-		resp, err := h.doChatWithAutoSwitchRebuildWithStatusPolicy(ctx, sess, &payload, nil, skipAntiBotGrokAccountStatus)
+		resp, err := h.doChatWithAutoSwitchRebuildWithStatusPolicy(ctx, sess, &payload, nil, skipAppChatImageGrokAccountStatus)
 		if err != nil {
+			slog.Warn("grok app-chat image upstream failed",
+				"model", req.Model,
+				"status", parseUpstreamStatus(err),
+				"error", err,
+			)
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}

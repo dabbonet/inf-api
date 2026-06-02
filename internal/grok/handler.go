@@ -302,6 +302,18 @@ func skipAntiBotGrokAccountStatus(err error) bool {
 	return !isGrokAntiBotError(err)
 }
 
+func skipAppChatImageGrokAccountStatus(err error) bool {
+	if err == nil {
+		return false
+	}
+	switch parseUpstreamStatus(err) {
+	case http.StatusForbidden:
+		return false
+	default:
+		return !isGrokAntiBotError(err)
+	}
+}
+
 // doChatWithAutoSwitchRebuild retries once with a switched account and rebuilds payload for the new token.
 func (h *Handler) doChatWithAutoSwitchRebuild(
 	ctx context.Context,
