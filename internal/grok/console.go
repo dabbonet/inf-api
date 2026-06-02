@@ -281,7 +281,7 @@ func (h *Handler) doConsole(ctx context.Context, token string, payload map[strin
 	if err != nil {
 		return nil, err
 	}
-	return h.client.doRequestWith429Retry(ctx, consoleResponsesURL, http.MethodPost, body, h.client.consoleHeaders(token), http.StatusOK, false, true)
+	return h.client.doRequestWith429Retry(ctx, consoleResponsesURL, http.MethodPost, body, h.client.consoleHeaders(token), http.StatusOK, false, false)
 }
 
 func shouldServeConsoleChat(spec ModelSpec, attachments []AttachmentInput) bool {
