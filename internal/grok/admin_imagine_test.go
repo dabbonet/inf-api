@@ -37,7 +37,7 @@ func TestImagineSessionLifecycle(t *testing.T) {
 	resetImagineSessionsForTest()
 	t.Cleanup(resetImagineSessionsForTest)
 
-	id := createImagineSession("test prompt", "16:9", "", nil)
+	id := createImagineSession("test prompt", "16:9", "", "", nil)
 	if id == "" {
 		t.Fatal("expected task id")
 	}
@@ -54,6 +54,9 @@ func TestImagineSessionLifecycle(t *testing.T) {
 	}
 	if session.Model != "grok-imagine-image-lite" {
 		t.Fatalf("unexpected model: %q", session.Model)
+	}
+	if session.Route != "ws" {
+		t.Fatalf("unexpected route: %q", session.Route)
 	}
 
 	removed := deleteImagineSessions([]string{id})
@@ -75,6 +78,7 @@ func TestHandleAdminImagineStartStop(t *testing.T) {
 		"prompt":       "a cat on mars",
 		"aspect_ratio": "1024x576",
 		"model":        "grok-imagine-image-lite",
+		"route":        "app_chat",
 		"nsfw":         false,
 	}
 	raw, _ := json.Marshal(startBody)
@@ -99,6 +103,9 @@ func TestHandleAdminImagineStartStop(t *testing.T) {
 	if got, _ := startResp["model"].(string); got != "grok-imagine-image-lite" {
 		t.Fatalf("model=%q want=grok-imagine-image-lite", got)
 	}
+	if got, _ := startResp["route"].(string); got != "app_chat" {
+		t.Fatalf("route=%q want=app_chat", got)
+	}
 	session, ok := getImagineSession(taskID)
 	if !ok {
 		t.Fatal("expected imagine session")
@@ -108,6 +115,9 @@ func TestHandleAdminImagineStartStop(t *testing.T) {
 	}
 	if session.Model != "grok-imagine-image-lite" {
 		t.Fatalf("session.Model=%q want=grok-imagine-image-lite", session.Model)
+	}
+	if session.Route != "app_chat" {
+		t.Fatalf("session.Route=%q want=app_chat", session.Route)
 	}
 
 	stopBody := map[string]interface{}{
@@ -139,6 +149,24 @@ func TestNormalizeImagineModel_DefaultsToLite(t *testing.T) {
 	for _, tt := range tests {
 		if got := normalizeImagineModel(tt.in); got != tt.want {
 			t.Fatalf("normalizeImagineModel(%q)=%q want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestNormalizeImagineRoute(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"", "ws"},
+		{"ws", "ws"},
+		{"basic", "app_chat"},
+		{"app-chat", "app_chat"},
+		{"app_chat", "app_chat"},
+	}
+	for _, tt := range tests {
+		if got := normalizeImagineRoute(tt.in); got != tt.want {
+			t.Fatalf("normalizeImagineRoute(%q)=%q want %q", tt.in, got, tt.want)
 		}
 	}
 }

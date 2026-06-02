@@ -31,6 +31,7 @@ type imagineSession struct {
 	Prompt      string
 	AspectRatio string
 	Model       string
+	Route       string
 	NSFW        *bool
 	CreatedAt   time.Time
 }
@@ -44,6 +45,7 @@ type imagineStartRequest struct {
 	Prompt      string `json:"prompt"`
 	AspectRatio string `json:"aspect_ratio"`
 	Model       string `json:"model,omitempty"`
+	Route       string `json:"route,omitempty"`
 	NSFW        *bool  `json:"nsfw,omitempty"`
 }
 
@@ -171,7 +173,16 @@ func normalizeImagineModel(model string) string {
 	return id
 }
 
-func createImagineSession(prompt, aspectRatio string, model string, nsfw *bool) string {
+func normalizeImagineRoute(route string) string {
+	switch strings.ToLower(strings.TrimSpace(route)) {
+	case "app_chat", "app-chat", "basic", "chat":
+		return "app_chat"
+	default:
+		return "ws"
+	}
+}
+
+func createImagineSession(prompt, aspectRatio string, model string, route string, nsfw *bool) string {
 	id := randomHex(16)
 	if id == "" {
 		id = fmt.Sprintf("%d", time.Now().UnixNano())
@@ -185,6 +196,7 @@ func createImagineSession(prompt, aspectRatio string, model string, nsfw *bool) 
 		Prompt:      strings.TrimSpace(prompt),
 		AspectRatio: resolveAspectRatio(strings.TrimSpace(aspectRatio)),
 		Model:       normalizeImagineModel(model),
+		Route:       normalizeImagineRoute(route),
 		NSFW:        cloneBoolPtr(nsfw),
 		CreatedAt:   now,
 	}
@@ -295,8 +307,9 @@ func supportsAppChatImageNSFW(modelID string) bool {
 	return normalizeModelID(modelID) != "grok-imagine-image-lite"
 }
 
-func (h *Handler) generateImagineBatch(ctx context.Context, prompt, aspectRatio, model string, n int, nsfw *bool) ([]imagineImage, int, error) {
+func (h *Handler) generateImagineBatch(ctx context.Context, prompt, aspectRatio, model string, route string, n int, nsfw *bool) ([]imagineImage, int, error) {
 	imagineModel := normalizeImagineModel(model)
+	imagineRoute := normalizeImagineRoute(route)
 	if err := h.ensureModelEnabled(ctx, imagineModel); err != nil {
 		return nil, 0, err
 	}
@@ -326,7 +339,11 @@ func (h *Handler) generateImagineBatch(ctx context.Context, prompt, aspectRatio,
 	var lastErr error
 	used := make([]int64, 0, maxAttempts)
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		sess, err := h.openChatAccountSessionForModelExcluding(ctx, used, spec)
+		sessionSpec := spec
+		if imagineRoute == "ws" && imagineModel == "grok-imagine-image-lite" {
+			sessionSpec.Tier = grokTierLite
+		}
+		sess, err := h.openChatAccountSessionForModelExcluding(ctx, used, sessionSpec)
 		if err != nil {
 			if lastErr != nil {
 				return nil, 0, fmt.Errorf("account switch failed: %v (original: %v)", err, lastErr)
@@ -337,7 +354,7 @@ func (h *Handler) generateImagineBatch(ctx context.Context, prompt, aspectRatio,
 			used = append(used, sess.acc.ID)
 		}
 
-		if grokAccountPool(sess.acc) == "basic" {
+		if imagineRoute == "app_chat" {
 			images, elapsedMS, appChatErr := h.generateAppChatImagineBatch(ctx, sess, spec, prompt, aspectRatio, imagineModel, n, nsfw)
 			sess.Close()
 			if appChatErr != nil {
@@ -442,6 +459,7 @@ func (h *Handler) runImagineLoop(
 	prompt string,
 	aspectRatio string,
 	model string,
+	route string,
 	taskID string,
 	deleteSessionOnExit bool,
 	nsfw *bool,
@@ -458,6 +476,7 @@ func (h *Handler) runImagineLoop(
 		"prompt":       prompt,
 		"aspect_ratio": aspectRatio,
 		"model":        normalizeImagineModel(model),
+		"route":        normalizeImagineRoute(route),
 		"run_id":       runID,
 	}) {
 		return
@@ -484,7 +503,7 @@ func (h *Handler) runImagineLoop(
 			}
 		}
 
-		images, elapsedMS, err := h.generateImagineBatch(ctx, prompt, aspectRatio, model, imagineBatchImageCount, nsfw)
+		images, elapsedMS, err := h.generateImagineBatch(ctx, prompt, aspectRatio, model, route, imagineBatchImageCount, nsfw)
 		if err != nil {
 			delay := imagineErrorRetryDelay(err)
 			if !emit(map[string]interface{}{
@@ -515,6 +534,7 @@ func (h *Handler) runImagineLoop(
 				"elapsed_ms":   elapsedMS,
 				"aspect_ratio": aspectRatio,
 				"model":        normalizeImagineModel(model),
+				"route":        normalizeImagineRoute(route),
 				"run_id":       runID,
 			}) {
 				return
@@ -555,11 +575,13 @@ func (h *Handler) HandleAdminImagineStart(w http.ResponseWriter, r *http.Request
 	}
 	ratio := resolveAspectRatio(strings.TrimSpace(req.AspectRatio))
 	model := normalizeImagineModel(req.Model)
-	taskID := createImagineSession(prompt, ratio, model, req.NSFW)
+	route := normalizeImagineRoute(req.Route)
+	taskID := createImagineSession(prompt, ratio, model, route, req.NSFW)
 	out := map[string]interface{}{
 		"task_id":      taskID,
 		"aspect_ratio": ratio,
 		"model":        model,
+		"route":        route,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
@@ -593,6 +615,7 @@ func (h *Handler) HandleAdminImagineSSE(w http.ResponseWriter, r *http.Request) 
 	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
 	ratio := strings.TrimSpace(r.URL.Query().Get("aspect_ratio"))
 	model := normalizeImagineModel(r.URL.Query().Get("model"))
+	route := normalizeImagineRoute(r.URL.Query().Get("route"))
 	nsfw := parseOptionalBool(r.URL.Query().Get("nsfw"))
 
 	if taskID != "" {
@@ -604,6 +627,7 @@ func (h *Handler) HandleAdminImagineSSE(w http.ResponseWriter, r *http.Request) 
 		prompt = session.Prompt
 		ratio = session.AspectRatio
 		model = normalizeImagineModel(session.Model)
+		route = normalizeImagineRoute(session.Route)
 		if nsfw == nil {
 			nsfw = cloneBoolPtr(session.NSFW)
 		}
@@ -627,7 +651,7 @@ func (h *Handler) HandleAdminImagineSSE(w http.ResponseWriter, r *http.Request) 
 		return r.Context().Err() == nil
 	}
 
-	h.runImagineLoop(r.Context(), prompt, ratio, model, taskID, true, nsfw, emit)
+	h.runImagineLoop(r.Context(), prompt, ratio, model, route, taskID, true, nsfw, emit)
 }
 
 func (h *Handler) HandleAdminImagineWS(w http.ResponseWriter, r *http.Request) {
@@ -683,7 +707,7 @@ func (h *Handler) HandleAdminImagineWS(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stopRun()
 
-	startRun := func(prompt, ratio, model string, nsfw *bool) {
+	startRun := func(prompt, ratio, model, route string, nsfw *bool) {
 		stopRun()
 		runCtx, cancelFn := context.WithCancel(ctx)
 		done := make(chan struct{})
@@ -693,7 +717,7 @@ func (h *Handler) HandleAdminImagineWS(w http.ResponseWriter, r *http.Request) {
 		runMu.Unlock()
 		go func() {
 			defer close(done)
-			h.runImagineLoop(runCtx, prompt, ratio, model, taskID, false, nsfw, send)
+			h.runImagineLoop(runCtx, prompt, ratio, model, route, taskID, false, nsfw, send)
 		}()
 	}
 
@@ -708,6 +732,7 @@ func (h *Handler) HandleAdminImagineWS(w http.ResponseWriter, r *http.Request) {
 			prompt := strings.TrimSpace(fmt.Sprint(payload["prompt"]))
 			ratio := strings.TrimSpace(fmt.Sprint(payload["aspect_ratio"]))
 			model := normalizeImagineModel(fmt.Sprint(payload["model"]))
+			route := normalizeImagineRoute(fmt.Sprint(payload["route"]))
 			nsfw := parseOptionalBool(payload["nsfw"])
 			if taskID != "" {
 				if session, ok := getImagineSession(taskID); ok {
@@ -718,6 +743,7 @@ func (h *Handler) HandleAdminImagineWS(w http.ResponseWriter, r *http.Request) {
 						ratio = session.AspectRatio
 					}
 					model = normalizeImagineModel(session.Model)
+					route = normalizeImagineRoute(session.Route)
 					if nsfw == nil {
 						nsfw = cloneBoolPtr(session.NSFW)
 					}
@@ -735,7 +761,7 @@ func (h *Handler) HandleAdminImagineWS(w http.ResponseWriter, r *http.Request) {
 				ratio = "2:3"
 			}
 			ratio = resolveAspectRatio(ratio)
-			startRun(prompt, ratio, model, nsfw)
+			startRun(prompt, ratio, model, route, nsfw)
 		case "stop":
 			stopRun()
 		case "ping":
