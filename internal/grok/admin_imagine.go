@@ -298,34 +298,6 @@ func ensureImageAspectRatio(payload map[string]interface{}, modelID, ratio strin
 	imageGenCfg["aspectRatio"] = ratio
 }
 
-func ensureAppChatImageAspectRatio(payload map[string]interface{}, ratio string) {
-	if payload == nil {
-		return
-	}
-	if strings.TrimSpace(ratio) == "" {
-		ratio = "2:3"
-	}
-	ratio = resolveAspectRatio(ratio)
-
-	modelConfigOverride, _ := payload["modelConfigOverride"].(map[string]interface{})
-	if modelConfigOverride == nil {
-		modelConfigOverride = map[string]interface{}{}
-		payload["modelConfigOverride"] = modelConfigOverride
-	}
-	modelMap, _ := modelConfigOverride["modelMap"].(map[string]interface{})
-	if modelMap == nil {
-		modelMap = map[string]interface{}{}
-		modelConfigOverride["modelMap"] = modelMap
-	}
-	imageGenCfg, _ := modelMap["imageGenModelConfig"].(map[string]interface{})
-	if imageGenCfg == nil {
-		imageGenCfg = map[string]interface{}{}
-		modelMap["imageGenModelConfig"] = imageGenCfg
-	}
-	delete(modelMap, "imageGenModel")
-	imageGenCfg["aspectRatio"] = ratio
-}
-
 func ensureImageNSFW(payload map[string]interface{}, modelID string, nsfw *bool) {
 	if payload == nil {
 		return
@@ -343,12 +315,10 @@ func supportsAppChatImageNSFW(modelID string) bool {
 }
 
 func basicAppChatImagineSpec() ModelSpec {
-	if spec, ok := ResolveModel("grok-4.20-fast"); ok {
-		spec.IsImage = false
-		spec.PreferBest = false
+	if spec, ok := ResolveModel("grok-imagine-image-lite"); ok {
 		return spec
 	}
-	return ModelSpec{ID: "grok-4.20-fast", UpstreamModel: "grok-4.20-fast", ModelMode: "MODEL_MODE_FAST", Tier: grokTierBasic}
+	return ModelSpec{ID: "grok-imagine-image-lite", UpstreamModel: "grok-imagine-image-lite", ModelMode: "MODEL_MODE_FAST", Tier: grokTierBasic, IsImage: true}
 }
 
 func (h *Handler) generateImagineBatch(ctx context.Context, prompt, aspectRatio, model string, route string, n int, nsfw *bool) ([]imagineImage, int, error) {

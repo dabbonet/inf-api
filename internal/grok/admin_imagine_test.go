@@ -253,8 +253,8 @@ func TestGenerateAppChatImagineBatch_ReturnsLocalCachedURL(t *testing.T) {
 	}
 	override, _ := upstreamPayload["modelConfigOverride"].(map[string]interface{})
 	modelMap, _ := override["modelMap"].(map[string]interface{})
-	if got := modelMap["imageGenModel"]; got != nil {
-		t.Fatalf("basic app-chat payload imageGenModel=%#v want nil", got)
+	if got := modelMap["imageGenModel"]; got != "grok-imagine-image-lite" {
+		t.Fatalf("basic app-chat payload imageGenModel=%#v want grok-imagine-image-lite", got)
 	}
 	cfg, _ := modelMap["imageGenModelConfig"].(map[string]interface{})
 	if got := cfg["aspectRatio"]; got != "2:3" {
