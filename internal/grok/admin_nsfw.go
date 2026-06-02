@@ -58,7 +58,7 @@ type nsfwBatchTask struct {
 }
 
 const nsfwBatchTaskTTL = 5 * time.Minute
-const grokNSFWCapabilityEnabled = false
+const grokNSFWCapabilityEnabled = true
 
 var (
 	nsfwBatchTasksMu sync.Mutex

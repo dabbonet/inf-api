@@ -182,11 +182,7 @@ func (s *redisStore) UpdateAccount(ctx context.Context, acc *Account) error {
 	} else {
 		updated.AccountType = acc.AccountType
 	}
-	if strings.EqualFold(updated.AccountType, "grok") {
-		updated.NSFWEnabled = false
-	} else {
-		updated.NSFWEnabled = acc.NSFWEnabled
-	}
+	updated.NSFWEnabled = acc.NSFWEnabled
 	updated.SessionID = acc.SessionID
 	updated.ClientCookie = acc.ClientCookie
 	if strings.EqualFold(updated.AccountType, "warp") {
