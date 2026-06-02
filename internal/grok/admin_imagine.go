@@ -307,47 +307,75 @@ func (h *Handler) generateImagineBatch(ctx context.Context, prompt, aspectRatio,
 	if n < 1 {
 		n = 1
 	}
+	nsfwEnabled := true
+	if nsfw != nil {
+		nsfwEnabled = *nsfw
+	} else if h != nil && h.cfg != nil {
+		nsfwEnabled = h.cfg.PublicImagineNSFW()
+	}
 
 	startedAt := time.Now()
-	size := imagineImageSizeFromAspectRatio(aspectRatio)
-	urls, err := h.callLocalImagesGenerationsWithOptions(
-		ctx,
-		imagineModel,
-		strings.TrimSpace(prompt),
-		n,
-		size,
-		"url",
-		nsfw,
-	)
-	if err != nil {
-		return nil, 0, err
+	maxAttempts := 2
+	if h != nil && h.cfg != nil && h.cfg.AccountSwitchCount > 0 {
+		maxAttempts = h.cfg.AccountSwitchCount
 	}
-	if len(urls) == 0 {
-		return nil, 0, fmt.Errorf("no image generated")
+	if maxAttempts < 1 {
+		maxAttempts = 1
 	}
 
-	images := make([]imagineImage, 0, len(urls))
-	for _, raw := range urls {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-		if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "/") {
-			if imgURL := normalizeImagineImageURL(raw); imgURL != "" {
-				if !isLocalImagineImageURL(imgURL) {
-					return nil, 0, fmt.Errorf("image was not cached locally")
-				}
-				images = append(images, imagineImage{URL: imgURL})
+	var lastErr error
+	used := make([]int64, 0, maxAttempts)
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		sess, err := h.openChatAccountSessionForModelExcluding(ctx, used, spec)
+		if err != nil {
+			if lastErr != nil {
+				return nil, 0, fmt.Errorf("account switch failed: %v (original: %v)", err, lastErr)
 			}
-			continue
+			return nil, 0, err
 		}
-		images = append(images, imagineImage{B64: raw})
-	}
-	if len(images) == 0 {
-		return nil, 0, fmt.Errorf("no usable image generated")
-	}
+		if sess != nil && sess.acc != nil && sess.acc.ID != 0 {
+			used = append(used, sess.acc.ID)
+		}
 
-	return images, int(time.Since(startedAt) / time.Millisecond), nil
+		images := make([]imagineImage, 0, n)
+		events, errs := h.streamImagineWSImages(ctx, sess, strings.TrimSpace(prompt), resolveAspectRatio(aspectRatio), n, nsfwEnabled, imagineModel == "grok-imagine-image-pro")
+		for ev := range events {
+			if !ev.Final {
+				continue
+			}
+			val, convErr := h.imagineImageOutputValue(ctx, sess.token, ev, "url")
+			if convErr != nil {
+				if strings.TrimSpace(ev.URL) == "" || mustCacheImageURL(ev.URL) {
+					lastErr = convErr
+					continue
+				}
+				val = ev.URL
+			}
+			val = normalizeImagineImageURL(val)
+			if val != "" {
+				images = append(images, imagineImage{URL: val})
+			} else if strings.TrimSpace(ev.Blob) != "" {
+				images = append(images, imagineImage{B64: strings.TrimSpace(ev.Blob)})
+			}
+		}
+		err = <-errs
+		sess.Close()
+		if err != nil {
+			lastErr = err
+			if shouldSwitchGrokAccount(err) && attempt < maxAttempts-1 {
+				continue
+			}
+			return nil, 0, err
+		}
+		if len(images) > 0 {
+			return images, int(time.Since(startedAt) / time.Millisecond), nil
+		}
+		lastErr = fmt.Errorf("no image generated")
+	}
+	if lastErr != nil {
+		return nil, 0, lastErr
+	}
+	return nil, 0, fmt.Errorf("no image generated")
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) bool {
