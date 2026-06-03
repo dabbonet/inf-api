@@ -1,6 +1,6 @@
 (() => {
-  const BATCH_SIZE = 2;
-  const PARALLELISM = 1;
+  const BATCH_SIZE = 6;
+  const PARALLELISM = 2;
   const STORAGE_KEY = "grok_tools_ui_v1";
   const QUALITY_MODELS = {
     basic: "grok-imagine-image-lite",
