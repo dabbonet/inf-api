@@ -75,7 +75,7 @@ func ResolveModel(modelID string) (ModelSpec, bool) {
 
 func (m ModelSpec) PoolCandidates() []string {
 	switch {
-	case m.IsImage && normalizeModelID(m.ID) == "grok-imagine-image-lite":
+	case m.IsImage && normalizeModelID(m.ID) == "grok-imagine-image-lite" && m.Tier == grokTierBasic:
 		return []string{"basic", "lite", "super", "heavy"}
 	case m.PreferBest && m.Tier == grokTierHeavy:
 		return []string{"heavy"}
