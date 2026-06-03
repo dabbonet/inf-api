@@ -64,6 +64,7 @@
     room: null,
     visualizerTimer: null,
     outputMuted: false,
+    reconnecting: false,
   };
   const grokLazyState = {
     imagineReady: false,
@@ -3429,6 +3430,7 @@
     voiceState.room = null;
     voiceState.running = false;
     voiceState.stopping = false;
+    voiceState.reconnecting = false;
     setVoiceButtons(false);
     stopVoiceVisualizer();
     resetVoiceAudio();
@@ -3610,6 +3612,7 @@
     });
     voiceState.room = room;
     voiceState.running = true;
+    voiceState.reconnecting = false;
     room.on(LiveKitSDK.RoomEvent.ParticipantConnected, (participant) => {
       appendVoiceLog(`Participant connected: ${participant?.identity || "unknown"}`);
     });
@@ -3633,10 +3636,14 @@
       }
     });
     room.on(LiveKitSDK.RoomEvent.Reconnecting, () => {
+      if (voiceState.room !== room || voiceState.stopping) return;
+      voiceState.reconnecting = true;
       appendVoiceLog("Voice reconnecting");
       setVoiceStatus("重连中...", "warn");
     });
     room.on(LiveKitSDK.RoomEvent.Reconnected, () => {
+      if (voiceState.room !== room || voiceState.stopping) return;
+      voiceState.reconnecting = false;
       appendVoiceLog("Voice reconnected");
       setVoiceStatus("已连接", "ok");
     });
@@ -3649,6 +3656,17 @@
       });
     }
     room.on(LiveKitSDK.RoomEvent.Disconnected, (reason) => {
+      const text = String(reason || "disconnected");
+      if (voiceState.room !== room) return;
+      if (voiceState.stopping) {
+        appendVoiceLog(`Voice disconnected after stop: ${text}`);
+        return;
+      }
+      appendVoiceLog(`Voice disconnected: ${text}`);
+      if (voiceState.reconnecting) {
+        setVoiceStatus("重连中...", "warn");
+        return;
+      }
       resetVoiceSession(reason || "disconnected", {
         skipDisconnect: true,
         statusText: t("common.notConnected"),
