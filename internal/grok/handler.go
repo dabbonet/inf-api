@@ -210,12 +210,6 @@ func (h *Handler) openChatAccountSessionForModelExcluding(ctx context.Context, e
 	return h.openChatAccountSessionExcludingWithPools(ctx, excludeIDs, spec.PoolCandidates())
 }
 
-func (h *Handler) openAppChatImageAccountSessionForModelExcluding(ctx context.Context, excludeIDs []int64, spec ModelSpec) (*chatAccountSession, error) {
-	return h.openChatAccountSessionExcludingWithPoolsAndFilter(ctx, excludeIDs, spec.PoolCandidates(), func(acc *store.Account) bool {
-		return acc != nil && isGrokFullBrowserCookie(acc.ClientCookie)
-	})
-}
-
 func (h *Handler) openChatAccountSessionExcludingWithPools(ctx context.Context, excludeIDs []int64, poolCandidates []string) (*chatAccountSession, error) {
 	return h.openChatAccountSessionExcludingWithPoolsAndFilter(ctx, excludeIDs, poolCandidates, nil)
 }
