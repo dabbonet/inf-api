@@ -207,6 +207,11 @@ func (h *Handler) openChatAccountSessionForModel(ctx context.Context, spec Model
 }
 
 func (h *Handler) openChatAccountSessionForModelExcluding(ctx context.Context, excludeIDs []int64, spec ModelSpec) (*chatAccountSession, error) {
+	if spec.IsImage && normalizeModelID(spec.ID) == "grok-imagine-image-lite" {
+		return h.openChatAccountSessionExcludingWithPoolsAndFilter(ctx, excludeIDs, spec.PoolCandidates(), func(acc *store.Account) bool {
+			return grokAccountPool(acc) != "basic"
+		})
+	}
 	return h.openChatAccountSessionExcludingWithPools(ctx, excludeIDs, spec.PoolCandidates())
 }
 
