@@ -200,43 +200,24 @@ func TestGenerateAppChatImagineBatch_ReturnsLocalCachedURL(t *testing.T) {
 	var upstreamPaths []string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamPaths = append(upstreamPaths, r.URL.Path)
-		switch r.URL.Path {
-		case defaultCanvasCreatePath:
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"document":{"id":"canvas-basic-1"}}`))
-			return
-		case defaultConversationPath:
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"conversation":{"conversationId":"conv-basic-1"}}`))
-			return
-		case defaultMediaConvoPath:
-			var linkPayload map[string]interface{}
-			if err := json.NewDecoder(r.Body).Decode(&linkPayload); err != nil {
-				t.Fatalf("decode link payload: %v", err)
-			}
-			if got, _ := linkPayload["conversationId"].(string); got != "conv-basic-1" {
-				t.Fatalf("linked conversationId=%q", got)
-			}
-			if got, _ := linkPayload["canvasId"].(string); got != "canvas-basic-1" {
-				t.Fatalf("linked canvasId=%q", got)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"conversation":{"conversationId":"conv-basic-1","canvasId":"canvas-basic-1"}}`))
-			return
-		case defaultConversationPath + "/conv-basic-1/responses":
-			if !strings.HasSuffix(r.Header.Get("Referer"), "/imagine/agent/canvas-basic-1") {
-				t.Fatalf("response referer=%q", r.Header.Get("Referer"))
-			}
-			if err := json.NewDecoder(r.Body).Decode(&upstreamPayload); err != nil {
-				t.Fatalf("decode upstream payload: %v", err)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"result":{"response":{"modelResponse":{"imageGenerationResponse":{"progress":100,"imageUrl":"https://assets.grok.com/users/u/generated/a/image.png"}}}}}` + "\n"))
-			return
-		default:
+		if r.URL.Path != defaultChatPath {
 			http.NotFound(w, r)
 			return
 		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamPayload); err != nil {
+			t.Fatalf("decode upstream payload: %v", err)
+		}
+		resp := map[string]interface{}{
+			"result": map[string]interface{}{
+				"response": map[string]interface{}{
+					"cardAttachment": map[string]interface{}{
+						"jsonData": `{"id":"card-1","image_chunk":{"progress":100,"imageUuid":"img-1","imageUrl":"users/u/generated/a/image.png"}}`,
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer upstream.Close()
 
@@ -275,14 +256,8 @@ func TestGenerateAppChatImagineBatch_ReturnsLocalCachedURL(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(cacheBaseDir, "image", fileName)); err != nil {
 		t.Fatalf("cached image missing: %v", err)
 	}
-	if len(upstreamPaths) != 4 {
-		t.Fatalf("upstream paths=%#v want canvas, conversation, link, response", upstreamPaths)
-	}
 	wantPaths := []string{
-		defaultCanvasCreatePath,
-		defaultConversationPath,
-		defaultMediaConvoPath,
-		defaultConversationPath + "/conv-basic-1/responses",
+		defaultChatPath,
 	}
 	for i := range wantPaths {
 		if upstreamPaths[i] != wantPaths[i] {

@@ -375,7 +375,7 @@ func (h *Handler) serveImagesGenerations(ctx context.Context, w http.ResponseWri
 func (h *Handler) streamAppChatImagesGeneration(ctx context.Context, w http.ResponseWriter, sess *chatAccountSession, spec ModelSpec, req ImagesGenerationsRequest, publicBase string, nsfw *bool) {
 	onePayload := h.client.appChatImagePayload(spec, req.Prompt, req.Size, req.N)
 	ensureImageNSFW(onePayload, spec.UpstreamModel, nsfw)
-	resp, err := h.doAppChatCreateAndRespondWithAutoSwitchRebuildWithStatusPolicy(ctx, sess, &onePayload, nil, skipAppChatImageGrokAccountStatus)
+	resp, err := h.doAppChatImageRequest(ctx, sess, spec, &onePayload, true)
 	if err != nil {
 		slog.Warn("grok app-chat image stream upstream failed",
 			"model", req.Model,
@@ -424,9 +424,9 @@ func (h *Handler) collectAppChatImageURLs(ctx context.Context, sess *chatAccount
 		var resp *http.Response
 		var err error
 		if allowSwitch {
-			resp, err = h.doAppChatCreateAndRespondWithAutoSwitchRebuildWithStatusPolicy(ctx, sess, &payload, nil, skipAppChatImageGrokAccountStatus)
+			resp, err = h.doAppChatImageRequest(ctx, sess, spec, &payload, true)
 		} else {
-			resp, err = h.doAppChatCreateAndRespondSingleAccountWithStatusPolicy(ctx, sess, payload, skipAppChatImageGrokAccountStatus)
+			resp, err = h.doAppChatImageRequest(ctx, sess, spec, &payload, false)
 		}
 		if err != nil {
 			slog.Warn("grok app-chat image upstream failed",
@@ -466,6 +466,25 @@ func (h *Handler) collectAppChatImageURLs(ctx context.Context, sess *chatAccount
 		return nil, fmt.Errorf("no image generated")
 	}
 	return urls, nil
+}
+
+func (h *Handler) doAppChatImageRequest(ctx context.Context, sess *chatAccountSession, spec ModelSpec, payload *map[string]interface{}, allowSwitch bool) (*http.Response, error) {
+	if normalizeModelID(spec.ID) == "grok-imagine-image-lite" {
+		if payload == nil {
+			return nil, fmt.Errorf("empty payload")
+		}
+		if allowSwitch {
+			return h.doChatWithAutoSwitchRebuildWithStatusPolicy(ctx, sess, payload, nil, skipAppChatImageGrokAccountStatus)
+		}
+		return h.doChatSingleAccountWithStatusPolicy(ctx, sess, *payload, skipAppChatImageGrokAccountStatus)
+	}
+	if payload == nil {
+		return nil, fmt.Errorf("empty payload")
+	}
+	if allowSwitch {
+		return h.doAppChatCreateAndRespondWithAutoSwitchRebuildWithStatusPolicy(ctx, sess, payload, nil, skipAppChatImageGrokAccountStatus)
+	}
+	return h.doAppChatCreateAndRespondSingleAccountWithStatusPolicy(ctx, sess, *payload, skipAppChatImageGrokAccountStatus)
 }
 
 func promptVariantIndex(i int, variants []string) int {
