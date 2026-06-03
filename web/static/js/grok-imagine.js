@@ -378,6 +378,26 @@
   }
 
   async function requestImage(prompt, ratio, model, route, nsfw, signal) {
+    if (String(route || "") === "app_chat") {
+      const res = await fetch("/grok/v1/images/generations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal,
+        body: JSON.stringify({
+          model: String(model || "").trim() || "grok-imagine-image-lite",
+          prompt,
+          n: 1,
+          size: sizeForRatio(ratio),
+          response_format: "url",
+          nsfw,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const image = extractImageValue(data);
+      if (!image) throw new Error("no image generated");
+      return image;
+    }
     const taskID = await createTask(prompt, ratio, model, route, nsfw, signal);
     return await new Promise((resolve, reject) => {
       let settled = false;
