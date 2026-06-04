@@ -1,4 +1,6 @@
 (() => {
+  const LIVEKIT_CLIENT_URL = "https://cdn.jsdelivr.net/npm/livekit-client@2.7.3/dist/livekit-client.umd.min.js";
+
   const imagineState = {
     running: false,
     mode: "auto",
@@ -3454,13 +3456,13 @@
           return;
         }
         const script = document.createElement("script");
-        script.src = "https://cdn.jsdelivr.net/npm/livekit-client@2.19.1/dist/livekit-client.umd.min.js";
+        script.src = LIVEKIT_CLIENT_URL;
         script.async = true;
         script.dataset.livekitClient = "1";
         script.onload = () => {
           const loaded = resolveLiveKitClient();
           if (loaded) {
-            appendVoiceLog("LiveKit SDK 已按需加载");
+            appendVoiceLog("LiveKit SDK 已按需加载: 2.7.3");
             resolve(loaded);
             return;
           }
@@ -3508,6 +3510,20 @@
   function isVoiceMicLikeError(err) {
     const raw = String(err?.message || err || "");
     return /permission denied|notallowederror|notfounderror|devicesnotfounderror|notreadableerror|trackstarterror|microphone/i.test(raw);
+  }
+
+  async function enableVoiceMicrophone(LiveKitSDK, room) {
+    if (room?.localParticipant && typeof room.localParticipant.setMicrophoneEnabled === "function") {
+      await room.localParticipant.setMicrophoneEnabled(true);
+      return;
+    }
+    if (typeof LiveKitSDK.createLocalTracks !== "function") {
+      throw new Error("LiveKit microphone API is unavailable");
+    }
+    const tracks = await LiveKitSDK.createLocalTracks({ audio: true, video: false });
+    for (const track of tracks) {
+      await room.localParticipant.publishTrack(track);
+    }
   }
 
   async function logVoiceMicDiagnostics(err) {
@@ -3676,10 +3692,7 @@
       await room.connect(payload.url, payload.token);
       appendVoiceLog("Connected to LiveKit signaling server");
       ensureVoiceMicSupport();
-      if (!room.localParticipant || typeof room.localParticipant.setMicrophoneEnabled !== "function") {
-        throw new Error("LiveKit microphone API is unavailable");
-      }
-      await room.localParticipant.setMicrophoneEnabled(true);
+      await enableVoiceMicrophone(LiveKitSDK, room);
       setVoiceStatus(t("voice.connected"), "ok");
       setVoiceButtons(true);
       appendVoiceLog("Voice session connected");
