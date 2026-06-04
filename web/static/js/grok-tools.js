@@ -3537,17 +3537,23 @@
   }
 
   async function enableVoiceMicrophone(LiveKitSDK, room) {
-    if (room?.localParticipant && typeof room.localParticipant.setMicrophoneEnabled === "function") {
-      await room.localParticipant.setMicrophoneEnabled(true);
+    if (!room?.localParticipant) {
+      throw new Error("LiveKit local participant is unavailable");
+    }
+    if (typeof LiveKitSDK.createLocalTracks === "function" && typeof room.localParticipant.publishTrack === "function") {
+      const tracks = await LiveKitSDK.createLocalTracks({ audio: true, video: false });
+      for (const track of tracks) {
+        await room.localParticipant.publishTrack(track);
+      }
+      appendVoiceLog("Microphone published with createLocalTracks");
       return;
     }
-    if (typeof LiveKitSDK.createLocalTracks !== "function") {
-      throw new Error("LiveKit microphone API is unavailable");
+    if (typeof room.localParticipant.setMicrophoneEnabled === "function") {
+      await room.localParticipant.setMicrophoneEnabled(true);
+      appendVoiceLog("Microphone enabled with setMicrophoneEnabled");
+      return;
     }
-    const tracks = await LiveKitSDK.createLocalTracks({ audio: true, video: false });
-    for (const track of tracks) {
-      await room.localParticipant.publishTrack(track);
-    }
+    throw new Error("LiveKit microphone API is unavailable");
   }
 
   async function logVoiceMicDiagnostics(err) {
