@@ -4,10 +4,6 @@
       label: "2.7.3",
       url: "https://cdn.jsdelivr.net/npm/livekit-client@2.7.3/dist/livekit-client.umd.min.js",
     },
-    latest: {
-      label: "2.19.1",
-      url: "https://cdn.jsdelivr.net/npm/livekit-client@2.19.1/dist/livekit-client.umd.min.js",
-    },
   };
 
   const imagineState = {
@@ -78,7 +74,6 @@
     reconnecting: false,
     startedAt: 0,
     agentDisconnects: 0,
-    latestSDKFallback: false,
     sdkVersion: "stable",
     sdkLabel: "",
   };
@@ -3449,7 +3444,6 @@
     voiceState.reconnecting = false;
     voiceState.startedAt = 0;
     voiceState.agentDisconnects = 0;
-    voiceState.latestSDKFallback = false;
     voiceState.sdkVersion = "stable";
     voiceState.sdkLabel = "";
     setVoiceButtons(false);
@@ -3472,37 +3466,8 @@
     return LIVEKIT_CLIENT_VERSIONS[selectedLiveKitClientVersion()] || LIVEKIT_CLIENT_VERSIONS.stable;
   }
 
-  function isLatestLiveKitSession() {
-    const label = String(voiceState.sdkLabel || window.__orchidsLiveKitVersion || "");
-    return voiceState.sdkVersion === "latest" || label === LIVEKIT_CLIENT_VERSIONS.latest.label;
-  }
-
-  function switchVoiceSDKToStable() {
-    const sdkSelect = document.getElementById("voiceSDKVersion");
-    if (sdkSelect) sdkSelect.value = "stable";
-    saveGrokToolsUIState({ voiceSDKVersion: "stable" });
-  }
-
   function isActiveVoiceRoom(room) {
-    return voiceState.room === room && !voiceState.stopping && !voiceState.latestSDKFallback;
-  }
-
-  async function handleLatestLiveKitAgentDisconnect(room, participant) {
-    if (voiceState.room !== room || voiceState.stopping || voiceState.latestSDKFallback) return;
-    const identity = String(participant?.identity || "");
-    if (identity !== "grok-agent" || !isLatestLiveKitSession()) return;
-    voiceState.agentDisconnects += 1;
-    voiceState.latestSDKFallback = true;
-    voiceState.stopping = true;
-    switchVoiceSDKToStable();
-    appendVoiceLog("Latest LiveKit SDK 与 Grok agent 断开，已切回 Stable 2.7.3；刷新页面后重试");
-    showToast("Latest SDK 与 Grok agent 不兼容，已切回 Stable，请刷新后重试", "error");
-    await resetVoiceSession("latest sdk agent disconnected", {
-      skipDisconnect: false,
-      statusText: "Latest SDK 不兼容，请刷新后使用 Stable",
-      statusType: "error",
-      logLine: "Voice session stopped: latest SDK fallback",
-    });
+    return voiceState.room === room && !voiceState.stopping;
   }
 
   async function ensureLiveKitClient() {
@@ -3706,7 +3671,6 @@
     voiceState.reconnecting = false;
     voiceState.startedAt = Date.now();
     voiceState.agentDisconnects = 0;
-    voiceState.latestSDKFallback = false;
     voiceState.sdkVersion = selectedLiveKitClientVersion();
     voiceState.sdkLabel = window.__orchidsLiveKitVersion || selectedLiveKitClientConfig().label;
     appendVoiceLog(`LiveKit session using SDK: ${window.__orchidsLiveKitVersion || selectedLiveKitClientConfig().label}`);
@@ -3715,9 +3679,6 @@
     });
     room.on(LiveKitSDK.RoomEvent.ParticipantDisconnected, (participant) => {
       appendVoiceLog(`Participant disconnected: ${participant?.identity || "unknown"} sid=${participant?.sid || "-"}`);
-      handleLatestLiveKitAgentDisconnect(room, participant).catch((err) => {
-        appendVoiceLog(`Latest SDK fallback failed: ${err?.message || err}`);
-      });
     });
     room.on(LiveKitSDK.RoomEvent.TrackSubscribed, (track) => {
       if (!track || track.kind !== "audio") return;
