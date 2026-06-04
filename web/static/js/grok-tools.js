@@ -3586,13 +3586,17 @@
     if (typeof LiveKitSDK.createLocalTracks === "function" && typeof room.localParticipant.publishTrack === "function") {
       const tracks = await LiveKitSDK.createLocalTracks({ audio: true, video: false });
       for (const track of tracks) {
+        if (!isActiveVoiceRoom(room)) return;
         await room.localParticipant.publishTrack(track);
       }
+      if (!isActiveVoiceRoom(room)) return;
       appendVoiceLog("Microphone published with createLocalTracks");
       return;
     }
     if (typeof room.localParticipant.setMicrophoneEnabled === "function") {
+      if (!isActiveVoiceRoom(room)) return;
       await room.localParticipant.setMicrophoneEnabled(true);
+      if (!isActiveVoiceRoom(room)) return;
       appendVoiceLog("Microphone enabled with setMicrophoneEnabled");
       return;
     }
@@ -3744,7 +3748,9 @@
       setVoiceStatus("已连接", "ok");
     });
     room.on(LiveKitSDK.RoomEvent.ConnectionStateChanged, (state) => {
-      appendVoiceLog(`Connection state: ${String(state || "unknown")}`);
+      const stateText = String(state || "unknown");
+      if (!isActiveVoiceRoom(room) && stateText !== "disconnected") return;
+      appendVoiceLog(`Connection state: ${stateText}`);
     });
     if (LiveKitSDK.RoomEvent.MediaDevicesError) {
       room.on(LiveKitSDK.RoomEvent.MediaDevicesError, (err) => {
