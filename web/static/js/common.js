@@ -226,10 +226,6 @@ function switchTab(tabName, skipSidebar = false) {
   if (!skipSidebar) {
     setSidebarOpen(false);
   }
-  // This will be replaced with proper client-side routing or page reloads
-  console.log("Switching to tab:", tabName);
-
-  // For now, just update the URL with query parameter
   const url = new URL(window.location);
   url.searchParams.set('tab', tabName);
   window.location.href = url.toString();

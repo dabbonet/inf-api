@@ -72,10 +72,6 @@
     visualizerTimer: null,
     outputMuted: false,
     reconnecting: false,
-    startedAt: 0,
-    agentDisconnects: 0,
-    sdkVersion: "stable",
-    sdkLabel: "",
   };
   const grokLazyState = {
     imagineReady: false,
@@ -3442,10 +3438,6 @@
     voiceState.running = false;
     voiceState.stopping = false;
     voiceState.reconnecting = false;
-    voiceState.startedAt = 0;
-    voiceState.agentDisconnects = 0;
-    voiceState.sdkVersion = "stable";
-    voiceState.sdkLabel = "";
     setVoiceButtons(false);
     stopVoiceVisualizer();
     resetVoiceAudio();
@@ -3457,21 +3449,12 @@
     return window.LivekitClient || window.LiveKitClient || null;
   }
 
-  function selectedLiveKitClientVersion() {
-    const raw = String(document.getElementById("voiceSDKVersion")?.value || "stable").trim();
-    return LIVEKIT_CLIENT_VERSIONS[raw] ? raw : "stable";
-  }
-
-  function selectedLiveKitClientConfig() {
-    return LIVEKIT_CLIENT_VERSIONS[selectedLiveKitClientVersion()] || LIVEKIT_CLIENT_VERSIONS.stable;
-  }
-
   function isActiveVoiceRoom(room) {
     return voiceState.room === room && !voiceState.stopping;
   }
 
   async function ensureLiveKitClient() {
-    const cfg = selectedLiveKitClientConfig();
+    const cfg = LIVEKIT_CLIENT_VERSIONS.stable;
     const sdk = resolveLiveKitClient();
     if (sdk) {
       appendVoiceLog(`LiveKit SDK 已加载: ${window.__orchidsLiveKitVersion || "unknown"}`);
@@ -3669,11 +3652,7 @@
     voiceState.room = room;
     voiceState.running = true;
     voiceState.reconnecting = false;
-    voiceState.startedAt = Date.now();
-    voiceState.agentDisconnects = 0;
-    voiceState.sdkVersion = selectedLiveKitClientVersion();
-    voiceState.sdkLabel = window.__orchidsLiveKitVersion || selectedLiveKitClientConfig().label;
-    appendVoiceLog(`LiveKit session using SDK: ${window.__orchidsLiveKitVersion || selectedLiveKitClientConfig().label}`);
+    appendVoiceLog(`LiveKit session using SDK: ${window.__orchidsLiveKitVersion || LIVEKIT_CLIENT_VERSIONS.stable.label}`);
     room.on(LiveKitSDK.RoomEvent.ParticipantConnected, (participant) => {
       appendVoiceLog(`Participant connected: ${participant?.identity || "unknown"} sid=${participant?.sid || "-"}`);
     });
@@ -5238,10 +5217,9 @@
     const voiceName = document.getElementById("voiceName");
     const voiceCustomID = document.getElementById("voiceCustomID");
     const voicePersonality = document.getElementById("voicePersonality");
-    const voiceSDKVersion = document.getElementById("voiceSDKVersion");
     const voiceSpeed = document.getElementById("voiceSpeed");
     const voiceInstruction = document.getElementById("voiceInstruction");
-    [voiceName, voiceCustomID, voicePersonality, voiceSDKVersion, voiceSpeed, voiceInstruction].forEach((input) => {
+    [voiceName, voiceCustomID, voicePersonality, voiceSpeed, voiceInstruction].forEach((input) => {
       if (!input) return;
       const sync = () => {
         updateVoiceMeta();
@@ -5249,14 +5227,9 @@
           voiceName: String(document.getElementById("voiceName")?.value || "ara"),
           voiceCustomID: String(document.getElementById("voiceCustomID")?.value || ""),
           voicePersonality: String(document.getElementById("voicePersonality")?.value || "assistant"),
-          voiceSDKVersion: selectedLiveKitClientVersion(),
           voiceSpeed: Number(document.getElementById("voiceSpeed")?.value || 1),
           voiceInstruction: String(document.getElementById("voiceInstruction")?.value || ""),
         });
-        if (input === voiceSDKVersion && resolveLiveKitClient()) {
-          appendVoiceLog("LiveKit SDK 已经加载，切换 SDK 版本需要刷新页面后生效");
-          showToast("LiveKit SDK 版本切换需刷新页面后生效", "info");
-        }
       };
       input.addEventListener("change", sync);
       input.addEventListener("input", sync);
@@ -5497,15 +5470,11 @@
     const voiceName = document.getElementById("voiceName");
     const voiceCustomID = document.getElementById("voiceCustomID");
     const voicePersonality = document.getElementById("voicePersonality");
-    const voiceSDKVersion = document.getElementById("voiceSDKVersion");
     const voiceSpeed = document.getElementById("voiceSpeed");
     const voiceInstruction = document.getElementById("voiceInstruction");
     if (voiceName && typeof uiState.voiceName === "string" && uiState.voiceName) voiceName.value = uiState.voiceName;
     if (voiceCustomID && typeof uiState.voiceCustomID === "string") voiceCustomID.value = uiState.voiceCustomID;
     if (voicePersonality && typeof uiState.voicePersonality === "string" && uiState.voicePersonality) voicePersonality.value = uiState.voicePersonality;
-    if (voiceSDKVersion && typeof uiState.voiceSDKVersion === "string" && LIVEKIT_CLIENT_VERSIONS[uiState.voiceSDKVersion]) {
-      voiceSDKVersion.value = uiState.voiceSDKVersion;
-    }
     if (voiceSpeed && typeof uiState.voiceSpeed === "number" && Number.isFinite(uiState.voiceSpeed)) voiceSpeed.value = String(uiState.voiceSpeed);
     if (voiceInstruction && typeof uiState.voiceInstruction === "string") voiceInstruction.value = uiState.voiceInstruction;
     updateVoiceMeta();
