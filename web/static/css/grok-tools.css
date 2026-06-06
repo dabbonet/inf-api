@@ -702,10 +702,6 @@
   stroke-width: 2;
 }
 
-.imagine-hidden-compat {
-  display: none !important;
-}
-
 .image-checkbox {
   position: absolute;
   top: 8px;
