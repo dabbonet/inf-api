@@ -160,6 +160,28 @@ func TestValidateModelAvailability_PuterUsesChannelSpecificModel(t *testing.T) {
 	}
 }
 
+func TestValidateModelAvailability_WarpVirtualModelWithoutForcedChannel(t *testing.T) {
+	h, s, mini := setupModelValidationHandler(t)
+	defer func() {
+		_ = s.Close()
+		mini.Close()
+	}()
+
+	got, err := h.validateModelAvailability(context.Background(), "warp-chat", "")
+	if err != nil {
+		t.Fatalf("validateModelAvailability(warp-chat) error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("validateModelAvailability(warp-chat) returned nil model")
+	}
+	if got.Channel != "Warp" {
+		t.Fatalf("channel=%q want Warp", got.Channel)
+	}
+	if got.ModelID != "warp-chat" {
+		t.Fatalf("model=%q want warp-chat", got.ModelID)
+	}
+}
+
 func TestSelectAccountRecord_WarpRejectsModelOutsideCurrentPool(t *testing.T) {
 	h, s, mini := setupModelValidationHandler(t)
 	defer func() {

@@ -753,6 +753,8 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	preSelectWarpRequest := strings.EqualFold(targetChannel, "warp")
 	preSelectPuterRequest := strings.EqualFold(targetChannel, "puter")
 	preSelectPassthroughRequest := preSelectWarpRequest || preSelectPuterRequest
+	warpChatMode := preSelectWarpRequest && isWarpChatModel(req.Model)
+	warpAgentMode := preSelectWarpRequest && isWarpAgentModel(req.Model)
 	suggestionMode := isSuggestionMode(req.Messages)
 	noThinking := suggestionMode || h.config.SuppressThinking
 	gateNoTools := false
@@ -786,20 +788,26 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	if h.config.WarpDisableTools != nil && *h.config.WarpDisableTools {
 		effectiveTools = nil
 	}
+	if warpChatMode {
+		gateNoTools = true
+		effectiveTools = nil
+		toolGateReasons = append(toolGateReasons, "warp_chat_mode")
+		toolGateMessage = warpChatToolGateMessage()
+	}
 	if gateNoTools {
 		effectiveTools = nil
 		if verboseDiagnostics {
 			slog.Debug("tool_gate: disabled tools", "warp", preSelectWarpRequest, "reasons", toolGateReasons)
 		}
 	}
-	requireWarpCloudAgent := preSelectWarpRequest && warpRequestRequiresCloudAgent(req.Messages, effectiveTools)
+	requireWarpCloudAgent := preSelectWarpRequest && !warpChatMode && (warpAgentMode || warpRequestRequiresCloudAgent(req.Messages, effectiveTools))
 
 	// 选择账号 (Initial Selection)
 	failedAccountIDs := []int64{}
 	failedAccountSet := make(map[int64]struct{})
 
 	apiClient, currentAccount, err := h.selectAccountWithOptions(r.Context(), targetChannel, forcedChannel != "", failedAccountIDs, accountSelectionOptions{
-		ModelID:               req.Model,
+		ModelID:               upstreamWarpModelID(req.Model),
 		RequireWarpCloudAgent: requireWarpCloudAgent,
 	})
 	if err != nil {
@@ -889,7 +897,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	// 映射模型（用于上游请求与提示一致）
 	mappedModel := mapModel(req.Model)
 	if currentAccount != nil && strings.EqualFold(currentAccount.AccountType, "warp") {
-		mappedModel = req.Model
+		mappedModel = upstreamWarpModelID(req.Model)
 	} else if isPuterRequest {
 		mappedModel = strings.TrimSpace(req.Model)
 	}

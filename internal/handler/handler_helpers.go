@@ -18,10 +18,16 @@ import (
 
 func normalizeRequestedModelID(modelID string) string {
 	modelID = strings.ToLower(strings.TrimSpace(modelID))
+	if isWarpVirtualModel(modelID) {
+		return upstreamWarpModelID(modelID)
+	}
 	return modelID
 }
 
 func (h *Handler) resolveModelAlias(ctx context.Context, modelID string) (string, *store.Model) {
+	if m := warpVirtualModelRecord(modelID); m != nil {
+		return m.ModelID, m
+	}
 	if h == nil || h.loadBalancer == nil || h.loadBalancer.Store == nil {
 		return modelID, nil
 	}
@@ -36,6 +42,11 @@ func (h *Handler) resolveModelAlias(ctx context.Context, modelID string) (string
 }
 
 func (h *Handler) resolveModelAliasForChannel(ctx context.Context, channel, modelID string) (string, *store.Model) {
+	if strings.EqualFold(strings.TrimSpace(channel), "warp") {
+		if m := warpVirtualModelRecord(modelID); m != nil {
+			return m.ModelID, m
+		}
+	}
 	if h == nil || h.loadBalancer == nil || h.loadBalancer.Store == nil {
 		return modelID, nil
 	}
@@ -275,6 +286,11 @@ func (h *Handler) releaseTrackedAccount(accountID int64) {
 }
 
 func (h *Handler) validateModelAvailability(ctx context.Context, modelID, forcedChannel string) (*store.Model, error) {
+	if strings.TrimSpace(forcedChannel) == "" || strings.EqualFold(strings.TrimSpace(forcedChannel), "warp") {
+		if m := warpVirtualModelRecord(modelID); m != nil {
+			return m, nil
+		}
+	}
 	if h == nil || h.loadBalancer == nil || h.loadBalancer.Store == nil {
 		return nil, nil
 	}

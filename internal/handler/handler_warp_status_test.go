@@ -22,10 +22,14 @@ import (
 type recordingWarpAccountUpstream struct {
 	accountID int64
 	seen      *[]int64
+	requests  *[]upstream.UpstreamRequest
 }
 
 func (m *recordingWarpAccountUpstream) SendRequestWithPayload(ctx context.Context, req upstream.UpstreamRequest, onMessage func(upstream.SSEMessage), logger *debug.Logger) error {
 	*m.seen = append(*m.seen, m.accountID)
+	if m.requests != nil {
+		*m.requests = append(*m.requests, req)
+	}
 	onMessage(upstream.SSEMessage{Type: "model", Event: map[string]interface{}{"type": "text-start"}})
 	onMessage(upstream.SSEMessage{Type: "model", Event: map[string]interface{}{"type": "text-delta", "delta": "ok"}})
 	onMessage(upstream.SSEMessage{Type: "model", Event: map[string]interface{}{"type": "finish", "finishReason": "stop"}})
@@ -193,6 +197,177 @@ func TestHandleMessages_WarpCodingRequestUsesCloudAgentAccount(t *testing.T) {
 	}
 	if seen[0] != paid.ID {
 		t.Fatalf("selected account=%d want paid cloud-agent account %d", seen[0], paid.ID)
+	}
+}
+
+func TestHandleMessages_WarpChatCodingRequestUsesFreeTextOnly(t *testing.T) {
+	mini := miniredis.RunT(t)
+	s, err := store.New(store.Options{
+		StoreMode:   "redis",
+		RedisAddr:   mini.Addr(),
+		RedisDB:     0,
+		RedisPrefix: "test:",
+	})
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	defer func() {
+		_ = s.Close()
+		mini.Close()
+	}()
+
+	free := &store.Account{
+		Name:                 "warp-free",
+		AccountType:          "warp",
+		RefreshToken:         "free-rt",
+		Subscription:         "free",
+		WarpMonthlyLimit:     60,
+		WarpMonthlyRemaining: 50,
+		Enabled:              true,
+		Weight:               1,
+	}
+	if err := s.CreateAccount(context.Background(), free); err != nil {
+		t.Fatalf("CreateAccount(free) error = %v", err)
+	}
+	paid := &store.Account{
+		Name:                 "warp-build",
+		AccountType:          "warp",
+		RefreshToken:         "paid-rt",
+		Subscription:         "build/business",
+		WarpMonthlyLimit:     1500,
+		WarpMonthlyRemaining: 100,
+		Enabled:              true,
+		Weight:               1,
+	}
+	if err := s.CreateAccount(context.Background(), paid); err != nil {
+		t.Fatalf("CreateAccount(paid) error = %v", err)
+	}
+
+	lb := loadbalancer.NewWithCacheTTL(s, 0)
+	h := NewWithLoadBalancer(&config.Config{
+		DebugEnabled:            false,
+		RequestTimeout:          10,
+		MaxRetries:              0,
+		ContextMaxTokens:        1024,
+		ContextSummaryMaxTokens: 256,
+		ContextKeepTurns:        2,
+	}, lb)
+	h.connTracker = newSpyConnTracker(map[int64]int64{free.ID: 0, paid.ID: 10})
+	seen := []int64{}
+	requests := []upstream.UpstreamRequest{}
+	h.SetClientFactory(func(acc *store.Account, cfg *config.Config) UpstreamClient {
+		return &recordingWarpAccountUpstream{accountID: acc.ID, seen: &seen, requests: &requests}
+	})
+
+	payload := map[string]any{
+		"model":    "warp-chat",
+		"messages": []map[string]any{{"role": "user", "content": "帮我用python写一个计算器"}},
+		"system":   []any{},
+		"tools":    []map[string]any{{"name": "Bash"}},
+		"stream":   false,
+	}
+	body, _ := json.Marshal(payload)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "http://x/warp/v1/messages", bytes.NewReader(body))
+	h.HandleMessages(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	if len(seen) != 1 || seen[0] != free.ID {
+		t.Fatalf("selected accounts=%v want free id=%d", seen, free.ID)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("requests=%d want 1", len(requests))
+	}
+	if requests[0].Model != "auto-open" {
+		t.Fatalf("upstream model=%q want auto-open", requests[0].Model)
+	}
+	if !requests[0].NoTools || len(requests[0].Tools) != 0 {
+		t.Fatalf("warp-chat request NoTools=%v tools=%d want no tools", requests[0].NoTools, len(requests[0].Tools))
+	}
+}
+
+func TestHandleMessages_WarpAgentRequiresCloudAgentAccount(t *testing.T) {
+	mini := miniredis.RunT(t)
+	s, err := store.New(store.Options{
+		StoreMode:   "redis",
+		RedisAddr:   mini.Addr(),
+		RedisDB:     0,
+		RedisPrefix: "test:",
+	})
+	if err != nil {
+		t.Fatalf("store.New() error = %v", err)
+	}
+	defer func() {
+		_ = s.Close()
+		mini.Close()
+	}()
+
+	free := &store.Account{
+		Name:                 "warp-free",
+		AccountType:          "warp",
+		RefreshToken:         "free-rt",
+		Subscription:         "free",
+		WarpMonthlyLimit:     60,
+		WarpMonthlyRemaining: 50,
+		Enabled:              true,
+		Weight:               1,
+	}
+	if err := s.CreateAccount(context.Background(), free); err != nil {
+		t.Fatalf("CreateAccount(free) error = %v", err)
+	}
+	paid := &store.Account{
+		Name:                 "warp-build",
+		AccountType:          "warp",
+		RefreshToken:         "paid-rt",
+		Subscription:         "build/business",
+		WarpMonthlyLimit:     1500,
+		WarpMonthlyRemaining: 100,
+		Enabled:              true,
+		Weight:               1,
+	}
+	if err := s.CreateAccount(context.Background(), paid); err != nil {
+		t.Fatalf("CreateAccount(paid) error = %v", err)
+	}
+
+	lb := loadbalancer.NewWithCacheTTL(s, 0)
+	h := NewWithLoadBalancer(&config.Config{
+		DebugEnabled:            false,
+		RequestTimeout:          10,
+		MaxRetries:              0,
+		ContextMaxTokens:        1024,
+		ContextSummaryMaxTokens: 256,
+		ContextKeepTurns:        2,
+	}, lb)
+	h.connTracker = newSpyConnTracker(map[int64]int64{free.ID: 0, paid.ID: 10})
+	seen := []int64{}
+	requests := []upstream.UpstreamRequest{}
+	h.SetClientFactory(func(acc *store.Account, cfg *config.Config) UpstreamClient {
+		return &recordingWarpAccountUpstream{accountID: acc.ID, seen: &seen, requests: &requests}
+	})
+
+	payload := map[string]any{
+		"model":    "warp-agent",
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+		"system":   []any{},
+		"stream":   false,
+	}
+	body, _ := json.Marshal(payload)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "http://x/warp/v1/messages", bytes.NewReader(body))
+	h.HandleMessages(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	if len(seen) != 1 || seen[0] != paid.ID {
+		t.Fatalf("selected accounts=%v want paid id=%d", seen, paid.ID)
+	}
+	if len(requests) != 1 || requests[0].Model != "auto-open" {
+		t.Fatalf("requests=%+v want upstream auto-open", requests)
 	}
 }
 
