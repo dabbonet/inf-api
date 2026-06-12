@@ -159,6 +159,7 @@ func (s *Store) seedModels() error {
 	existing, err := s.ListModels(ctx)
 	if err == nil && len(existing) > 0 {
 		s.ensureRequiredGrokChatModels(ctx)
+		s.ensureAihubmixZenmuxSeedModels(ctx)
 		slog.Debug("Model seed skipped; existing model records preserved", "count", len(existing))
 		return nil
 	}
@@ -176,6 +177,8 @@ func (s *Store) seedModels() error {
 	models = append(models, BuildWarpSeedModels()...)
 	models = append(models, buildGrokSeedModels()...)
 	models = append(models, buildPuterSeedModels()...)
+	models = append(models, buildAihubmixSeedModels()...)
+	models = append(models, buildZenmuxSeedModels()...)
 
 	for _, m := range models {
 		if _, err := s.GetModelByChannelAndModelID(ctx, m.Channel, m.ModelID); err == nil {
@@ -236,6 +239,22 @@ func (s *Store) cleanupDeprecatedModelIDs(ctx context.Context) {
 			continue
 		}
 		slog.Debug("Removed deprecated model", "model_id", modelID)
+	}
+}
+
+func (s *Store) ensureAihubmixZenmuxSeedModels(ctx context.Context) {
+	seeds := buildAihubmixSeedModels()
+	seeds = append(seeds, buildZenmuxSeedModels()...)
+	for i := range seeds {
+		m := seeds[i]
+		if _, err := s.GetModelByChannelAndModelID(ctx, m.Channel, m.ModelID); err == nil {
+			continue
+		}
+		if err := s.CreateModel(ctx, &m); err != nil {
+			slog.Warn("Failed to ensure seed model", "channel", m.Channel, "model_id", m.ModelID, "error", err)
+			continue
+		}
+		slog.Debug("Ensured seed model", "channel", m.Channel, "model_id", m.ModelID)
 	}
 }
 

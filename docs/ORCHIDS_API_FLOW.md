@@ -1,6 +1,6 @@
 # Request Flow (Legacy Orchids Channel Removed)
 
-> **Note:** The `orchids` channel has been removed from this codebase. This file previously documented the Orchids-2api request flow but has been updated to reflect the current supported channels: `warp`, `puter`, and `grok`.
+> **Note:** The `orchids` channel has been removed from this codebase. This file previously documented the Orchids-2api request flow but has been updated to reflect the current supported channels: `warp`, `puter`, `grok`, `aihubmix`, and `zenmux`.
 
 ## 1. Startup Process
 

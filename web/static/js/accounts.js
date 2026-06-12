@@ -412,6 +412,10 @@ function accountTypeLabel(type) {
       return "Puter";
     case "grok":
       return "Grok";
+    case "aihubmix":
+      return "Aihubmix";
+    case "zenmux":
+      return "Zenmux";
     default:
       return "Unknown";
   }
@@ -498,7 +502,7 @@ async function runAccountCreatePool(payloads, concurrency = 6, onProgress = null
 function renderPlatformTabs() {
   const container = document.getElementById("platformFilters");
   if (!container) return;
-  const defaultTypes = ["warp", "puter", "grok"];
+  const defaultTypes = ["warp", "puter", "grok", "aihubmix", "zenmux"];
   const types = new Set([...defaultTypes, ...accounts.map(normalizeAccountType)]);
   const sorted = Array.from(types).sort();
   const tabs = [...sorted];
@@ -545,7 +549,7 @@ function evaluateAccountStatus(acc) {
     const quota = getQuotaStats(acc);
     const limitText = quota && quota.limit > 0 ? quota.limit.toLocaleString() : 'Unknown';
     const type = normalizeAccountType(acc);
-    const providerName = type === 'warp' ? 'Warp' : 'Puter';
+    const providerName = accountTypeLabel(type);
     return {
       normal: true,
       text: 'Out of Quota',
@@ -582,6 +586,10 @@ function evaluateAccountStatus(acc) {
   } else if (type === 'puter') {
     if (!getAccountToken(acc)) {
       return { normal: false, text: 'Incomplete', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Missing Puter auth_token' };
+    }
+  } else if (type === 'aihubmix' || type === 'zenmux') {
+    if (!getAccountToken(acc)) {
+      return { normal: false, text: 'Incomplete', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Missing API key' };
     }
   }
 

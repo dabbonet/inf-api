@@ -10,6 +10,7 @@ import (
 	"orchids-api/internal/config"
 	"orchids-api/internal/grok"
 	"orchids-api/internal/handler"
+	"orchids-api/internal/loadbalancer"
 	"orchids-api/internal/middleware"
 	"orchids-api/internal/store"
 	"orchids-api/internal/template"
@@ -34,21 +35,32 @@ func registerRoutes(
 	apiHandler *api.API,
 	limiter *middleware.ConcurrencyLimiter,
 	tmplRenderer *template.Renderer,
+	lb *loadbalancer.LoadBalancer,
 ) {
 	// --- Channel-specific message routes ---
 	mux.HandleFunc("/warp/v1/messages", limiter.Limit(h.HandleMessages))
 	mux.HandleFunc("/warp/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
 	mux.HandleFunc("/puter/v1/messages", limiter.Limit(h.HandleMessages))
 	mux.HandleFunc("/puter/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
+	mux.HandleFunc("/aihubmix/v1/messages", limiter.Limit(h.HandleMessages))
+	mux.HandleFunc("/aihubmix/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
+	mux.HandleFunc("/zenmux/v1/messages", limiter.Limit(h.HandleMessages))
+	mux.HandleFunc("/zenmux/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
 
 	// --- Model routes (channel prefixes → same handlers) ---
-	modelPrefixes := []string{"/warp/v1", "/puter/v1", "/grok/v1", "/v1"}
+	modelPrefixes := []string{"/warp/v1", "/puter/v1", "/grok/v1", "/aihubmix/v1", "/zenmux/v1", "/v1"}
 	registerWithPrefixes(mux, modelPrefixes, "/models", h.HandleModels)
 	registerWithPrefixes(mux, modelPrefixes, "/models/", h.HandleModelByID)
 
 	// --- OpenAI-compatible chat/image routes (channel-specific + unified) ---
 	mux.HandleFunc("/warp/v1/chat/completions", limiter.Limit(h.HandleMessages))
 	mux.HandleFunc("/puter/v1/chat/completions", limiter.Limit(h.HandleMessages))
+	mux.HandleFunc("/aihubmix/v1/chat/completions", limiter.Limit(h.HandleMessages))
+	mux.HandleFunc("/zenmux/v1/chat/completions", limiter.Limit(h.HandleMessages))
+
+	// Aihubmix-specific image generation endpoint. aihubmix supports OpenAI-style
+	// /v1/images/generations; zenmux does not expose an image endpoint.
+	mux.HandleFunc("/aihubmix/v1/images/generations", limiter.Limit(makeAihubmixImageHandler(cfg, s, lb)))
 
 	grokPrefixes := []string{"/grok/v1", "/v1"}
 	registerWithPrefixes(mux, grokPrefixes, "/chat/completions", limiter.Limit(grokHandler.HandleChatCompletions))

@@ -19,6 +19,7 @@ import (
 
 	"github.com/goccy/go-json"
 
+	"orchids-api/internal/aihubmix"
 	"orchids-api/internal/auth"
 	"orchids-api/internal/config"
 	apperrors "orchids-api/internal/errors"
@@ -29,6 +30,7 @@ import (
 	"orchids-api/internal/tokencache"
 	"orchids-api/internal/util"
 	"orchids-api/internal/warp"
+	"orchids-api/internal/zenmux"
 )
 
 type API struct {
@@ -224,6 +226,10 @@ func normalizedAccountCredentialKey(acc *store.Account) string {
 		token = grok.NormalizeSSOToken(firstNonEmptyString(acc.ClientCookie, acc.RefreshToken, acc.Token))
 	case "puter":
 		token = puter.ResolveAuthToken(acc)
+	case "aihubmix":
+		token = strings.TrimSpace(aihubmix.ResolveAPIKey(acc))
+	case "zenmux":
+		token = strings.TrimSpace(zenmux.ResolveAPIKey(acc))
 	default:
 		token = strings.TrimSpace(firstNonEmptyString(acc.RefreshToken, acc.SessionCookie, acc.ClientCookie, acc.Token))
 	}
@@ -523,6 +529,18 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 		}
 		return usageStatus, httpStatus, fmt.Errorf("failed to fetch puter usage: %w", usageErr)
 	}
+	if strings.EqualFold(acc.AccountType, "aihubmix") {
+		if aihubmix.ResolveAPIKey(acc) == "" {
+			return "", http.StatusBadRequest, fmt.Errorf("missing aihubmix api key")
+		}
+		return "", 0, nil
+	}
+	if strings.EqualFold(acc.AccountType, "zenmux") {
+		if zenmux.ResolveAPIKey(acc) == "" {
+			return "", http.StatusBadRequest, fmt.Errorf("missing zenmux api key")
+		}
+		return "", 0, nil
+	}
 
 	return "", http.StatusBadRequest, fmt.Errorf("unsupported account type: %s", acc.AccountType)
 }
@@ -766,6 +784,10 @@ func (a *API) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 		} else if strings.EqualFold(acc.AccountType, "grok") {
 			normalizeGrokTokenInput(&acc)
 			acc.NSFWEnabled = true
+		} else if strings.EqualFold(acc.AccountType, "aihubmix") {
+			acc.Token = aihubmix.ResolveAPIKey(&acc)
+		} else if strings.EqualFold(acc.AccountType, "zenmux") {
+			acc.Token = zenmux.ResolveAPIKey(&acc)
 		}
 		if existing, err := a.findDuplicateAccountByCredential(r.Context(), &acc, 0); err != nil {
 			slog.Error("Failed to detect duplicate account token", "error", err)
@@ -1027,6 +1049,14 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 			normalizeWarpTokenInput(&acc)
 		} else if strings.EqualFold(acc.AccountType, "grok") {
 			normalizeGrokTokenInput(&acc)
+		} else if strings.EqualFold(acc.AccountType, "aihubmix") {
+			if strings.TrimSpace(acc.Token) == "" {
+				acc.Token = aihubmix.ResolveAPIKey(&acc)
+			}
+		} else if strings.EqualFold(acc.AccountType, "zenmux") {
+			if strings.TrimSpace(acc.Token) == "" {
+				acc.Token = zenmux.ResolveAPIKey(&acc)
+			}
 		}
 
 		if acc.SessionID == "" {
@@ -1133,6 +1163,10 @@ func (a *API) HandleImport(w http.ResponseWriter, r *http.Request) {
 			normalizeWarpTokenInput(&acc)
 		} else if strings.EqualFold(acc.AccountType, "grok") {
 			normalizeGrokTokenInput(&acc)
+		} else if strings.EqualFold(acc.AccountType, "aihubmix") {
+			acc.Token = aihubmix.ResolveAPIKey(&acc)
+		} else if strings.EqualFold(acc.AccountType, "zenmux") {
+			acc.Token = zenmux.ResolveAPIKey(&acc)
 		}
 		if err := a.store.CreateAccount(r.Context(), &acc); err != nil {
 			slog.Warn("Failed to import account", "name", acc.Name, "error", err)

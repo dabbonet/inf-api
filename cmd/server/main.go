@@ -126,6 +126,8 @@ func main() {
 	registry := provider.NewRegistry()
 	registry.Register("warp", provider.NewWarpProvider())
 	registry.Register("puter", provider.NewPuterProvider())
+	registry.Register("aihubmix", provider.NewAihubmixProvider())
+	registry.Register("zenmux", provider.NewZenmuxProvider())
 	h.SetClientFactory(func(acc *store.Account, c *config.Config) handler.UpstreamClient {
 		if p := registry.Get(acc.AccountType); p != nil {
 			if client, ok := p.NewClient(acc, c).(handler.UpstreamClient); ok {
@@ -146,7 +148,7 @@ func main() {
 	// Register routes
 	mux := http.NewServeMux()
 	limiter := middleware.NewConcurrencyLimiter(cfg.ConcurrencyLimit, time.Duration(cfg.ConcurrencyTimeout)*time.Second, cfg.AdaptiveTimeout)
-	registerRoutes(mux, cfg, s, h, grokHandler, apiHandler, limiter, tmplRenderer)
+	registerRoutes(mux, cfg, s, h, grokHandler, apiHandler, limiter, tmplRenderer, lb)
 
 	// Build server
 	server := &http.Server{

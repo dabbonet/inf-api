@@ -131,6 +131,8 @@ Sources by channel:
 - `warp`: Account GraphQL discovery results, fallback to built-in seeds on failure
 - `puter`: Puter public model list
 - `grok`: Built-in support table + existing models + public documentation probing
+- `aihubmix`: Public `/api/v1/models` (no-auth) plus 3 built-in seeds, filtered to remove embeddings/moderation
+- `zenmux`: Account-authenticated `/v1/models`, fallback to 1 built-in seed, filtered to remove embeddings/moderation/whisper/tts
 
 Current strategy:
 

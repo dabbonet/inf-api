@@ -10,6 +10,8 @@ This document is based on the current implementations of [routes.go](/D:/Code/Or
 |---|---|---|
 | `/warp/v1/messages` | POST | Warp channel Claude Messages proxy |
 | `/puter/v1/messages` | POST | Puter channel Claude Messages proxy |
+| `/aihubmix/v1/messages` | POST | Aihubmix channel Claude Messages proxy |
+| `/zenmux/v1/messages` | POST | Zenmux channel Claude Messages proxy |
 | `/*/v1/messages/count_tokens` | POST | Input token estimation |
 
 ### 1.2 OpenAI Chat Completions Style
@@ -19,6 +21,8 @@ This document is based on the current implementations of [routes.go](/D:/Code/Or
 | `/warp/v1/chat/completions` | POST | Warp OpenAI compatible entry |
 | `/puter/v1/chat/completions` | POST | Puter OpenAI compatible entry |
 | `/grok/v1/chat/completions` | POST | Grok OpenAI compatible entry |
+| `/aihubmix/v1/chat/completions` | POST | Aihubmix OpenAI compatible entry |
+| `/zenmux/v1/chat/completions` | POST | Zenmux OpenAI compatible entry |
 | `/v1/chat/completions` | POST | Grok compatible alias |
 
 ### 1.3 Grok Images and Files
@@ -27,6 +31,7 @@ This document is based on the current implementations of [routes.go](/D:/Code/Or
 |---|---|---|
 | `/grok/v1/images/generations` | POST | Image generation |
 | `/grok/v1/images/edits` | POST | Image editing |
+| `/aihubmix/v1/images/generations` | POST | Aihubmix image generation (chat) |
 | `/v1/images/generations` | POST | Grok image generation alias |
 | `/v1/images/edits` | POST | Grok image editing alias |
 | `/grok/v1/files/{image\|video}/{name}` | GET | Local cached media file |
@@ -41,6 +46,8 @@ This document is based on the current implementations of [routes.go](/D:/Code/Or
 | `/warp/v1/models` | GET | Warp model list |
 | `/puter/v1/models` | GET | Puter model list |
 | `/grok/v1/models` | GET | Grok model list |
+| `/aihubmix/v1/models` | GET | Aihubmix model list |
+| `/zenmux/v1/models` | GET | Zenmux model list |
 | `/health` | GET | Health check |
 | `/metrics` | GET | Prometheus metrics |
 

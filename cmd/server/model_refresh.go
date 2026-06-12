@@ -153,6 +153,10 @@ func normalizeAdminModelChannel(channel string) string {
 		return "Puter"
 	case "grok":
 		return "Grok"
+	case "aihubmix":
+		return "Aihubmix"
+	case "zenmux":
+		return "Zenmux"
 	default:
 		return ""
 	}
@@ -203,6 +207,10 @@ func discoverModelsForChannelConcurrent(ctx context.Context, cfg *config.Config,
 		return discoverPuterModelsConcurrent(ctx, cfg, s, concurrency)
 	case "grok":
 		return discoverGrokModelsConcurrent(ctx, cfg, s, concurrency)
+	case "aihubmix":
+		return discoverAihubmixModelsConcurrent(ctx, cfg, s, concurrency)
+	case "zenmux":
+		return discoverZenmuxModelsConcurrent(ctx, cfg, s, concurrency)
 	default:
 		return nil, "", fmt.Errorf("unsupported channel: %s", channel)
 	}

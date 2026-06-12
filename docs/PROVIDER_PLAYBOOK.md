@@ -535,9 +535,161 @@ As of 2026-06-12, the codebase has 3 channels with this consistent shape:
 | warp | `/warp/v1/*` | `warp` | `Warp` | `.badge-warp` | green-ish |
 | puter | `/puter/v1/*` | `puter` | `Puter` | `.badge-puter` | blue-ish |
 | grok | `/grok/v1/*` (own handler) | `grok` | `Grok` | `.badge-grok` | purple-ish |
+| aihubmix | `/aihubmix/v1/*` (registry) | `aihubmix` | `Aihubmix` | `.badge-aihubmix` | purple-ish |
+| zenmux | `/zenmux/v1/*` (registry) | `zenmux` | `Zenmux` | `.badge-zenmux` | green-ish |
 
-When you add a 4th, **match this exact casing convention** (lowercase for `AccountType`, TitleCase for `Model.Channel`).
+When you add a 6th, **match this exact casing convention** (lowercase for `AccountType`, TitleCase for `Model.Channel`).
 
 ## Appendix B: Where the registry is partially broken
 
-The `internal/provider/` registry is only used by warp+puter. Grok bypasses it. This is a known design smell. When adding a new channel, **use the registry** (it's the simple path). Refactoring grok onto the registry is a separate workstream — see `docs/architecture-review.md` §3.3.
+The `internal/provider/` registry is only used by warp+puter+aihubmix+zenmux. Grok bypasses it. This is a known design smell. When adding a new channel, **use the registry** (it's the simple path). Refactoring grok onto the registry is a separate workstream — see `docs/architecture-review.md` §3.3.
+
+## Appendix C: Worked Example — Parallel 2-Channel Add (aihubmix + zenmux)
+
+This is the recipe used in commit `feat: add aihubmix and zenmux channels`. Use it as a template for any future parallel add.
+
+### C.1 Upstream reconnaissance
+
+Before writing code, gather these facts for each provider (one engineer-hour each):
+
+| Fact | Where to look |
+|---|---|
+| Base URL + auth header scheme | Provider docs (e.g. `https://aihubmix.com/v1` + `Authorization: Bearer …`) |
+| Endpoint shape | `/v1/chat/completions` (OpenAI-compatible) or proprietary |
+| Default model ID | Listed on provider's catalog page |
+| Model catalog endpoint | Public? Auth? No-auth = better (no chicken-and-egg) |
+| Free tier rate limits | Try a request, observe 429 patterns |
+| Image endpoint? | Many OpenAI-compatible APIs ship `/v1/images/generations` too |
+
+### C.2 Package layout decision
+
+Both aihubmix and zenmux are **OpenAI-compatible**. Don't duplicate the OpenAI logic. Create a shared `internal/openai/` package:
+
+```
+internal/openai/
+  types.go    # ChatRequest/Response/Usage/ErrorEnvelope/ImageRequest/Response
+  convert.go  # promptToOpenAIMessages() + content-block-to-parts helpers
+  sse.go      # StreamParser with comment-skip + [DONE] handling
+  client.go   # SendRequestWithPayload with finish_reason translation
+```
+
+Then each provider package is a **thin wrapper** (one file, ~60 lines):
+
+```go
+type Client struct{ *openai.Client }
+func NewFromAccount(acc *store.Account, cfg *config.Config) *Client { ... }
+func ResolveAPIKey(acc *store.Account) string { ... }
+```
+
+### C.3 Provider registry stub
+
+`internal/provider/aihubmix_provider.go`:
+
+```go
+type aihubmixProvider struct{}
+func NewAihubmixProvider() *aihubmixProvider { return &aihubmixProvider{} }
+func (p *aihubmixProvider) Name() string { return "aihubmix" }
+func (p *aihubmixProvider) NewClient(acc *store.Account, cfg *config.Config) interface{} {
+    return aihubmix.NewFromAccount(acc, cfg)
+}
+```
+
+Same shape for zenmux. Total per provider: **~17 lines**.
+
+### C.4 Seed models
+
+Both seeds go in `internal/store/{provider}_seed.go` with stable IDs in the 200-299 range (after warp 1-99, puter 100-199, then 200+):
+
+```go
+func buildAihubmixSeedModels() []Model {
+    return []Model{
+        { ID: 220, Channel: "Aihubmix", ModelID: "gpt-5.5-free", Name: "GPT-5.5 Free", IsDefault: true, Enabled: true, Status: "available" },
+        ...
+    }
+}
+```
+
+Register both in `internal/store/store.go` `seedModels()`:
+
+```go
+models = append(models, buildAihubmixSeedModels()...)
+models = append(models, buildZenmuxSeedModels()...)
+```
+
+### C.5 Model discovery
+
+Two patterns, choose by public catalog auth:
+
+| Public catalog auth | Function to add |
+|---|---|
+| None (aihubmix) | `cmd/server/aihubmix_public_models.go` hits `https://{host}/api/v1/models` |
+| Required (zenmux) | `cmd/server/zenmux_public_models.go` reads accounts via `enabledAccountsByType(ctx, s, "zenmux")` |
+
+Both return `[]discoveredModel` (the type lives in `cmd/server/model_refresh.go`). Filter out embeddings/moderations/whisper/tts. Wire into:
+
+```go
+// cmd/server/model_refresh.go
+case "aihubmix":
+    return discoverAihubmixModelsConcurrent(...)
+case "zenmux":
+    return discoverZenmuxModelsConcurrent(...)
+```
+
+### C.6 Channel routing (5 files, ~30 lines total)
+
+| File | Add |
+|---|---|
+| `cmd/server/main.go` | `registry.Register("aihubmix", provider.NewAihubmixProvider())` |
+| `cmd/server/routes.go` | 2 `mux.HandleFunc("/aihubmix/v1/messages", ...)` lines + 2 prefixes in `modelPrefixes` |
+| `internal/handler/utils.go` | 2 branches in `channelFromPath` |
+| `cmd/server/model_refresh.go` | 2 cases in `normalizeAdminModelChannel` and `discoverModelsForChannelConcurrent` |
+| `internal/api/api.go` | 6 spots: `normalizedAccountCredentialKey` switch, `refreshAccountState` switch, 3x `normalizeWarpTokenInput`-style if/else (create/update/import) |
+
+### C.7 Image generation (optional, aihubmix only)
+
+If the provider ships an image endpoint, add `cmd/server/aihubmix_image_handler.go` (~120 lines). Pattern:
+
+1. Decode `openai.ImageRequest` from body
+2. Loop: `lb.GetNextAccountExcludingByChannel(ctx, excludeIDs, "aihubmix")` for up to 8 accounts
+3. Forward raw JSON to `{BaseURL}/images/generations` with `Authorization: Bearer {key}`
+4. Return decoded `openai.ImageResponse` JSON
+5. On 4xx (non-408/429), surface the error; on 5xx/timeout, blacklist and try the next account
+6. Wire via `mux.HandleFunc("/aihubmix/v1/images/generations", limiter.Limit(makeAihubmixImageHandler(cfg, s, lb)))`
+
+### C.8 Frontend (4 files, ~20 lines)
+
+- `web/static/js/accounts.js` `accountTypeLabel()` + `defaultTypes` array
+- `web/static/js/models.js` `defaultChannels` array
+- `web/templates/components/modals/model-modal.html` 2 `<option>` lines
+- `web/static/css/main.css` 2 `.badge-{channel}` classes (purple for aihubmix, green for zenmux) + 2 entries in the tag-free group
+
+### C.9 Docs (5 files)
+
+- `docs/api-reference.md` — 4 route tables
+- `docs/architecture.md` — 2 lines in the "Sources by channel" section
+- `docs/deployment.md` — first paragraph channel count
+- `docs/ORCHIDS_API_FLOW.md` — first blockquote
+- `docs/PROVIDER_PLAYBOOK.md` — Appendix A table + Appendix B header
+
+### C.10 Verification (no surprises)
+
+```bash
+CGO_ENABLED=0 /usr/local/go/bin/go build -o /tmp/orchids-server ./cmd/server
+CGO_ENABLED=0 /usr/local/go/bin/go vet ./internal/...  # pre-existing test failures OK
+sudo systemctl restart orchids-2api
+curl -s https://in.c.dabbo.net/health
+# Then 4 smoke tests:
+curl -X POST https://in.c.dabbo.net/aihubmix/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"gpt-5.5-free","messages":[{"role":"user","content":"hi"}]}'
+curl -X POST https://in.c.dabbo.net/zenmux/v1/chat/completions   -H 'Content-Type: application/json' -d '{"model":"moonshotai/kimi-k2.7-code-free","messages":[{"role":"user","content":"hi"}]}'
+curl -X POST https://in.c.dabbo.net/aihubmix/v1/images/generations -H 'Content-Type: application/json' -d '{"model":"gpt-image-2-free","prompt":"a cat","n":1,"size":"1024x1024"}'
+curl -s 'https://in.c.dabbo.net/admin/api/models?channel=aihubmix' --cookie 'admin_session=…'   # admin auth via login
+```
+
+### C.11 Why this is the right pattern
+
+- **Shared `internal/openai/`** prevents 4-way drift if a 3rd OpenAI-compat provider joins later
+- **Thin wrapper packages** keep blast radius small (one provider broken ≠ others broken)
+- **Seed models with stable IDs** mean the migration is idempotent on every restart
+- **Public discovery when possible** means no chicken-and-egg: add a key, models appear
+- **Image endpoint as a separate route file** means we never entangle chat and image client logic
+

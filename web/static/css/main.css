@@ -2211,6 +2211,18 @@ tr:hover td {
   border: 1px solid rgba(59, 130, 246, 0.3);
 }
 
+.badge-aihubmix {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.badge-zenmux {
+  background: rgba(74, 222, 128, 0.15);
+  color: #86efac;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
 @media (max-width: 900px) {
   .config-grid-two,
   .estimate-grid {
@@ -3411,7 +3423,9 @@ code {
 .tag-free,
 .badge-warp,
 .badge-grok,
-.badge-puter {
+.badge-puter,
+.badge-aihubmix,
+.badge-zenmux {
   background: #f7f7f7;
   color: #666;
 }

@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This document is based on the current code implementation and applies to the three channels: `warp`, `puter`, and `grok`.
+This document is based on the current code implementation and applies to the five channels: `warp`, `puter`, `grok`, `aihubmix`, and `zenmux`.
 
 ## 1. Prerequisites
 

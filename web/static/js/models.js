@@ -12,7 +12,7 @@ let modelRefreshResults = {};
 let modelRefreshConcurrency = 4;
 
 function modelChannels() {
-  const defaultChannels = ["Warp", "Puter", "Grok"];
+  const defaultChannels = ["Warp", "Puter", "Grok", "Aihubmix", "Zenmux"];
   const seen = new Set();
   const ordered = [];
 
