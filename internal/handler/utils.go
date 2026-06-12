@@ -1666,7 +1666,7 @@ func extractUserTexts(messages []prompt.Message) []string {
 func isGreetingText(text string) bool {
 	lower := strings.ToLower(strings.TrimSpace(text))
 	switch lower {
-	case "hi", "hello", "hey", "hello", "hello", "hi", "are you there":
+	case "hi", "hello", "hey", "are you there":
 		return true
 	default:
 		return false
