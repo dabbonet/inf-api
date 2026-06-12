@@ -186,7 +186,7 @@ func TestHandleTokenCacheClearReturnsDeletedCount(t *testing.T) {
 	if resp.Code != 0 {
 		t.Fatalf("expected code 0, got %d", resp.Code)
 	}
-	if resp.Message != "清除成功" {
+	if resp.Message != "Clear successful" {
 		t.Fatalf("expected clear success message, got %q", resp.Message)
 	}
 	if resp.Data.Deleted != 1 {

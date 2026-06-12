@@ -111,7 +111,7 @@ func NewMemorySessionStore(ttl time.Duration, maxSize int) *MemorySessionStore {
 func (s *MemorySessionStore) getOrCreate(key string) *memorySession {
 	sess, ok := s.sessions[key]
 	if !ok {
-		// 容量超限时，驱逐最久未访问的 session
+		// When the capacity exceeds the limit, the session that has not been accessed for the longest time will be evicted.
 		if s.maxSize > 0 && len(s.sessions) >= s.maxSize {
 			var oldestKey string
 			var oldestTime time.Time

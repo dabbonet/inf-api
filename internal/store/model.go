@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-// ModelStatus 表示模型状态。
+// ModelStatus represents the model status.
 //
-// 管理端前端使用字符串状态：available/maintenance/offline。
-// 老数据/老客户端可能仍然使用 bool（true/false）。这里做兼容解析。
+// The management frontend uses the string status: available/maintenance/offline.
+// Old data/old clients may still use bool(true/false). Compatibility analysis is done here.
 type ModelStatus string
 
 const (
@@ -18,7 +18,7 @@ const (
 	ModelStatusOffline     ModelStatus = "offline"
 )
 
-// Enabled 表示该模型是否可用于对外 /v1/models 列表。
+// Enabled indicates whether the model is available to the external /v1/models list.
 func (s ModelStatus) Enabled() bool {
 	return s == ModelStatusAvailable
 }
@@ -30,7 +30,7 @@ func (s *ModelStatus) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// 兼容 bool：true => available, false => offline
+	// Compatible bool: true => available, false => offline
 	var b bool
 	if err := json.Unmarshal(data, &b); err == nil {
 		if b {
@@ -41,7 +41,7 @@ func (s *ModelStatus) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// 字符串状态
+	// string status
 	var str string
 	if err := json.Unmarshal(data, &str); err == nil {
 		switch strings.ToLower(strings.TrimSpace(str)) {
@@ -57,13 +57,13 @@ func (s *ModelStatus) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// 兜底：非法值视为 offline
+	// Bottom line: illegal values ​​are considered offline
 	*s = ModelStatusOffline
 	return nil
 }
 
 func (s ModelStatus) MarshalJSON() ([]byte, error) {
-	// 始终输出字符串，保证前后端一致。
+	// Always output a string, ensuring that the previous backend is consistent.
 	if s == "" {
 		s = ModelStatusOffline
 	}

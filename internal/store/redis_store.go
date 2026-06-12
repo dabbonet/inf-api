@@ -437,7 +437,7 @@ func (s *redisStore) getAccount(ctx context.Context, id int64) (*Account, error)
 	return &acc, nil
 }
 
-// getAccountsByIDsPipelined 使用 Pipeline 批量获取账号数据
+// getAccountsByIDsPipelined uses Pipeline to obtain account data in batches
 func (s *redisStore) getAccountsByIDsPipelined(ctx context.Context, keys []string) ([]interface{}, error) {
 	if len(keys) == 0 {
 		return nil, nil
@@ -446,25 +446,25 @@ func (s *redisStore) getAccountsByIDsPipelined(ctx context.Context, keys []strin
 	pipe := s.client.Pipeline()
 	cmds := make([]*redis.StringCmd, len(keys))
 
-	// 批量添加 GET 命令到 Pipeline
+	// Add GET commands to Pipeline in batches
 	for i, key := range keys {
 		cmds[i] = pipe.Get(ctx, key)
 	}
 
-	// 执行 Pipeline
+	// Execute Pipeline
 	_, err := pipe.Exec(ctx)
 	if err != nil && err != redis.Nil {
 		return nil, err
 	}
 
-	// 收集结果
+	// Collect results
 	values := make([]interface{}, len(cmds))
 	for i, cmd := range cmds {
 		val, err := cmd.Result()
 		if err == redis.Nil {
 			values[i] = nil
 		} else if err != nil {
-			// 部分命令失败，返回错误触发回退
+			// Some commands failed and an error was returned to trigger a rollback.
 			return nil, err
 		} else {
 			values[i] = val
@@ -499,21 +499,21 @@ func (s *redisStore) getAccountsByIDs(ctx context.Context, ids []string, onlyEna
 		keys = append(keys, s.accountsKey(id))
 	}
 
-	// 尝试使用 Pipeline 批量获取
+	// Try using Pipeline to get batches
 	values, err := s.getAccountsByIDsPipelined(ctx, keys)
 	if err != nil {
-		// Pipeline 失败，回退到单命令模式
+		// Pipeline fails and falls back to single command mode
 		values, err = s.client.MGet(ctx, keys...).Result()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	// 并发阈值：少于 32 项时串行处理更高效
+	// Concurrency Threshold: Serial processing is more efficient with less than 32 items
 	const parallelThreshold = 32
 
 	if len(values) >= parallelThreshold {
-		// 并行解析 JSON
+		// Parsing JSON in parallel
 		results := make([]*Account, len(values))
 		util.ParallelFor(len(values), func(idx int) {
 			val := values[idx]
@@ -537,7 +537,7 @@ func (s *redisStore) getAccountsByIDs(ctx context.Context, ids []string, onlyEna
 			results[idx] = &acc
 		})
 
-		// 过滤 nil 结果
+		// Filter nil results
 		accounts := make([]*Account, 0, len(values))
 		for _, acc := range results {
 			if acc != nil {
@@ -547,7 +547,7 @@ func (s *redisStore) getAccountsByIDs(ctx context.Context, ids []string, onlyEna
 		return accounts, nil
 	}
 
-	// 串行处理小批量
+	// Serial processing of small batches
 	accounts := make([]*Account, 0, len(values))
 	for i, value := range values {
 		if value == nil {

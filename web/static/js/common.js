@@ -221,15 +221,15 @@ async function copyToClipboard(text) {
       document.execCommand('copy');
       document.body.removeChild(el);
     }
-    showToast("已复制到剪切板");
+    showToast("Copied to clipboard");
   } catch (err) {
-    showToast("复制失败", "error");
+    showToast("Copy failed", "error");
   }
 }
 
 // Logout function
 async function logout() {
-  if (confirm("确定要退出登录吗？")) {
+  if (confirm("Are you sure you want to log out?")) {
     try {
       await fetch("/api/logout", { method: "POST" });
       window.location.href = "./login.html";
@@ -286,9 +286,9 @@ function formatTime(iso) {
   if (Number.isNaN(d.getTime())) return "-";
   const now = new Date();
   const diff = (now - d) / 1000;
-  if (diff < 60) return "刚刚";
-  if (diff < 3600) return Math.floor(diff / 60) + " 分钟前";
-  if (diff < 86400) return Math.floor(diff / 3600) + " 小时前";
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff / 60) + " mins ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + " hours ago";
   return d.toLocaleString("zh-CN", {
     month: "2-digit",
     day: "2-digit",

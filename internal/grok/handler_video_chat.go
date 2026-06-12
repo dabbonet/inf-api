@@ -254,7 +254,7 @@ func (h *Handler) streamVideoChatCompletion(
 			return
 		}
 		lastProgress = progress
-		emit(fmt.Sprintf("正在生成视频中，当前进度%d%%\n", progress), "", false, nil)
+		emit(fmt.Sprintf("Generating video, current progress %d%%\n", progress), "", false, nil)
 	})
 	if err != nil {
 		writeSSEError(w, err.Error(), "server_error", "video_generation_failed")
@@ -292,7 +292,7 @@ func (h *Handler) collectVideoChatCompletion(
 			return
 		}
 		lastProgress = progress
-		reasoning = append(reasoning, fmt.Sprintf("视频正在生成 %d%%", progress))
+		reasoning = append(reasoning, fmt.Sprintf("Video is generating %d%%", progress))
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)

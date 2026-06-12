@@ -145,8 +145,8 @@
     const stop = $("imagineStopBtn");
     if (start) {
       start.disabled = false;
-      start.title = running ? "停止" : "生成";
-      start.setAttribute("aria-label", running ? "停止" : "生成");
+      start.title = running ? "Stop" : "Generate";
+      start.setAttribute("aria-label", running ? "Stop" : "Generate");
       start.classList.toggle("is-running", running);
       start.innerHTML = running
         ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7v10"></path><path d="M14 7v10"></path></svg>'
@@ -185,11 +185,11 @@
     const meta = document.createElement("div");
     meta.className = "imagine-masonry-batch-meta";
     [
-      ["is-round", `第 ${round} 轮`],
+      ["is-round", `Round ${round}`],
       ["is-param", ratio],
       ["is-param", quality === "basic" ? "Basic" : quality === "quality" ? "Quality" : "Lite"],
       ["is-count", `0/${BATCH_SIZE}`],
-      ["is-state", "正在生成"],
+      ["is-state", "Generating"],
     ].forEach(([cls, text]) => {
       const chip = document.createElement("span");
       chip.className = `imagine-masonry-batch-chip ${cls}`;
@@ -243,13 +243,13 @@
     if (!final) return;
     if (batch.ready >= BATCH_SIZE) {
       batch.stateEl.dataset.state = "success";
-      batch.stateEl.textContent = "生成成功";
+      batch.stateEl.textContent = "Success";
     } else if (batch.ready > 0) {
       batch.stateEl.dataset.state = "partial";
-      batch.stateEl.textContent = "部分失败";
+      batch.stateEl.textContent = "Partial Failure";
     } else {
       batch.stateEl.dataset.state = "failed";
-      batch.stateEl.textContent = "生成失败";
+      batch.stateEl.textContent = "Failed";
     }
   }
 
@@ -270,14 +270,14 @@
     slot.tile.classList.add("is-filtered");
     const message = document.createElement("div");
     message.className = "imagine-masonry-tile-label";
-    message.textContent = label || "失败";
+    message.textContent = label || "Failed";
     slot.body.replaceChildren(message);
   }
 
   function finishSlot(slot, raw, meta) {
     const src = imageSrc(raw);
     if (!slot || slot.status !== "pending" || !src) {
-      failSlot(slot, "失败");
+      failSlot(slot, "Failed");
       return;
     }
     slot.status = "ready";
@@ -461,7 +461,7 @@
       updateBatch(batch, false);
       return true;
     } catch (err) {
-      failSlot(slot, signal?.aborted ? "已停止" : "失败");
+      failSlot(slot, signal?.aborted ? "Stopped" : "Failed");
       batch.failed += 1;
       updateBatch(batch, false);
       return false;
@@ -493,7 +493,7 @@
     const promptInput = $("imaginePrompt");
     const prompt = String(promptInput?.value || "").trim();
     if (!prompt) {
-      toast("请输入 Prompt", "error");
+      toast("Please enter Prompt", "error");
       return;
     }
     const ratio = String($("imagineRatio")?.value || "2:3");
@@ -509,24 +509,24 @@
     state.running = true;
     state.abortController = new AbortController();
     setButtons(true);
-    setStatus("生成中");
+    setStatus("Generating");
 
     let round = 0;
     try {
       while (state.running) {
         round += 1;
         const batch = createBatch(prompt, ratio, quality, round);
-        if (!batch) throw new Error("瀑布流容器不存在");
-        setStatus(`生成中 · 第 ${round} 轮`);
+        if (!batch) throw new Error("Waterfall container does not exist");
+        setStatus(`Generating · Round ${round}`);
         await runBatch(batch, prompt, ratio, model, quality, state.nsfwEnabled, state.abortController.signal);
         updateBatch(batch, true);
         if (!state.running || runMode !== "continuous") break;
       }
-      if (state.running) setStatus("完成");
+      if (state.running) setStatus("Done");
     } catch (err) {
       if (!state.abortController?.signal?.aborted) {
-        setStatus("错误");
-        toast(`启动失败: ${err.message || err}`, "error");
+        setStatus("Error");
+        toast(`Start failed: ${err.message || err}`, "error");
       }
     } finally {
       state.running = false;
@@ -543,7 +543,7 @@
       state.abortController = null;
     }
     setButtons(false);
-    setStatus("已停止");
+    setStatus("Stopped");
   }
 
   function clearGrid() {
@@ -559,7 +559,7 @@
     state.selectionMode = false;
     const toolbar = $("selectionToolbar");
     if (toolbar) toolbar.classList.add("hidden");
-    setStatus("未连接");
+    setStatus("Disconnected");
   }
 
   function dataUrlToBlob(dataUrl) {
@@ -585,7 +585,7 @@
     const toggle = $("toggleSelectAllBtn");
     if (toggle) {
       const items = document.querySelectorAll("#imagineGrid .waterfall-item.is-ready");
-      toggle.textContent = items.length > 0 && state.selected.size === items.length ? "取消全选" : "全选";
+      toggle.textContent = items.length > 0 && state.selected.size === items.length ? "Deselect All" : "Select All";
     }
   }
 
@@ -598,7 +598,7 @@
     if (items.length === 0) {
       state.selectionMode = false;
       if (toolbar) toolbar.classList.add("hidden");
-      toast("暂无可下载图片", "info");
+      toast("No downloadable images", "info");
       updateSelectedCount();
       return;
     }
@@ -649,18 +649,18 @@
     if (state.selected.size === 0) {
       toggleSelectAll();
       if (state.selected.size === 0) {
-        toast("未选择图片", "info");
+        toast("No images selected", "info");
         return;
       }
     }
     if (typeof JSZip === "undefined") {
-      toast("JSZip 未加载", "error");
+      toast("JSZip not loaded", "error");
       return;
     }
     const btn = $("downloadSelectedBtn");
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "打包中...";
+      btn.textContent = "Packaging...";
     }
     const zip = new JSZip();
     const folder = zip.folder("images");
@@ -677,10 +677,10 @@
         if (!blob) continue;
         processed += 1;
         folder.file(`image_${processed}.png`, blob);
-        if (btn) btn.textContent = `打包中 ${processed}/${state.selected.size}`;
+        if (btn) btn.textContent = `Packaging ${processed}/${state.selected.size}`;
       }
       if (processed === 0) {
-        toast("没有可下载的图片", "error");
+        toast("No downloadable images", "error");
         return;
       }
       const content = await zip.generateAsync({ type: "blob" });
@@ -689,14 +689,14 @@
       link.download = `imagine_${new Date().toISOString().slice(0, 10)}_${Date.now()}.zip`;
       link.click();
       URL.revokeObjectURL(link.href);
-      toast(`已打包 ${processed} 张图片`, "success");
+      toast(`Packaged ${processed} images`, "success");
       exitSelection();
     } catch (err) {
-      toast("打包失败", "error");
+      toast("Packaging failed", "error");
     } finally {
       if (btn) {
         btn.disabled = state.selected.size === 0;
-        btn.innerHTML = `下载 <span id="selectedCount" class="selected-count">${state.selected.size}</span>`;
+        btn.innerHTML = `Download <span id="selectedCount" class="selected-count">${state.selected.size}</span>`;
       }
     }
   }
@@ -778,7 +778,7 @@
     syncRatioUI();
     resizePrompt();
     setButtons(false);
-    setStatus("未连接");
+    setStatus("Disconnected");
   }
 
   window.GrokImagine = {

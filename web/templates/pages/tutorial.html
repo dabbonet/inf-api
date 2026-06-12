@@ -12,18 +12,18 @@
 
   <main class="main-content">
     <section class="header-section" id="tutorialHeader">
-      <h1>使用教程</h1>
-      <p>快速理解接入地址、路由区别、模型说明和渠道配置要求。</p>
+      <h1>Tutorial</h1>
+      <p>Quickly understand the access address, routing differences, model explanations, and channel configuration requirements.</p>
     </section>
 
     <div class="content-card doc-shell">
       <div class="doc-callout doc-callout-cyan">
         <div class="doc-callout-head">
           <div class="doc-mark doc-mark-cyan">API</div>
-          <h3 class="doc-title">API 地址格式</h3>
+          <h3 class="doc-title">API Address Format</h3>
         </div>
         <div class="doc-code-block">
-          Orchids/Warp/Puter: <span data-api-base></span>/{渠道}/v1
+          Orchids/Warp/Puter: <span data-api-base></span>/{channel}/v1
           <br />
           Grok: <span data-api-base></span>/grok/v1
         </div>
@@ -32,27 +32,27 @@
       <div class="doc-callout doc-callout-amber doc-callout-inline">
         <span class="doc-mark doc-mark-amber">NOTE</span>
         <div>
-          <span class="doc-strong doc-strong-amber">Claude Code 用户注意:</span> 配置 API 地址时请使用
-          <code class="doc-inline-code doc-inline-code-amber"><span data-api-base></span>/{渠道}</code>，
-          <span class="doc-strong doc-strong-red">不要</span>添加
-          <code class="doc-inline-code doc-inline-code-red">/v1</code> 后缀
+          <span class="doc-strong doc-strong-amber">Claude Code users note:</span> When configuring the API address, please use
+          <code class="doc-inline-code doc-inline-code-amber"><span data-api-base></span>/{channel}</code>，
+          <span class="doc-strong doc-strong-red">Do not</span>add
+          <code class="doc-inline-code doc-inline-code-red">/v1</code> suffix
           <br />
-          <span class="doc-strong doc-strong-amber">Grok 路由说明:</span>
-          Grok 与其他渠道保持一致，使用 <code class="doc-inline-code doc-inline-code-amber">/grok/v1</code> 前缀。
+          <span class="doc-strong doc-strong-amber">Grok routing instructions:</span>
+          Grok is consistent with other channels, using <code class="doc-inline-code doc-inline-code-amber">/grok/v1</code> prefix.
           <br />
-          <span class="doc-strong doc-strong-amber">Puter 账号说明:</span>
-          Puter 账号当前只需要填写 <code class="doc-inline-code doc-inline-code-amber">auth_token</code>。
+          <span class="doc-strong doc-strong-amber">Puter account instructions:</span>
+          Puter accounts currently only need to fill in <code class="doc-inline-code doc-inline-code-amber">auth_token</code>。
         </div>
       </div>
 
       <div class="doc-callout doc-callout-green doc-callout-inline">
         <span class="doc-mark doc-mark-green">INFO</span>
         <div>
-          <span class="doc-strong doc-strong-green">Puter 模型说明:</span>
-          Puter 当前采用参考仓库里的“无前缀主模型”清单，已包含 Claude / OpenAI / Gemini / Grok / DeepSeek / Mistral 等主模型族；
-          但像 <code class="doc-inline-code doc-inline-code-green">openrouter:</code>、
+          <span class="doc-strong doc-strong-green">Puter model instructions:</span>
+          Puter currently uses the "unprefixed main model" list from the reference repository, which already includes main model families such as Claude / OpenAI / Gemini / Grok / DeepSeek / Mistral;
+          but like <code class="doc-inline-code doc-inline-code-green">openrouter:</code>、
           <code class="doc-inline-code doc-inline-code-green">togetherai:</code>
-          这类聚合源前缀模型暂时不直接暴露到模型管理里。
+          are temporarily not exposed directly to model management.
         </div>
       </div>
 
@@ -60,10 +60,10 @@
         <table>
           <thead>
             <tr>
-              <th>渠道</th>
-              <th>API 地址</th>
-              <th>默认模型</th>
-              <th>支持协议</th>
+              <th>Channel</th>
+              <th>API Address</th>
+              <th>Default Model</th>
+              <th>Supported Protocols</th>
             </tr>
           </thead>
           <tbody>

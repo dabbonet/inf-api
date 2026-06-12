@@ -13,17 +13,17 @@ import (
 )
 
 const (
-	// Clerk API 版本参数，升级时统一修改
+	// Clerk API version parameters, modified uniformly during upgrade
 	ClerkAPIVersion = "2025-11-10"
 	ClerkJSVersion  = "5.117.0"
 
-	// 默认项目 ID
+	// Default project ID
 	DefaultProjectID = "280b7bae-cd29-41e4-a0a6-7f603c43b607"
 
-	// Clerk 基础 URL
+	// Clerk base URL
 	ClerkBaseURL = "https://clerk.orchids.app"
 
-	// 请求 User-Agent
+	// Request User-Agent
 	clerkUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Orchids/0.0.57 Chrome/138.0.7204.251 Electron/37.10.3 Safari/537.36"
 )
 
@@ -109,8 +109,8 @@ func FetchAccountInfoWithProjectAndSessionContextProxy(clientCookie string, sess
 		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Clerk 可能通过 Set-Cookie 轮转 __client cookie（rotating_token），
-	// 必须捕获新值，否则旧 token 被消费后后续请求全部失效。
+	// Clerk may rotate __client cookie(rotating_token) via Set-Cookie,
+	// The new value must be captured, otherwise all subsequent requests will be invalid after the old token is consumed.
 	effectiveCookie := clientCookie
 	for _, c := range resp.Cookies() {
 		if c.Name == "__client" && strings.TrimSpace(c.Value) != "" {

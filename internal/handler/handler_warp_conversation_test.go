@@ -151,14 +151,14 @@ func TestPuterCurrentWorkdirAfterToolTurn_ReturnsLocalResponse(t *testing.T) {
 		"stream":false,
 		"conversation_id":"puter_fresh_reset",
 		"messages":[
-			{"role":"user","content":[{"type":"text","text":"帮我用python写一个计算器"}]},
+			{"role":"user","content":[{"type":"text","text":"Help me write a calculator in python"}]},
 			{"role":"assistant","content":[
 				{"type":"tool_use","id":"tool_write","name":"Write","input":{"file_path":"calculator.py","content":"print(1)"}}
 			]},
 			{"role":"user","content":[
 				{"type":"tool_result","tool_use_id":"tool_write","content":"File created successfully at: calculator.py"}
 			]},
-			{"role":"user","content":[{"type":"text","text":"当前运行的目录"}]}
+			{"role":"user","content":[{"type":"text","text":"current running directory"}]}
 		],
 		"tools":[
 			{"name":"Read","input_schema":{"type":"object","properties":{"file_path":{"type":"string"}},"required":["file_path"]}},
@@ -167,7 +167,7 @@ func TestPuterCurrentWorkdirAfterToolTurn_ReturnsLocalResponse(t *testing.T) {
 	}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/puter/v1/messages", bytes.NewReader(body))
-	req.Header.Set("X-Workdir", `C:\Users\zhangdailin\Desktop\新建文件夹`)
+	req.Header.Set("X-Workdir", `C:\Users\zhangdailin\Desktop\New folder`)
 	rec := httptest.NewRecorder()
 
 	h.HandleMessages(rec, req)
@@ -179,7 +179,7 @@ func TestPuterCurrentWorkdirAfterToolTurn_ReturnsLocalResponse(t *testing.T) {
 	if len(calls) != 0 {
 		t.Fatalf("expected 0 upstream calls for local workdir response, got %d", len(calls))
 	}
-	if out := rec.Body.String(); !strings.Contains(out, `C:\\Users\\zhangdailin\\Desktop\\新建文件夹`) {
+	if out := rec.Body.String(); !strings.Contains(out, `C:\\Users\\zhangdailin\\Desktop\\New folder`) {
 		t.Fatalf("expected local response to include exact workdir, got: %s", out)
 	}
 }
@@ -195,13 +195,13 @@ func TestPuterToolResultFollowup_RecoversSandboxPathFailureWithoutNoToolsGate(t 
 		"stream":false,
 		"conversation_id":"puter_followup_recover",
 		"messages":[
-			{"role":"user","content":[{"type":"text","text":"这个项目是干什么的"}]},
+			{"role":"user","content":[{"type":"text","text":"what is this project for"}]},
 			{"role":"assistant","content":[
 				{"type":"tool_use","id":"tool_ls","name":"Bash","input":{"command":"ls /tmp/cc-agent/sb1-fxjxbmvk/project","description":"List project files"}}
 			]},
 			{"role":"user","content":[
 				{"type":"tool_result","tool_use_id":"tool_ls","content":"Exit code 2\nls: cannot access '/tmp/cc-agent/sb1-fxjxbmvk/project': No such file or directory"},
-				{"type":"text","text":"这个项目是干什么的"}
+				{"type":"text","text":"what is this project for"}
 			]}
 		],
 		"tools":[
@@ -327,7 +327,7 @@ func TestPuterToolResultFollowup_PassesThroughUpstreamInsteadOfLocalFallback(t *
 		"stream":false,
 		"conversation_id":"puter_followup_local_fallback",
 		"messages":[
-			{"role":"user","content":[{"type":"text","text":"这个项目是干什么的"}]},
+			{"role":"user","content":[{"type":"text","text":"what is this project for"}]},
 			{"role":"assistant","content":[
 				{"type":"tool_use","id":"tool_ls","name":"Bash","input":{"command":"ls -la","description":"List project files"}}
 			]},
@@ -358,7 +358,7 @@ func TestPuterToolResultFollowup_PassesThroughUpstreamInsteadOfLocalFallback(t *
 	if !strings.Contains(out, "Let me first understand the project structure and code.") {
 		t.Fatalf("expected upstream text to be preserved, got: %s", out)
 	}
-	for _, unwanted := range []string{"前端", "后端", "脚本层", "当前只拿到目录概览", "基于当前已读取内容"} {
+	for _, unwanted := range []string{"frontend", "backend", "script layer", "Currently we only get the directory overview", "based on currently read content"} {
 		if strings.Contains(out, unwanted) {
 			t.Fatalf("did not expect local fallback text %q in %s", unwanted, out)
 		}
@@ -376,7 +376,7 @@ func TestPuterMultiTurnEditFollowup_PreservesHistory(t *testing.T) {
 		"stream":false,
 		"conversation_id":"puter_multiturn_scientific_notation",
 		"messages":[
-			{"role":"user","content":[{"type":"text","text":"帮我用python写一个计算器"}]},
+			{"role":"user","content":[{"type":"text","text":"Help me write a calculator in python"}]},
 			{"role":"assistant","content":[
 				{"type":"tool_use","id":"tool_write","name":"Write","input":{"file_path":"calculator.py","content":"print(1)"}}
 			]},
@@ -384,9 +384,9 @@ func TestPuterMultiTurnEditFollowup_PreservesHistory(t *testing.T) {
 				{"type":"tool_result","tool_use_id":"tool_write","content":"File created successfully at: calculator.py"}
 			]},
 			{"role":"assistant","content":[
-				{"type":"text","text":"完成！计算器已创建在项目目录中。"}
+				{"type":"text","text":"Done! The calculator has been created in the project directory."}
 			]},
-			{"role":"user","content":[{"type":"text","text":"帮我添加科学计数法"}]}
+			{"role":"user","content":[{"type":"text","text":"Help me Add scientific notation"}]}
 		],
 		"tools":[
 			{"name":"Write","input_schema":{"type":"object","properties":{"file_path":{"type":"string"},"content":{"type":"string"}},"required":["file_path","content"]}},
@@ -409,13 +409,13 @@ func TestPuterMultiTurnEditFollowup_PreservesHistory(t *testing.T) {
 	if len(calls[0].Messages) != 5 {
 		t.Fatalf("messages len=%d want 5", len(calls[0].Messages))
 	}
-	if got := calls[0].Messages[0].ExtractText(); got != "帮我用python写一个计算器" {
+	if got := calls[0].Messages[0].ExtractText(); got != "Help me write a calculator in python" {
 		t.Fatalf("first user text=%q want original create request", got)
 	}
-	if got := calls[0].Messages[3].ExtractText(); got != "完成！计算器已创建在项目目录中。" {
+	if got := calls[0].Messages[3].ExtractText(); got != "Done! The calculator has been created in the project directory." {
 		t.Fatalf("assistant completion=%q want preserved assistant summary", got)
 	}
-	if got := calls[0].Messages[4].ExtractText(); got != "帮我添加科学计数法" {
+	if got := calls[0].Messages[4].ExtractText(); got != "Help me Add scientific notation" {
 		t.Fatalf("latest user text=%q want edit follow-up", got)
 	}
 }
@@ -591,7 +591,7 @@ func TestWarpToolResultFollowupWithText_DisablesTools(t *testing.T) {
 				"role":"user",
 				"content":[
 					{"type":"tool_result","tool_use_id":"tool_1","content":"1→import json\n2→import os\n3→from urllib.request import Request\n4→import socks\n5→from flask import Flask\n6→def load_media_mapping():\n7→    with open(MEDIA_MAPPING_FILE, \"r\") as f:\n8→        return json.load(f)\n9→ALERTS_FILE = os.path.join(PROJECT_ROOT, \"market_alerts.json\")"},
-					{"type":"text","text":"这个项目使用了哪些技术架构"}
+					{"type":"text","text":"What technology architecture is used in this project"}
 				]
 			}
 		],
@@ -704,7 +704,7 @@ func TestWarpToolResultFollowup_SplitsCurrentTurnAndChainsConversationIDs(t *tes
 		"stream":false,
 		"conversation_id":"local_conversation_key_split",
 		"messages":[
-			{"role":"user","content":[{"type":"text","text":"帮我优化一下这个项目"}]},
+			{"role":"user","content":[{"type":"text","text":"help me optimize this project"}]},
 			{"role":"assistant","content":[
 				{"type":"tool_use","id":"tool_ls","name":"Bash","input":{"command":"ls -la /Users/dailin/Documents/GitHub/truth_social_scraper"}},
 				{"type":"tool_use","id":"tool_api","name":"Read","input":{"file_path":"/Users/dailin/Documents/GitHub/truth_social_scraper/api.py"}},
@@ -714,7 +714,7 @@ func TestWarpToolResultFollowup_SplitsCurrentTurnAndChainsConversationIDs(t *tes
 				{"type":"tool_result","tool_use_id":"tool_ls","content":"README.md\napi.py\nutils.py"},
 				{"type":"tool_result","tool_use_id":"tool_api","content":"from fastapi import FastAPI\napp = FastAPI()"},
 				{"type":"tool_result","tool_use_id":"tool_utils","content":"import json\nALERTS_FILE='alerts.json'"},
-				{"type":"text","text":"帮我优化一下这个项目"}
+				{"type":"text","text":"help me optimize this project"}
 			]}
 		],
 		"tools":[]
@@ -767,7 +767,7 @@ func TestWarpToolResultFollowup_SplitsCurrentTurnAndChainsConversationIDs(t *tes
 			t.Fatalf("batch %d unexpectedly kept current-turn user text: %q", i+1, got)
 		}
 	}
-	if got := strings.TrimSpace(calls[2].Messages[len(calls[2].Messages)-1].ExtractText()); got != "帮我优化一下这个项目" {
+	if got := strings.TrimSpace(calls[2].Messages[len(calls[2].Messages)-1].ExtractText()); got != "help me optimize this project" {
 		t.Fatalf("last batch user text = %q, want final user request", got)
 	}
 }
@@ -803,7 +803,7 @@ func TestWarpToolResultFollowup_ReplaysVisibleIntermediateBatch(t *testing.T) {
 		"stream":true,
 		"conversation_id":"local_conversation_key_intermediate",
 		"messages":[
-			{"role":"user","content":[{"type":"text","text":"帮我优化一下这个项目"}]},
+			{"role":"user","content":[{"type":"text","text":"help me optimize this project"}]},
 			{"role":"assistant","content":[
 				{"type":"tool_use","id":"tool_ls","name":"Bash","input":{"command":"ls -la /Users/dailin/Documents/GitHub/truth_social_scraper"}},
 				{"type":"tool_use","id":"tool_api","name":"Read","input":{"file_path":"/Users/dailin/Documents/GitHub/truth_social_scraper/api.py"}},
@@ -813,7 +813,7 @@ func TestWarpToolResultFollowup_ReplaysVisibleIntermediateBatch(t *testing.T) {
 				{"type":"tool_result","tool_use_id":"tool_ls","content":"README.md\napi.py\nutils.py"},
 				{"type":"tool_result","tool_use_id":"tool_api","content":"from fastapi import FastAPI\napp = FastAPI()"},
 				{"type":"tool_result","tool_use_id":"tool_utils","content":"import json\nALERTS_FILE='alerts.json'"},
-				{"type":"text","text":"帮我优化一下这个项目"}
+				{"type":"text","text":"help me optimize this project"}
 			]}
 		],
 		"tools":[]

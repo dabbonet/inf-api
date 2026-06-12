@@ -82,7 +82,7 @@ func (a *API) HandleTokenCacheClear(w http.ResponseWriter, r *http.Request) {
 	if !a.tokenCacheFeatureEnabled() || a.promptCache == nil {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"code":    0,
-			"message": "清除成功",
+			"message": "Clear successful",
 			"data": map[string]interface{}{
 				"deleted": 0,
 			},
@@ -100,7 +100,7 @@ func (a *API) HandleTokenCacheClear(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"code":    0,
-		"message": "清除成功",
+		"message": "Clear successful",
 		"data": map[string]interface{}{
 			"deleted": count,
 		},

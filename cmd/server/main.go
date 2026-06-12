@@ -40,12 +40,12 @@ func main() {
 
 	configureRuntimeLogging(cfg)
 
-	// 仅在详细诊断模式下维护逐请求调试文件目录。
+	// A directory of per-request debug files is maintained only in verbose diagnostic mode.
 	if cfg.VerboseDiagnosticsEnabled() {
 		if err := debug.CleanupAllLogs(); err != nil {
-			slog.Warn("清理调试日志失败", "error", err)
+			slog.Warn("Failed to clear debug log", "error", err)
 		} else {
-			slog.Debug("已清空调试日志目录")
+			slog.Debug("Trial log directory cleared")
 		}
 	}
 
@@ -64,7 +64,7 @@ func main() {
 
 	slog.Debug("Store initialized", "mode", "redis", "addr", cfg.RedisAddr, "prefix", cfg.RedisPrefix)
 
-	// 从 Redis 加载已保存的配置（如果存在）
+	// Load the saved configuration from Redis if it exists
 	if savedConfig, err := s.GetSetting(context.Background(), "config"); err == nil && savedConfig != "" {
 		if err := json.Unmarshal([]byte(savedConfig), cfg); err != nil {
 			slog.Warn("Failed to load config from Redis, using file config", "error", err)

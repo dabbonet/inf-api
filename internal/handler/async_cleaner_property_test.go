@@ -12,7 +12,7 @@ import (
 
 // **Validates: Requirements 3.1, 3.4**
 //
-// Property 5: 异步清理器生命周期
+// Property 5: Asynchronous cleaner life cycle
 // For any AsyncCleaner instance, after Start it should periodically execute cleanup,
 // and after Stop it should cease execution and exit the goroutine.
 

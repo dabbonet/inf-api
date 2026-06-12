@@ -432,8 +432,8 @@ func looksLikeMissingPath(text string) bool {
 		"path does not exist",
 		"enoent",
 		"not found",
-		"找不到指定的路径",
-		"系统找不到指定的路径",
+		"The specified path cannot be found",
+		"The system cannot find the specified path",
 	} {
 		if strings.Contains(lower, marker) {
 			return true
@@ -1228,18 +1228,18 @@ func shouldDropProceduralAssistantParagraph(text string) bool {
 	}
 
 	for _, prefix := range []string{
-		"我先",
-		"我来",
-		"让我",
-		"现在我将",
-		"首先让我",
-		"接下来",
-		"我看到",
-		"完成！",
-		"完美！",
-		"已完成",
-		"已经成功",
-		"已成功",
+		"I first",
+		"I come",
+		"Let me",
+		"Now I will",
+		"First let me",
+		"Next",
+		"I see",
+		"Done!",
+		"Perfect!",
+		"Completed",
+		"Already successful",
+		"Successfully",
 		"i will",
 		"let me",
 		"now i will",

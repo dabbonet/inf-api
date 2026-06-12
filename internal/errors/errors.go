@@ -1,4 +1,4 @@
-// Package errors 提供统一的错误处理机制
+// Package errors provides a unified error handling mechanism
 package errors
 
 import (
@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-// AppError 表示应用层错误，包含错误码、消息和可选的原因
+// AppError represents an application layer error, including error code, message and optional reason
 type AppError struct {
 	Code       string `json:"code"`
 	Message    string `json:"message"`
@@ -14,7 +14,7 @@ type AppError struct {
 	Cause      error  `json:"-"`
 }
 
-// ToJSON 返回错误的 JSON 表示
+// ToJSON returns the wrong JSON representation
 func (e *AppError) ToJSON() []byte {
 	data, _ := json.Marshal(map[string]interface{}{
 		"type": "error",
@@ -26,14 +26,14 @@ func (e *AppError) ToJSON() []byte {
 	return data
 }
 
-// WriteResponse 将错误写入 HTTP 响应
+// WriteResponse writes errors to the HTTP response
 func (e *AppError) WriteResponse(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(e.HTTPStatus)
 	w.Write(e.ToJSON())
 }
 
-// 预定义错误码
+// Predefined error code
 const (
 	CodeInvalidRequest    = "invalid_request_error"
 	CodeAuthError         = "authentication_error"
@@ -47,107 +47,107 @@ const (
 	CodeCircuitOpen       = "circuit_breaker_open"
 )
 
-// 预定义错误实例
+// Predefined error instances
 var (
-	// 请求错误
+	// Request error
 	ErrInvalidRequest = &AppError{
 		Code:       CodeInvalidRequest,
-		Message:    "请求格式无效",
+		Message:    "Invalid request format",
 		HTTPStatus: http.StatusBadRequest,
 	}
 	ErrRequestBodyTooLarge = &AppError{
 		Code:       CodeInvalidRequest,
-		Message:    "请求体过大",
+		Message:    "Request body too large",
 		HTTPStatus: http.StatusRequestEntityTooLarge,
 	}
 	ErrMethodNotAllowed = &AppError{
 		Code:       CodeInvalidRequest,
-		Message:    "方法不允许",
+		Message:    "Method not allowed",
 		HTTPStatus: http.StatusMethodNotAllowed,
 	}
 
-	// 认证错误
+	// Authentication error
 	ErrUnauthorized = &AppError{
 		Code:       CodeAuthError,
-		Message:    "认证失败",
+		Message:    "Authentication failed",
 		HTTPStatus: http.StatusUnauthorized,
 	}
 	ErrInvalidToken = &AppError{
 		Code:       CodeAuthError,
-		Message:    "无效的令牌",
+		Message:    "Invalid token",
 		HTTPStatus: http.StatusUnauthorized,
 	}
 	ErrSessionExpired = &AppError{
 		Code:       CodeAuthError,
-		Message:    "会话已过期",
+		Message:    "Session expired",
 		HTTPStatus: http.StatusUnauthorized,
 	}
 
-	// 资源错误
+	// Resource error
 	ErrAccountNotFound = &AppError{
 		Code:       CodeNotFound,
-		Message:    "账号不存在",
+		Message:    "Account not found",
 		HTTPStatus: http.StatusNotFound,
 	}
 	ErrModelNotFound = &AppError{
 		Code:       CodeNotFound,
-		Message:    "模型不存在",
+		Message:    "Model not found",
 		HTTPStatus: http.StatusNotFound,
 	}
 	ErrResourceNotFound = &AppError{
 		Code:       CodeNotFound,
-		Message:    "资源不存在",
+		Message:    "Resource not found",
 		HTTPStatus: http.StatusNotFound,
 	}
 
-	// 服务错误
+	// Service error
 	ErrNoAvailableAccount = &AppError{
 		Code:       CodeOverloaded,
-		Message:    "没有可用账号",
+		Message:    "No available account",
 		HTTPStatus: http.StatusServiceUnavailable,
 	}
 	ErrUpstreamUnavailable = &AppError{
 		Code:       CodeUpstreamError,
-		Message:    "上游服务不可用",
+		Message:    "Upstream service unavailable",
 		HTTPStatus: http.StatusBadGateway,
 	}
 	ErrUpstreamTimeout = &AppError{
 		Code:       CodeTimeout,
-		Message:    "上游服务响应超时",
+		Message:    "Upstream service response timeout",
 		HTTPStatus: http.StatusGatewayTimeout,
 	}
 	ErrCircuitBreakerOpen = &AppError{
 		Code:       CodeCircuitOpen,
-		Message:    "服务熔断中，请稍后重试",
+		Message:    "Service circuit broken, please try again later",
 		HTTPStatus: http.StatusServiceUnavailable,
 	}
 
-	// 限流错误
+	// Current limiting error
 	ErrRateLimitExceeded = &AppError{
 		Code:       CodeRateLimitExceeded,
-		Message:    "请求频率超限",
+		Message:    "Request rate limit exceeded",
 		HTTPStatus: http.StatusTooManyRequests,
 	}
 	ErrConcurrencyLimitExceeded = &AppError{
 		Code:       CodeRateLimitExceeded,
-		Message:    "并发请求数超限",
+		Message:    "Concurrent request limit exceeded",
 		HTTPStatus: http.StatusTooManyRequests,
 	}
 
-	// 内部错误
+	// Internal error
 	ErrInternal = &AppError{
 		Code:       CodeInternalError,
-		Message:    "内部服务错误",
+		Message:    "Internal service error",
 		HTTPStatus: http.StatusInternalServerError,
 	}
 	ErrStoreNotConfigured = &AppError{
 		Code:       CodeInternalError,
-		Message:    "存储未配置",
+		Message:    "storage is not configured",
 		HTTPStatus: http.StatusInternalServerError,
 	}
 )
 
-// New 创建新的应用错误
+// New creates a new application error
 func New(code, message string, httpStatus int) *AppError {
 	return &AppError{
 		Code:       code,

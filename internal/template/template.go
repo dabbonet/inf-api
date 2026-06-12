@@ -104,7 +104,7 @@ func (r *Renderer) RenderIndex(w http.ResponseWriter, req *http.Request, cfg *co
 	}
 
 	data := &PageData{
-		Title:     "API 管理面板",
+		Title:     "API Management Panel",
 		AdminPath: cfg.AdminPath,
 		ActiveTab: activeTab,
 		Stats:     stats,

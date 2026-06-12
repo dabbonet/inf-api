@@ -305,22 +305,22 @@ func TestParseToolCalls_AcceptsMixedProseAndFencedToolJSON(t *testing.T) {
 
 func TestSanitizeAssistantText_StripsProceduralTextWhenToolCallExists(t *testing.T) {
 	raw := strings.Join([]string{
-		"我来帮你在 test.txt 中添加内容。首先让我读取一下这个文件的当前内容。",
+		"I come to help you add content to test.txt. First let me read the current content of this file.",
 		"",
 		`{"content":"     1\tHello World\n"}tool_call_result>`,
 		"",
-		"现在我将添加 \"我是大帅比\" 到文件中：",
+		"Now I will add \\"I am Dashuaibi\\" to the file:",
 		"",
-		`{"content":"     1\tHello World\n     2\t我是大帅比\n"}tool_call_result>`,
+		`{"content":"1\tHello World\n 2\tI am Dashuaibi\n"}tool_call_result>`,
 		"",
-		"完成！✅ 我已经成功在 test.txt 中添加了 \"我是大帅比\"。",
+		"Done!✅ I Already successfully added \\"I am Dashuaibi\\" in test.txt.",
 	}, "\n")
 
 	out := sanitizeAssistantText(raw, []ParsedToolCall{{
 		Name: "Update",
 		ID:   "tool_update_1",
 		Input: json.RawMessage(
-			`{"file_path":"test.txt","old_string":"Hello World","new_string":"Hello World\n我是大帅比"}`,
+			`{"file_path":"test.txt","old_string":"Hello World","new_string":"Hello World\nI am Dashuaibi"}`,
 		),
 	}})
 	if out != "" {
@@ -329,16 +329,16 @@ func TestSanitizeAssistantText_StripsProceduralTextWhenToolCallExists(t *testing
 }
 
 func TestSanitizeAssistantText_KeepsSubstantiveTextWithToolCall(t *testing.T) {
-	raw := "我先检查配置文件，然后修复代理设置。\n\n代理认证字段的格式有误，我会继续修正。"
+	raw := "I will check the configuration file first, then fix the proxy settings.\n\nThe format of the proxy authentication field is incorrect, I will continue to fix it."
 	out := sanitizeAssistantText(raw, []ParsedToolCall{{
 		Name:  "Read",
 		ID:    "tool_read_1",
 		Input: json.RawMessage(`{"file_path":"config.json"}`),
 	}})
-	if !strings.Contains(out, "代理认证字段的格式有误") {
+	if !strings.Contains(out, "The format of the proxy authentication field is incorrect") {
 		t.Fatalf("sanitizeAssistantText() = %q, want substantive summary kept", out)
 	}
-	if strings.Contains(out, "我先检查配置文件") {
+	if strings.Contains(out, "I will check the configuration file first") {
 		t.Fatalf("sanitizeAssistantText() should drop procedural lead-in, got %q", out)
 	}
 }
@@ -523,7 +523,7 @@ func TestBuildRequest_IncludesWorkdirToolPrompt(t *testing.T) {
 			},
 		},
 		Messages: []prompt.Message{
-			{Role: "user", Content: prompt.MessageContent{Text: "这个项目是干什么的"}},
+			{Role: "user", Content: prompt.MessageContent{Text: "what is this project for"}},
 		},
 	}
 
@@ -558,7 +558,7 @@ func TestBuildRequest_NoToolsPromptDisablesToolCalls(t *testing.T) {
 			},
 		},
 		Messages: []prompt.Message{
-			{Role: "user", Content: prompt.MessageContent{Text: "总结刚才的工具结果"}},
+			{Role: "user", Content: prompt.MessageContent{Text: "Summarize the tool results just now"}},
 		},
 	}
 

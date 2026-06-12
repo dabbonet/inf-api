@@ -19,10 +19,10 @@ func TestStreamMessageDelta(t *testing.T) {
 		current  string
 		want     string
 	}{
-		{name: "initial", previous: "", current: "你好", want: "你好"},
-		{name: "append", previous: "你", current: "你好！", want: "好！"},
-		{name: "rewrite prefix", previous: "你！rok，", current: "你好！我是 Grok，xAI AI 助手。", want: "好！我是 Grok，xAI AI 助手。"},
-		{name: "shrink", previous: "你好世界", current: "你好", want: ""},
+		{name: "initial", previous: "", current: "hello", want: "hello"},
+		{name: "append", previous: "you", current: "hello！", want: "Good!"},
+		{name: "rewrite prefix", previous: "you！rok，", current: "hello! I'm Grok, the xAI AI assistant.", want: "Good! I'm Grok, xAI AI assistant."},
+		{name: "shrink", previous: "hello world", current: "hello", want: ""},
 	}
 
 	for _, tt := range tests {
@@ -51,9 +51,9 @@ func TestConsoleDeltaText_OnlyAcceptsDeltaEvents(t *testing.T) {
 func TestConsoleInputFromMessages_UsesOutputTextForAssistantHistory(t *testing.T) {
 	items, instructions := consoleInputFromMessages([]ChatMessage{
 		{Role: "system", Content: "be concise"},
-		{Role: "user", Content: "你是什么模型"},
-		{Role: "assistant", Content: "我是 Grok。"},
-		{Role: "user", Content: "我可以让你做什么"},
+		{Role: "user", Content: "youwhat is model"},
+		{Role: "assistant", Content: "I am Grok."},
+		{Role: "user", Content: "I Okay let you do what"},
 	})
 	if instructions != "be concise" {
 		t.Fatalf("instructions=%q want be concise", instructions)
@@ -129,7 +129,7 @@ func TestConsolePayload_DefaultsWebSearchTool(t *testing.T) {
 		Model: "grok-4.3",
 		Messages: []ChatMessage{{
 			Role:    "user",
-			Content: "今天有什么 AI 新闻",
+			Content: "Any AI news today",
 		}},
 	}
 
@@ -158,7 +158,7 @@ func TestConsolePayload_ConvertsOpenAIFunctionTools(t *testing.T) {
 		Model: "grok-4.3",
 		Messages: []ChatMessage{{
 			Role:    "user",
-			Content: "上海天气",
+			Content: "Shanghai weather",
 		}},
 		Tools: []ToolDef{{
 			Type: "function",
@@ -529,21 +529,21 @@ func TestStreamChat_PrefersModelResponseOverNoisyTokens(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	body := strings.NewReader(
-		`{"result":{"response":{"token":"你！rok，"}}}` +
-			`{"result":{"response":{"modelResponse":{"message":"你好！我是 Grok，xAI AI 助手。"}}}}` +
-			`{"result":{"response":{"modelResponse":{"message":"你好！我是 Grok，xAI AI 助手，不是之前提到的那个。"}}}}`,
+		`{"result":{"response":{"token":"you！rok，"}}}` +
+			`{"result":{"response":{"modelResponse":{"message":"hello! I'm Grok, the xAI AI assistant."}}}}` +
+			`{"result":{"response":{"modelResponse":{"message":"hello! I'm Grok, the xAI AI assistant, not the one mentioned before."}}}}`,
 	)
 
-	h.streamChat(rec, &ChatCompletionsRequest{Messages: []ChatMessage{{Role: "user", Content: "你好"}}}, "grok-4.20-0309", ModelSpec{ID: "grok-4.20-0309"}, "", "", false, nil, nil, body, nil)
+	h.streamChat(rec, &ChatCompletionsRequest{Messages: []ChatMessage{{Role: "user", Content: "hello"}}}, "grok-4.20-0309", ModelSpec{ID: "grok-4.20-0309"}, "", "", false, nil, nil, body, nil)
 	combined := strings.Join(extractStreamTextContents(t, rec.Body.String()), "")
-	if strings.Contains(combined, "你！rok，") {
+	if strings.Contains(combined, "you！rok，") {
 		t.Fatalf("unexpected noisy token leak, combined=%q raw=%q", combined, rec.Body.String())
 	}
-	if !strings.Contains(combined, "你好！我是 Grok，xAI AI 助手，不是之前提到的那个。") {
+	if !strings.Contains(combined, "hello! I'm Grok, the xAI AI assistant, not the one mentioned before.") {
 		t.Fatalf("expected final modelResponse text, combined=%q raw=%q", combined, rec.Body.String())
 	}
 	finalContent := extractStreamFinalMessageContent(t, rec.Body.String())
-	if finalContent != "你好！我是 Grok，xAI AI 助手，不是之前提到的那个。" {
+	if finalContent != "hello! I'm Grok, the xAI AI assistant, not the one mentioned before." {
 		t.Fatalf("expected final snapshot message, got=%q raw=%q", finalContent, rec.Body.String())
 	}
 }
@@ -553,17 +553,17 @@ func TestStreamChat_FallsBackToTokenWhenModelResponseMissing(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	body := strings.NewReader(
-		`{"result":{"response":{"token":"你好"}}}` +
-			`{"result":{"response":{"token":"！我是 Grok。"}}}`,
+		`{"result":{"response":{"token":"hello"}}}` +
+			`{"result":{"response":{"token":"！I am Grok."}}}`,
 	)
 
-	h.streamChat(rec, &ChatCompletionsRequest{Messages: []ChatMessage{{Role: "user", Content: "你好"}}}, "grok-4.20-0309", ModelSpec{ID: "grok-4.20-0309"}, "", "", false, nil, nil, body, nil)
+	h.streamChat(rec, &ChatCompletionsRequest{Messages: []ChatMessage{{Role: "user", Content: "hello"}}}, "grok-4.20-0309", ModelSpec{ID: "grok-4.20-0309"}, "", "", false, nil, nil, body, nil)
 	combined := strings.Join(extractStreamTextContents(t, rec.Body.String()), "")
-	if !strings.Contains(combined, "你好！我是 Grok。") {
+	if !strings.Contains(combined, "hello！I am Grok.") {
 		t.Fatalf("expected token fallback text, combined=%q raw=%q", combined, rec.Body.String())
 	}
 	finalContent := extractStreamFinalMessageContent(t, rec.Body.String())
-	if finalContent != "你好！我是 Grok。" {
+	if finalContent != "hello！I am Grok." {
 		t.Fatalf("expected token fallback final snapshot, got=%q raw=%q", finalContent, rec.Body.String())
 	}
 }

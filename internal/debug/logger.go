@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Logger 调试日志记录器
+// Logger debug logger
 type Logger struct {
 	enabled    bool
 	sseEnabled bool
@@ -22,7 +22,7 @@ type Logger struct {
 	startTime  time.Time
 }
 
-// New 创建新的调试日志记录器
+// New creates a new debug logger
 func New(enabled bool, sseEnabled bool) *Logger {
 	if !enabled {
 		return &Logger{enabled: false}
@@ -48,7 +48,7 @@ func New(enabled bool, sseEnabled bool) *Logger {
 	}
 }
 
-// CleanupAllLogs 清空所有调试日志（启动时调用）
+// CleanupAllLogs clears all debug logs (called at startup)
 func CleanupAllLogs() error {
 	if err := os.RemoveAll("debug-logs"); err != nil {
 		return err
@@ -56,7 +56,7 @@ func CleanupAllLogs() error {
 	return os.MkdirAll("debug-logs", 0755)
 }
 
-// Dir 返回日志目录
+// Dir returns log directory
 func (l *Logger) Dir() string {
 	if !l.enabled {
 		return ""
@@ -64,7 +64,7 @@ func (l *Logger) Dir() string {
 	return l.dir
 }
 
-// LogIncomingRequest 记录 1. 进入的 Claude API 请求
+// LogIncomingRequest records 1. Incoming Claude API request
 func (l *Logger) LogIncomingRequest(req interface{}) {
 	if !l.enabled {
 		return
@@ -72,7 +72,7 @@ func (l *Logger) LogIncomingRequest(req interface{}) {
 	l.writeJSON("1_claude_request.json", req)
 }
 
-// LogEarlyExit 记录提前返回的原因
+// LogEarlyExit records the reason for early return
 func (l *Logger) LogEarlyExit(reason string, details map[string]interface{}) {
 	if !l.enabled {
 		return
@@ -87,7 +87,7 @@ func (l *Logger) LogEarlyExit(reason string, details map[string]interface{}) {
 	l.writeJSON("1_early_exit.json", payload)
 }
 
-// LogConvertedPrompt 记录 2. 转换后的 prompt
+// LogConvertedPrompt record 2. Converted prompt
 func (l *Logger) LogConvertedPrompt(prompt string) {
 	if !l.enabled {
 		return
@@ -95,7 +95,7 @@ func (l *Logger) LogConvertedPrompt(prompt string) {
 	l.writeFile("2_converted_prompt.md", prompt)
 }
 
-// LogUpstreamRequest 记录 3. 发送给上游的请求
+// LogUpstreamRequest record 3. Request sent to upstream
 func (l *Logger) LogUpstreamRequest(url string, headers map[string]string, body interface{}) {
 	if !l.enabled {
 		return
@@ -109,7 +109,7 @@ func (l *Logger) LogUpstreamRequest(url string, headers map[string]string, body 
 	l.writeJSON("3_upstream_request.json", data)
 }
 
-// LogUpstreamHTTPError 记录上游 HTTP 错误（请求失败或返回非 200）
+// LogUpstreamHTTPError logs upstream HTTP errors (request failed or returned non-200)
 func (l *Logger) LogUpstreamHTTPError(url string, status int, body string, err error) {
 	if !l.enabled {
 		return
@@ -126,7 +126,7 @@ func (l *Logger) LogUpstreamHTTPError(url string, status int, body string, err e
 	l.writeJSON("3_upstream_http_error.json", payload)
 }
 
-// LogUpstreamSSE 记录 4. 上游返回的原始 SSE（追加写入）
+// LogUpstreamSSE Logging 4. Raw SSE returned by upstream (append write)
 func (l *Logger) LogUpstreamSSE(eventType string, data string) {
 	if !l.enabled || !l.sseEnabled {
 		return
@@ -147,7 +147,7 @@ func (l *Logger) LogUpstreamSSE(eventType string, data string) {
 	fmt.Fprintf(l.rawFile, "[%dms] %s: %s\n", elapsed, eventType, data)
 }
 
-// LogOutputSSE 记录 5. 转换给客户端的 SSE（追加写入）
+// LogOutputSSE logging 5. SSE converted to client (append writing)
 func (l *Logger) LogOutputSSE(event string, data string) {
 	if !l.enabled || !l.sseEnabled {
 		return
@@ -168,7 +168,7 @@ func (l *Logger) LogOutputSSE(event string, data string) {
 	fmt.Fprintf(l.outFile, "[%dms] event: %s\ndata: %s\n\n", elapsed, event, data)
 }
 
-// LogInputTokenBreakdown 记录输入 token 分解
+// LogInputTokenBreakdown records input token decomposition
 func (l *Logger) LogInputTokenBreakdown(profile string, basePromptTokens, systemContextTokens, historyTokens, toolsTokens, total int) {
 	if !l.enabled {
 		return
@@ -185,7 +185,7 @@ func (l *Logger) LogInputTokenBreakdown(profile string, basePromptTokens, system
 	l.writeJSON("6_input_token_breakdown.json", payload)
 }
 
-// LogSummary 记录请求摘要
+// LogSummary Log request summary
 func (l *Logger) LogSummary(inputTokens, outputTokens int, duration time.Duration, stopReason string) {
 	if !l.enabled {
 		return
@@ -201,7 +201,7 @@ func (l *Logger) LogSummary(inputTokens, outputTokens int, duration time.Duratio
 	l.writeJSON("6_summary.json", summary)
 }
 
-// Close 关闭日志文件
+// Close Close the log file
 func (l *Logger) Close() {
 	if !l.enabled {
 		return

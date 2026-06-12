@@ -12,10 +12,10 @@ func TestIsCurrentWorkdirRequest(t *testing.T) {
 		text string
 		want bool
 	}{
-		{name: "zh current directory", text: "当前运行的目录", want: true},
-		{name: "en workspace path", text: "workspace 路径", want: true},
+		{name: "zh current directory", text: "current running directory", want: true},
+		{name: "en workspace path", text: "workspace path", want: true},
 		{name: "pwd", text: "pwd", want: true},
-		{name: "directory tree", text: "当前目录结构", want: false},
+		{name: "directory tree", text: "Current directory structure", want: false},
 	}
 
 	for _, tt := range tests {

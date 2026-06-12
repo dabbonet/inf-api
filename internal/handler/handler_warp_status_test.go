@@ -179,7 +179,7 @@ func TestHandleMessages_WarpCodingRequestUsesCloudAgentAccount(t *testing.T) {
 
 	payload := map[string]any{
 		"model":    "auto-open",
-		"messages": []map[string]any{{"role": "user", "content": "帮我用python写一个计算器"}},
+		"messages": []map[string]any{{"role": "user", "content": "Help me write a calculator in python"}},
 		"system":   []any{},
 		"stream":   false,
 	}
@@ -261,7 +261,7 @@ func TestHandleMessages_WarpChatCodingRequestUsesFreeTextOnly(t *testing.T) {
 
 	payload := map[string]any{
 		"model":    "warp-chat",
-		"messages": []map[string]any{{"role": "user", "content": "帮我用python写一个计算器"}},
+		"messages": []map[string]any{{"role": "user", "content": "Help me write a calculator in python"}},
 		"system":   []any{},
 		"tools":    []map[string]any{{"name": "Bash"}},
 		"stream":   false,

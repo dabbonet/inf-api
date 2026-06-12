@@ -13,7 +13,7 @@ import (
 // Legacy prompt-building implementations (BuildPromptV2*, formatting, summarization, etc.)
 // have been removed in favor of AIClient-only routing.
 
-// ImageSource 表示图片来源
+// ImageSource represents the image source
 type ImageSource struct {
 	Type      string `json:"type"`
 	MediaType string `json:"media_type"`
@@ -21,25 +21,25 @@ type ImageSource struct {
 	URL       string `json:"url,omitempty"`
 }
 
-// CacheControl 缓存控制
+// CacheControl cache control
 type CacheControl struct {
 	Type string `json:"type"`
 }
 
-// ContentBlock 表示消息内容中的一个块
+// ContentBlock represents a block in the message content
 type ContentBlock struct {
 	Type   string       `json:"type"`
 	Text   string       `json:"text,omitempty"`
 	Source *ImageSource `json:"source,omitempty"`
 	URL    string       `json:"url,omitempty"`
 
-	// tool_use 字段
+	// tool_use field
 	ID       string      `json:"id,omitempty"`
 	Name     string      `json:"name,omitempty"`
 	Input    interface{} `json:"input,omitempty"`
 	Thinking string      `json:"thinking,omitempty"`
 
-	// tool_result 字段
+	// tool_result field
 	ToolUseID    string        `json:"tool_use_id,omitempty"`
 	Content      interface{}   `json:"content,omitempty"`
 	IsError      bool          `json:"is_error,omitempty"`
@@ -47,7 +47,7 @@ type ContentBlock struct {
 	CacheControl *CacheControl `json:"cache_control,omitempty"`
 }
 
-// MessageContent 联合类型：string 或 ContentBlock[]
+// MessageContent union type: string or ContentBlock[]
 type MessageContent struct {
 	Text   string
 	Blocks []ContentBlock
@@ -112,7 +112,7 @@ func (m *Message) ExtractText() string {
 	return m.Content.ExtractText()
 }
 
-// Message 消息结构
+// Message message structure
 type Message struct {
 	Role    string         `json:"role"`
 	Content MessageContent `json:"content"`
@@ -215,7 +215,7 @@ func toolResultContentFromMessageContent(content MessageContent) string {
 	return content.ExtractText()
 }
 
-// SystemItem 系统提示词项
+// SystemItem system prompt item
 type SystemItem struct {
 	Type         string        `json:"type"`
 	Text         string        `json:"text"`

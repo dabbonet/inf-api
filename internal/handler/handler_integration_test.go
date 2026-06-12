@@ -116,14 +116,14 @@ func TestHandleMessages_CurrentWorkdir_LocalAnthropicJSON(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]any{
 		"model":    "claude-3-5-sonnet",
-		"messages": []map[string]any{{"role": "user", "content": "当前运行的目录"}},
+		"messages": []map[string]any{{"role": "user", "content": "current running directory"}},
 		"system":   []any{},
 		"stream":   false,
 	})
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "http://x/orchids/v1/messages", bytes.NewReader(body))
-	req.Header.Set("X-Workdir", `C:\Users\zhangdailin\Desktop\新建文件夹`)
+	req.Header.Set("X-Workdir", `C:\Users\zhangdailin\Desktop\New folder`)
 	h.HandleMessages(rec, req)
 
 	if rec.Code != 200 {
@@ -136,7 +136,7 @@ func TestHandleMessages_CurrentWorkdir_LocalAnthropicJSON(t *testing.T) {
 	if !strings.Contains(out, `"type":"message"`) {
 		t.Fatalf("expected anthropic message payload, got: %s", out)
 	}
-	if !strings.Contains(out, `C:\\Users\\zhangdailin\\Desktop\\新建文件夹`) {
+	if !strings.Contains(out, `C:\\Users\\zhangdailin\\Desktop\\New folder`) {
 		t.Fatalf("expected exact workdir in response, got: %s", out)
 	}
 }
@@ -155,7 +155,7 @@ func TestHandleMessages_CurrentWorkdir_LocalOpenAIStream(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "http://x/puter/v1/chat/completions", bytes.NewReader(body))
-	req.Header.Set("X-Workdir", `C:\Users\zhangdailin\Desktop\新建文件夹 (2)`)
+	req.Header.Set("X-Workdir", `C:\Users\zhangdailin\Desktop\New folder (2)`)
 	h.HandleMessages(rec, req)
 
 	if rec.Code != 200 {
@@ -168,7 +168,7 @@ func TestHandleMessages_CurrentWorkdir_LocalOpenAIStream(t *testing.T) {
 	if !strings.Contains(out, "chat.completion.chunk") {
 		t.Fatalf("expected openai stream chunk, got: %s", out)
 	}
-	if !strings.Contains(out, `C:\\Users\\zhangdailin\\Desktop\\新建文件夹 (2)`) {
+	if !strings.Contains(out, `C:\\Users\\zhangdailin\\Desktop\\New folder (2)`) {
 		t.Fatalf("expected exact workdir in stream response, got: %s", out)
 	}
 	if !strings.Contains(out, "[DONE]") {
@@ -337,7 +337,7 @@ func TestHandleMessages_Puter_SanitizesClaudeCodeContext(t *testing.T) {
 				"role": "user",
 				"content": []map[string]any{
 					{"type": "text", "text": "<system-reminder>\n# currentDate\nToday's date is 2026-03-27.\n</system-reminder>"},
-					{"type": "text", "text": "帮我添加 我是大帅比"},
+					{"type": "text", "text": "Help me add I am very handsome"},
 				},
 			},
 		},
@@ -358,7 +358,7 @@ func TestHandleMessages_Puter_SanitizesClaudeCodeContext(t *testing.T) {
 	if len(up.capturedReqs) != 1 {
 		t.Fatalf("capturedReqs len=%d want 1", len(up.capturedReqs))
 	}
-	if got := up.capturedReqs[0].Messages[0].ExtractText(); got != "帮我添加 我是大帅比" {
+	if got := up.capturedReqs[0].Messages[0].ExtractText(); got != "Help me add I am very handsome" {
 		t.Fatalf("sanitized user text = %q", got)
 	}
 	for _, item := range up.capturedReqs[0].System {
@@ -757,8 +757,8 @@ func TestHandleMessages_SuggestionMode_LocalResponse(t *testing.T) {
 		payload := map[string]any{
 			"model": "claude-3-5-sonnet",
 			"messages": []map[string]any{
-				{"role": "user", "content": "继续处理这个问题"},
-				{"role": "assistant", "content": "已经定位完了。如果你要，我下一步可以直接帮你提交修复。"},
+				{"role": "user", "content": "Continue to process this issue"},
+				{"role": "assistant", "content": "Locating is done. If you want, I can submit the fix for you next."},
 				{"role": "user", "content": "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]"},
 			},
 			"system": []any{},
@@ -778,7 +778,7 @@ func TestHandleMessages_SuggestionMode_LocalResponse(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), "\"type\":\"message\"") {
 			t.Fatalf("expected message json, got: %s", rec.Body.String())
 		}
-		if !strings.Contains(rec.Body.String(), "可以") {
+		if !strings.Contains(rec.Body.String(), "Okay") {
 			t.Fatalf("expected local suggestion in response, got: %s", rec.Body.String())
 		}
 	}
@@ -794,7 +794,7 @@ func TestHandleMessages_SuggestionMode_LocalResponse(t *testing.T) {
 		if !strings.Contains(out, "event: message_start") || !strings.Contains(out, "event: message_stop") {
 			t.Fatalf("expected sse message start/stop, got: %s", out)
 		}
-		if !strings.Contains(out, "可以") {
+		if !strings.Contains(out, "Okay") {
 			t.Fatalf("expected local suggestion in sse output, got: %s", out)
 		}
 	}
@@ -808,7 +808,7 @@ func TestHandleMessages_TitleGeneration_LocalResponse(t *testing.T) {
 	payload := map[string]any{
 		"model": "claude-haiku-4-5-20251001",
 		"messages": []map[string]any{
-			{"role": "user", "content": "添加科学计数法"},
+			{"role": "user", "content": "Add scientific notation"},
 		},
 		"system": []map[string]any{
 			{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
@@ -833,7 +833,7 @@ func TestHandleMessages_TitleGeneration_LocalResponse(t *testing.T) {
 	if !strings.Contains(out, "event: message_start") || !strings.Contains(out, "event: message_stop") {
 		t.Fatalf("expected local SSE message start/stop, got: %s", out)
 	}
-	if !strings.Contains(out, "\"text\":\"{\\\"title\\\":\\\"添加科学计数法\\\"}\"") {
+	if !strings.Contains(out, "\"text\":\"{\\\"title\\\":\\\"Add scientific notation\\\"}\"") {
 		t.Fatalf("expected generated title JSON in local response, got: %s", out)
 	}
 }

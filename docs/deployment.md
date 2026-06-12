@@ -1,28 +1,28 @@
-# 部署指南
+# Deployment Guide
 
-本文档以当前代码实现为准，适用于 `orchids`、`warp`、`puter`、`grok` 四类通道。
+This document is based on the current code implementation and applies to the four channels: `orchids`, `warp`, `puter`, and `grok`.
 
-## 1. 前置条件
+## 1. Prerequisites
 
 - Go `1.24+`
 - Redis `7+`
-- 已准备好 `config.json`
+- Prepared `config.json`
 
-最小配置示例见 [README.md](/D:/Code/Orchids-2api/README.md) 与 [configuration.md](/D:/Code/Orchids-2api/docs/configuration.md)。
+For minimum configuration examples, see [README.md](/D:/Code/Orchids-2api/README.md) and [configuration.md](/D:/Code/Orchids-2api/docs/configuration.md).
 
-注意：
+Note:
 
-- 启动后若 Redis 中已有 `settings:config`，会覆盖文件配置
-- 未设置 `admin_pass` 时，程序会自动生成随机密码并写入启动日志
+- After startup, if `settings:config` already exists in Redis, it will override the file configuration.
+- When `admin_pass` is not set, the program will automatically generate a random password and write it to the startup log.
 
-## 2. 本地开发启动
+## 2. Local Development Startup
 
 ```bash
 go mod download
 go run ./cmd/server -config ./config.json
 ```
 
-## 3. 生产编译与启动
+## 3. Production Compilation and Startup
 
 ### 3.1 Linux / macOS
 
@@ -31,7 +31,7 @@ go build -o orchids-server ./cmd/server
 ./orchids-server -config ./config.json
 ```
 
-后台运行：
+Run in background:
 
 ```bash
 nohup ./orchids-server -config ./config.json > server.log 2>&1 &
@@ -44,13 +44,13 @@ go build -o server.exe ./cmd/server
 .\server.exe -config .\config.json
 ```
 
-后台运行：
+Run in background:
 
 ```powershell
 Start-Process -FilePath .\server.exe -ArgumentList '-config','.\config.json'
 ```
 
-## 4. 重启流程
+## 4. Restart Process
 
 ### 4.1 Linux / macOS
 
@@ -68,9 +68,9 @@ go build -o server.exe ./cmd/server
 Start-Process -FilePath .\server.exe -ArgumentList '-config','.\config.json'
 ```
 
-## 5. 启动后验证
+## 5. Post-startup Verification
 
-基础检查：
+Basic checks:
 
 ```bash
 curl -s http://127.0.0.1:3002/health
@@ -78,63 +78,63 @@ curl -s http://127.0.0.1:3002/v1/models
 curl -s http://127.0.0.1:3002/metrics
 ```
 
-端口检查：
+Port check:
 
 ```bash
 lsof -iTCP:3002 -sTCP:LISTEN -n -P
 ```
 
-Windows：
+Windows:
 
 ```powershell
 Get-NetTCPConnection -LocalPort 3002 -ErrorAction SilentlyContinue
 ```
 
-模型同步验证：
+Model sync verification:
 
-- 登录管理端后调用 `POST /api/models/refresh`
-- 当前刷新是“按来源同步”：新增即写入，来源消失即删除，不再逐个模型测活
+- After logging into the admin panel, call `POST /api/models/refresh`
+- The current refresh is "sync by source": newly added are written, vanished from source are deleted, no more per-model liveness testing.
 
-建议回归：
+Recommended regression:
 
 ```bash
 go test ./...
 go test ./internal/handler -run "Puter_"
 ```
 
-## 6. 可观测性与排障
+## 6. Observability and Troubleshooting
 
-调试入口：
+Debugging endpoints:
 
 - `GET /health`
 - `GET /metrics`
-- `GET /debug/pprof/`，仅 `debug_enabled=true` 且管理认证通过时可访问
+- `GET /debug/pprof/`, accessible only when `debug_enabled=true` and admin authentication is passed
 
-Linux / macOS 日志：
+Linux / macOS logs:
 
 ```bash
 tail -n 200 server.log
 ```
 
-Windows 日志通常取决于你的启动方式；若前台启动，直接查看控制台输出即可。
+Windows logs usually depend on how you start it; if started in the foreground, just check the console output.
 
-重点关注：
+Pay special attention to:
 
 - `model not found`
 - `no available grok token`
 - `Bad Gateway`
 - `stream parse error`
 
-## 7. 升级建议
+## 7. Upgrade Recommendations
 
-每次升级后至少执行：
+After each upgrade, execute at least:
 
 ```bash
 go test ./...
 go build -o orchids-server ./cmd/server
 ```
 
-若当前版本重点涉及 Puter 或模型刷新逻辑，建议额外执行：
+If the current version mainly involves Puter or model refresh logic, it is recommended to additionally execute:
 
 ```bash
 go test ./internal/handler -run "Puter_"

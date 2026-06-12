@@ -4,11 +4,11 @@ import (
 	"sync"
 )
 
-// ShardCount 定义分片数量
+// ShardCount defines the number of shards
 const ShardCount = 16
 
-// ShardedMap 是一个分片的并发安全 Map
-// 通过将数据分散到多个分片来减少锁竞争
+// ShardedMap is a sharded concurrent-safe Map
+// Reduce lock contention by spreading data across multiple shards
 type ShardedMap[V any] struct {
 	shards [ShardCount]struct {
 		mu   sync.RWMutex
@@ -16,7 +16,7 @@ type ShardedMap[V any] struct {
 	}
 }
 
-// NewShardedMap 创建新的分片 Map
+// NewShardedMap creates a new sharded Map
 func NewShardedMap[V any]() *ShardedMap[V] {
 	m := &ShardedMap[V]{}
 	for i := 0; i < ShardCount; i++ {
@@ -25,7 +25,7 @@ func NewShardedMap[V any]() *ShardedMap[V] {
 	return m
 }
 
-// fnv1aHash 使用 FNV-1a 哈希算法计算字符串的哈希值
+// fnv1aHash uses the FNV-1a hashing algorithm to calculate the hash value of a string
 func fnv1aHash(key string) uint32 {
 	h := uint32(2166136261)
 	for i := 0; i < len(key); i++ {
@@ -35,12 +35,12 @@ func fnv1aHash(key string) uint32 {
 	return h
 }
 
-// getShard 根据 key 获取对应分片索引
+// getShard gets the corresponding shard index based on key
 func (m *ShardedMap[V]) getShard(key string) int {
 	return int(fnv1aHash(key) % ShardCount)
 }
 
-// Get 获取值
+// Get Get value
 func (m *ShardedMap[V]) Get(key string) (V, bool) {
 	idx := m.getShard(key)
 	m.shards[idx].mu.RLock()
@@ -49,7 +49,7 @@ func (m *ShardedMap[V]) Get(key string) (V, bool) {
 	return val, ok
 }
 
-// Set 设置值
+// Set set value
 func (m *ShardedMap[V]) Set(key string, value V) {
 	idx := m.getShard(key)
 	m.shards[idx].mu.Lock()
@@ -57,7 +57,7 @@ func (m *ShardedMap[V]) Set(key string, value V) {
 	m.shards[idx].mu.Unlock()
 }
 
-// Delete 删除值
+// Delete delete value
 func (m *ShardedMap[V]) Delete(key string) {
 	idx := m.getShard(key)
 	m.shards[idx].mu.Lock()
@@ -65,8 +65,8 @@ func (m *ShardedMap[V]) Delete(key string) {
 	m.shards[idx].mu.Unlock()
 }
 
-// Range 遍历所有分片
-// 如果 fn 返回 false，则停止遍历
+// Range traverses all shards
+// If fn returns false, stop traversing
 func (m *ShardedMap[V]) Range(fn func(key string, value V) bool) {
 	for i := 0; i < ShardCount; i++ {
 		m.shards[i].mu.RLock()

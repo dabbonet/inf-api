@@ -104,20 +104,20 @@ func TestResolveAspectRatio(t *testing.T) {
 func TestExtractLastUserText(t *testing.T) {
 	messages := []ChatMessage{
 		{Role: "system", Content: "sys"},
-		{Role: "user", Content: "第一轮问题"},
-		{Role: "assistant", Content: "第一轮回答"},
+		{Role: "user", Content: "First round question"},
+		{Role: "assistant", Content: "First round answer"},
 		{
 			Role: "user",
 			Content: []interface{}{
-				map[string]interface{}{"type": "text", "text": "不要图片"},
-				map[string]interface{}{"type": "text", "text": "只回答文字"},
+				map[string]interface{}{"type": "text", "text": "No pictures"},
+				map[string]interface{}{"type": "text", "text": "Only text answer"},
 				map[string]interface{}{"type": "image_url", "image_url": map[string]interface{}{"url": "https://a/b.png"}},
 			},
 		},
 	}
 
 	got := extractLastUserText(messages)
-	want := "不要图片\n只回答文字"
+	want := "No pictures\nOnly text answer"
 	if got != want {
 		t.Fatalf("extractLastUserText()=%q want=%q", got, want)
 	}
@@ -402,18 +402,18 @@ func TestParseRateLimitReset_RFC3339(t *testing.T) {
 
 func TestStripToolAndRenderMarkup_ExtractsToolCardText(t *testing.T) {
 	in := strings.Join([]string{
-		`<xai:tool_usage_card><xai:tool_name>web_search</xai:tool_name><xai:tool_args>{"query":"特朗普头像"}</xai:tool_args></xai:tool_usage_card>`,
+		`<xai:tool_usage_card><xai:tool_name>web_search</xai:tool_name><xai:tool_args>{"query":"Trump avatar"}</xai:tool_args></xai:tool_usage_card>`,
 		`<grok:render card_id="x">ignore</grok:render>`,
-		`结论`,
+		`Conclusion`,
 	}, "\n")
 	out := stripToolAndRenderMarkup(in)
-	if !strings.Contains(out, "[WebSearch] 特朗普头像") {
+	if !strings.Contains(out, "[WebSearch] Trump avatar") {
 		t.Fatalf("tool card text missing, got=%q", out)
 	}
 	if strings.Contains(strings.ToLower(out), "grok:render") {
 		t.Fatalf("render tag should be removed, got=%q", out)
 	}
-	if !strings.Contains(out, "结论") {
+	if !strings.Contains(out, "Conclusion") {
 		t.Fatalf("final content missing, got=%q", out)
 	}
 }
@@ -427,7 +427,7 @@ func TestExtractToolUsageCardText_PrefixesRolloutID(t *testing.T) {
 }
 
 func BenchmarkExtractToolUsageCardText(b *testing.B) {
-	raw := `<xai:tool_usage_card><xai:tool_name>web_search</xai:tool_name><xai:tool_args>{"query":"特朗普头像","q":"特朗普头像"}</xai:tool_args></xai:tool_usage_card>`
+	raw := `<xai:tool_usage_card><xai:tool_name>web_search</xai:tool_name><xai:tool_args>{"query":"Trump avatar","q":"Trump avatar"}</xai:tool_args></xai:tool_usage_card>`
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = extractToolUsageCardText(raw)
@@ -436,10 +436,10 @@ func BenchmarkExtractToolUsageCardText(b *testing.B) {
 
 func BenchmarkStripToolAndRenderMarkup(b *testing.B) {
 	in := strings.Join([]string{
-		`<xai:tool_usage_card><xai:tool_name>web_search</xai:tool_name><xai:tool_args>{"query":"特朗普头像"}</xai:tool_args></xai:tool_usage_card>`,
-		`<xai:tool_usage_card><xai:tool_name>chatroom_send</xai:tool_name><xai:tool_args><![CDATA[{"message":"分析结果"}]]></xai:tool_args></xai:tool_usage_card>`,
+		`<xai:tool_usage_card><xai:tool_name>web_search</xai:tool_name><xai:tool_args>{"query":"Trump avatar"}</xai:tool_args></xai:tool_usage_card>`,
+		`<xai:tool_usage_card><xai:tool_name>chatroom_send</xai:tool_name><xai:tool_args><![CDATA[{"message":"Analysis result"}]]></xai:tool_args></xai:tool_usage_card>`,
 		`<grok:render card_id="x">ignore</grok:render>`,
-		`结论`,
+		`Conclusion`,
 	}, "\n")
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {

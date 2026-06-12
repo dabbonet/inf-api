@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// AsyncCleaner 管理后台清理任务
+// AsyncCleaner manages background cleaning tasks
 type AsyncCleaner struct {
 	interval time.Duration
 	stopCh   chan struct{}
@@ -13,7 +13,7 @@ type AsyncCleaner struct {
 	stopOnce sync.Once
 }
 
-// NewAsyncCleaner 创建异步清理器
+// NewAsyncCleaner creates an asynchronous cleaner
 func NewAsyncCleaner(interval time.Duration) *AsyncCleaner {
 	return &AsyncCleaner{
 		interval: interval,
@@ -21,7 +21,7 @@ func NewAsyncCleaner(interval time.Duration) *AsyncCleaner {
 	}
 }
 
-// Start 启动后台清理
+// Start starts background cleanup
 func (c *AsyncCleaner) Start(cleanFn func()) {
 	c.wg.Add(1)
 	go func() {
@@ -41,11 +41,11 @@ func (c *AsyncCleaner) Start(cleanFn func()) {
 				default:
 				}
 
-				// 使用 recover 防止 cleanFn panic 导致 goroutine 退出
+				// Use recover to prevent cleanFn panic from causing goroutine to exit
 				func() {
 					defer func() {
 						if r := recover(); r != nil {
-							// 静默恢复，继续执行后续清理
+							// Silently restore and continue subsequent cleanup
 						}
 					}()
 					cleanFn()
@@ -55,7 +55,7 @@ func (c *AsyncCleaner) Start(cleanFn func()) {
 	}()
 }
 
-// Stop 停止清理器
+// Stop Stop the cleaner
 func (c *AsyncCleaner) Stop() {
 	c.stopOnce.Do(func() {
 		close(c.stopCh)

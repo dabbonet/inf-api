@@ -6,7 +6,7 @@ let accountHealth = {};
 let pageSize = 20;
 let currentPage = 1;
 
-// DOM 缓存
+// DOM Cache
 const domCache = {
     accountsList: null,
     paginationInfo: null,
@@ -37,7 +37,7 @@ async function loadAccounts() {
     autoRefreshWarpAccounts();
   } catch (err) {
     console.error("Failed to load accounts:", err);
-    showToast("加载账号失败", "error");
+    showToast("Failed to load accounts", "error");
   }
 }
 
@@ -115,38 +115,38 @@ function subscriptionBadge(acc) {
   const type = normalizeAccountType(acc);
   const level = normalizeAccountSubscription(acc);
   if (!level) {
-    return { text: "-", bg: "rgba(100, 116, 139, 0.12)", color: "#94a3b8", tip: "暂无订阅等级" };
+    return { text: "-", bg: "rgba(100, 116, 139, 0.12)", color: "#94a3b8", tip: "No Subscription Level" };
   }
   if (type === "warp") {
     switch (level) {
       case "enterprise":
-        return { text: "Enterprise", bg: "rgba(251, 191, 36, 0.16)", color: "#fbbf24", tip: "Warp Enterprise / Unlimited 额度档" };
+        return { text: "Enterprise", bg: "rgba(251, 191, 36, 0.16)", color: "#fbbf24", tip: "Warp Enterprise / Unlimited Quota Tier" };
       case "max":
-        return { text: "Max", bg: "rgba(56, 189, 248, 0.16)", color: "#38bdf8", tip: "Warp Max 额度档" };
+        return { text: "Max", bg: "rgba(56, 189, 248, 0.16)", color: "#38bdf8", tip: "Warp Max Quota Tier" };
       case "build/business":
-        return { text: "Build/Business", bg: "rgba(167, 139, 250, 0.16)", color: "#c4b5fd", tip: "Warp 1,500 credits/月，Build 与 Business 额度相同" };
+        return { text: "Build/Business", bg: "rgba(167, 139, 250, 0.16)", color: "#c4b5fd", tip: "Warp 1,500 credits/month, Build and Business have the same quota" };
       case "free":
-        return { text: "Free", bg: "rgba(52, 211, 153, 0.14)", color: "#34d399", tip: "Warp Free 额度档" };
+        return { text: "Free", bg: "rgba(52, 211, 153, 0.14)", color: "#34d399", tip: "Warp Free Quota Tier" };
       case "unknown":
-        return { text: "Unknown", bg: "rgba(100, 116, 139, 0.12)", color: "#94a3b8", tip: "暂未识别 Warp 额度档" };
+        return { text: "Unknown", bg: "rgba(100, 116, 139, 0.12)", color: "#94a3b8", tip: "Unidentified Warp Quota Tier" };
       default:
-        return { text: level, bg: "rgba(100, 116, 139, 0.12)", color: "#cbd5e1", tip: `Warp 额度档: ${level}` };
+        return { text: level, bg: "rgba(100, 116, 139, 0.12)", color: "#cbd5e1", tip: `Warp Quota Tier: ${level}` };
     }
   }
   if (type !== "grok") {
-    return { text: level, bg: "rgba(100, 116, 139, 0.12)", color: "#cbd5e1", tip: `订阅等级: ${level}` };
+    return { text: level, bg: "rgba(100, 116, 139, 0.12)", color: "#cbd5e1", tip: `Subscription Level: ${level}` };
   }
   switch (level) {
     case "heavy":
-      return { text: "heavy", bg: "rgba(251, 191, 36, 0.16)", color: "#fbbf24", tip: "Grok Heavy 账号池" };
+      return { text: "heavy", bg: "rgba(251, 191, 36, 0.16)", color: "#fbbf24", tip: "Grok Heavy Account Pool" };
     case "super":
-      return { text: "super", bg: "rgba(56, 189, 248, 0.16)", color: "#38bdf8", tip: "Grok Super 账号池" };
+      return { text: "super", bg: "rgba(56, 189, 248, 0.16)", color: "#38bdf8", tip: "Grok Super Account Pool" };
     case "lite":
-      return { text: "lite", bg: "rgba(167, 139, 250, 0.16)", color: "#c4b5fd", tip: "Grok Lite 账号池" };
+      return { text: "lite", bg: "rgba(167, 139, 250, 0.16)", color: "#c4b5fd", tip: "Grok Lite Account Pool" };
     case "basic":
-      return { text: "basic", bg: "rgba(52, 211, 153, 0.14)", color: "#34d399", tip: "Grok Basic 账号池" };
+      return { text: "basic", bg: "rgba(52, 211, 153, 0.14)", color: "#34d399", tip: "Grok Basic Account Pool" };
     default:
-      return { text: level, bg: "rgba(100, 116, 139, 0.12)", color: "#cbd5e1", tip: `Grok 账号池: ${level}` };
+      return { text: level, bg: "rgba(100, 116, 139, 0.12)", color: "#cbd5e1", tip: `Grok Account Pool: ${level}` };
   }
 }
 
@@ -161,7 +161,7 @@ function shouldShowNSFWBadge(acc) {
 
 function buildNSFWBadgeMarkup(acc) {
   if (!shouldShowNSFWBadge(acc)) return "";
-  return `<span class="tag account-nsfw-tag" title="Grok NSFW 已开启" style="background:rgba(244, 114, 182, 0.14);color:#f472b6;border:none;">NSFW</span>`;
+  return `<span class="tag account-nsfw-tag" title="Grok NSFW Enabled" style="background:rgba(244, 114, 182, 0.14);color:#f472b6;border:none;">NSFW</span>`;
 }
 
 function applyTokenLabels(type) {
@@ -176,30 +176,30 @@ function applyTokenLabels(type) {
   }
   if (type === 'warp') {
     label.textContent = "Warp Auth";
-    input.placeholder = "每行一个 id_token.refresh_token、登录回跳 URL 或 User JSON";
+    input.placeholder = "One id_token.refresh_token, login callback URL, or User JSON per line";
     hint.textContent = accountId
-      ? "编辑时仅保存第一行；可粘贴 warp://auth/... 回跳 URL / User JSON / id_token.refresh_token"
-      : "支持批量添加 Warp。可粘贴 warp://auth/... 回跳 URL / User JSON / id_token.refresh_token";
+      ? "Only the first line is saved during editing; you can paste warp://auth/... callback URL / User JSON / id_token.refresh_token"
+      : "Supports bulk addition for Warp. You can paste warp://auth/... callback URL / User JSON / id_token.refresh_token";
     input.required = true;
   } else if (type === 'grok') {
     label.textContent = "SSO Token";
-    input.placeholder = "每行一个 sso token（或包含 sso= 的 Cookie）";
+    input.placeholder = "One sso token (or Cookie containing sso=) per line";
     hint.textContent = accountId
-      ? "编辑时仅保存第一行 SSO Token"
-      : "支持批量添加 Grok。每行一个 sso token 或 Cookie 片段";
+      ? "Only the first line SSO Token is saved during editing"
+      : "Supports bulk addition for Grok. One sso token or Cookie segment per line";
   } else if (type === 'puter') {
       label.textContent = "Auth Token";
-      input.placeholder = "每行一个 Puter auth_token";
+      input.placeholder = "One Puter auth_token per line";
       hint.textContent = accountId
-        ? "Puter 编辑时仅保存第一行 auth_token。可前往 https://docs.puter.com/playground/ai-chatgpt/ 获取"
-        : "支持批量添加 Puter。每行一个 auth_token；可前往 https://docs.puter.com/playground/ai-chatgpt/ 获取";
+        ? "Only the first line auth_token is saved during Puter editing. Get it at https://docs.puter.com/playground/ai-chatgpt/"
+        : "Supports bulk addition for Puter. One auth_token per line; get it at https://docs.puter.com/playground/ai-chatgpt/";
       input.required = true;
     } else {
     label.textContent = "Cookie / __client / __session";
-    input.placeholder = "支持原始 __client、完整 Cookie Header 或 Cookie JSON";
+    input.placeholder = "Supports raw __client, full Cookie Header, or Cookie JSON";
     hint.textContent = accountId
-      ? "支持直接粘贴 clerk.orchids.app 的原始 __client；完整 Cookie 成功率更高，只有 www.orchids.app 的 __session 通常不够"
-      : "支持原始 __client、完整 Cookie Header 或 Cookie JSON；推荐同时带上 __client_uat 以提高补全成功率";
+      ? "Supports directly pasting raw __client of clerk.orchids.app; full Cookie has a higher success rate, only __session of www.orchids.app is usually not enough"
+      : "Supports raw __client, full Cookie Header, or Cookie JSON; recommend bringing __client_uat to improve completion success rate";
     input.required = true;
   }
 }
@@ -217,22 +217,22 @@ async function importWarpUserFile(file) {
   if (String(typeEl?.value || "").toLowerCase() !== "warp") return;
 
   try {
-    renderAccountImportStatus("正在上传并解析 WARP User JSON / token...", "info", [file.name]);
+    renderAccountImportStatus("Uploading and parsing WARP User JSON / token...", "info", [file.name]);
     const form = new FormData();
     form.append("file", file, file.name || "dev.warp.Warp-User");
     const res = await fetch("/api/warp/import-user-file", {
       method: "POST",
       body: form,
     });
-    if (!res.ok) throw new Error((await res.text()).trim() || "上传导入失败");
+    if (!res.ok) throw new Error((await res.text()).trim() || "Upload import failed");
     const account = await res.json();
-    renderAccountImportStatus("已解析并保存 Warp 账号", "info", [`账号 #${account.id || ""}`.trim()]);
-    showToast("已保存上传的 WARP 账号");
+    renderAccountImportStatus("Parsed and saved Warp account", "info", [`Account #${account.id || ""}`.trim()]);
+    showToast("Saved uploaded WARP account");
     closeModal();
     loadAccounts();
   } catch (err) {
-    renderAccountImportStatus("上传 User JSON / token 失败", "error", [err.message || String(err)]);
-    showToast("上传导入失败: " + (err.message || String(err)), "error");
+    renderAccountImportStatus("Failed to upload User JSON / token", "error", [err.message || String(err)]);
+    showToast("Upload import failed: " + (err.message || String(err)), "error");
   }
 }
 
@@ -449,7 +449,7 @@ async function createAccount(payload) {
 
 function summarizeAccountCreateError(err) {
   const message = String(err && err.message ? err.message : err || "").trim();
-  if (!message) return "未知错误";
+  if (!message) return "Unknown Error";
   const compact = message.replace(/\s+/g, " ");
   return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
 }
@@ -536,56 +536,56 @@ function updateAccountHealth(id, ok, msg = '') {
 function evaluateAccountStatus(acc) {
   const health = accountHealth[acc.id];
   if (health && !health.ok) {
-    return { normal: false, text: '异常', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: health.msg || '状态同步失败' };
+    return { normal: false, text: 'Error', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: health.msg || 'Status sync failed' };
   }
   if (!acc.enabled) {
-    return { normal: false, text: '禁用', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: '账号已禁用' };
+    return { normal: false, text: 'Disabled', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: 'Account disabled' };
   }
   const statusCode = normalizeSidebarStatusCode(acc.status_code);
   if (isQuotaOnlyStatus(acc)) {
     const quota = getQuotaStats(acc);
-    const limitText = quota && quota.limit > 0 ? quota.limit.toLocaleString() : '未知';
+    const limitText = quota && quota.limit > 0 ? quota.limit.toLocaleString() : 'Unknown';
     const type = normalizeAccountType(acc);
     const providerName = type === 'warp' ? 'Warp' : 'Puter';
     return {
       normal: true,
-      text: '额度不足',
+      text: 'Out of Quota',
       color: '#f59e0b',
       bg: 'rgba(245, 158, 11, 0.16)',
-      tip: providerName + ' 额度已用尽或余额不足，调度器会暂时跳过该账号 (剩余 0 / ' + limitText + ')',
+      tip: providerName + ' quota exhausted or insufficient balance, scheduler will temporarily skip this account (Remaining 0 / ' + limitText + ')',
       quotaOnly: true,
     };
   }
   if (statusCode) {
     switch (statusCode) {
       case '429':
-        return { normal: false, text: '限流', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: '请求过于频繁 (429)' };
-      case '401':
-        return { normal: false, text: '未授权', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: '认证失败 (401)' };
-      case '403':
-        return { normal: false, text: '禁止访问', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: '访问被拒绝 (403)' };
-      case '404':
-        return { normal: false, text: '不存在', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: '资源不存在 (404)' };
+        return { normal: false, text: 'Rate Limited', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Too Many Requests (429)' };
+      case 401:
+        return { normal: false, text: 'Unauthorized', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: 'Authentication failed (401)' };
+      case 403:
+        return { normal: false, text: 'Forbidden', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: 'Access denied (403)' };
+      case 404:
+        return { normal: false, text: 'Not Found', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: 'Resource not found (404)' };
       default:
-        return { normal: false, text: '异常', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: '状态异常: ' + statusCode };
+        return { normal: false, text: 'Error', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: 'Status error: ' + statusCode };
     }
   }
 
   const type = normalizeAccountType(acc);
   if (type === 'warp') {
     if (!getAccountToken(acc)) {
-      return { normal: false, text: '待补全', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: '缺少 Refresh Token' };
+      return { normal: false, text: 'Incomplete', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Missing Refresh Token' };
     }
   } else if (type === 'grok') {
     if (!getAccountToken(acc)) {
-      return { normal: false, text: '待补全', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: '缺少 SSO Token' };
+      return { normal: false, text: 'Incomplete', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Missing SSO Token' };
     }
   } else if (type === 'puter') {
     if (!getAccountToken(acc)) {
-      return { normal: false, text: '待补全', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: '缺少 Puter auth_token' };
+      return { normal: false, text: 'Incomplete', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Missing Puter auth_token' };
     }
   } else if (!acc.session_id && !acc.session_cookie) {
-    return { normal: false, text: '待补全', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: '缺少会话信息' };
+    return { normal: false, text: 'Incomplete', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Missing Session Info' };
   }
 
   const quota = getQuotaStats(acc);
@@ -594,17 +594,17 @@ function evaluateAccountStatus(acc) {
       const providerName = normalizeAccountType(acc) === 'warp' ? 'Warp' : 'Puter';
       return {
         normal: true,
-        text: '额度不足',
+        text: 'Out of Quota',
         color: '#f59e0b',
         bg: 'rgba(245, 158, 11, 0.16)',
-        tip: providerName + ' 额度已用尽或余额不足，调度器会暂时跳过该账号 (剩余 0 / ' + quota.limit.toLocaleString() + ')',
+        tip: providerName + ' quota exhausted or insufficient balance, scheduler will temporarily skip this account (Remaining 0 / ' + quota.limit.toLocaleString() + ')',
         quotaOnly: true,
       };
     }
-    return { normal: false, text: '配额已满', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: '配额已用尽 (剩余 0 / ' + quota.limit.toLocaleString() + ')' };
+    return { normal: false, text: 'Quota Full', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.16)', tip: 'Quota exhausted (Remaining 0 / ' + quota.limit.toLocaleString() + ')' };
   }
 
-  return { normal: true, text: '正常', color: '#34d399', bg: 'rgba(52, 211, 153, 0.16)', tip: '状态正常' };
+  return { normal: true, text: 'Normal', color: '#34d399', bg: 'rgba(52, 211, 153, 0.16)', tip: 'Status normal' };
 }
 
 function isAccountAbnormal(acc) {
@@ -623,7 +623,7 @@ function statusBadge(acc) {
 }
 
 // Refresh single account via the shared check endpoint.
-async function checkAccount(id, silent = false, actionText = "刷新") {
+async function checkAccount(id, silent = false, actionText = "Refresh") {
   const action = "check";
   try {
     const res = await fetch(`/api/accounts/${id}/${action}`);
@@ -633,7 +633,7 @@ async function checkAccount(id, silent = false, actionText = "刷新") {
     const updated = await res.json();
     accounts = accounts.map(a => (a.id === id ? updated : a));
     updateAccountHealth(id, true);
-    if (!silent) showToast(`账号 ${updated.name || updated.email || id} ${actionText}完成`, "success");
+    if (!silent) showToast(`Account ${updated.name || updated.email || id} ${actionText} successful`, "success");
   } catch (err) {
     try {
       const latestRes = await fetch(`/api/accounts/${id}`);
@@ -647,7 +647,7 @@ async function checkAccount(id, silent = false, actionText = "刷新") {
     } catch (_) {
       updateAccountHealth(id, false, err.message || String(err));
     }
-    if (!silent) showToast(`账号 ${id} ${actionText}失败`, "error");
+    if (!silent) showToast(`Account ${id} ${actionText} failed`, "error");
   } finally {
     renderAccounts();
     updateStats();
@@ -666,28 +666,28 @@ async function autoRefreshWarpAccounts() {
 // Delete all accounts
 async function deleteAllAccounts() {
   if (!accounts.length) return;
-  if (!confirm(`确定要删除全部 ${accounts.length} 个账号吗？此操作不可恢复。`)) return;
+  if (!confirm(`Are you sure you want to delete all ${accounts.length} accounts? This action cannot be undone.`)) return;
   for (const acc of accounts) {
     await fetch(`/api/accounts/${acc.id}`, { method: "DELETE" });
   }
   await loadAccounts();
-  showToast("已删除全部账号", "success");
+  showToast("All accounts deleted", "success");
 }
 
 // Clear abnormal accounts
 async function clearAbnormalAccounts() {
   const abnormal = accounts.filter((acc) => matchesCurrentPlatform(acc) && isAccountAbnormal(acc));
   if (abnormal.length === 0) {
-    showToast(currentPlatform ? `当前 ${currentPlatform} 页面没有异常账号` : "没有异常账号", "info");
+    showToast(currentPlatform ? `No abnormal accounts found on current ${currentPlatform} page` : "No abnormal accounts found", "info");
     return;
   }
-  const scopeText = currentPlatform ? `当前 ${currentPlatform} 页面中的 ` : "";
-  if (confirm(`确定要清空 ${scopeText}${abnormal.length} 个异常账号吗？`)) {
+  const scopeText = currentPlatform ? `in current ${currentPlatform} page ` : "";
+  if (confirm(`Are you sure you want to clear ${abnormal.length} abnormal accounts ${scopeText}?`)) {
     for (const acc of abnormal) {
       await fetch(`/api/accounts/${acc.id}`, { method: "DELETE" });
     }
     loadAccounts();
-    showToast(`已清空${scopeText}异常账号`);
+    showToast(`Cleared ${scopeText}abnormal accounts`);
   }
 }
 
@@ -695,12 +695,12 @@ async function clearAbnormalAccounts() {
 async function batchDeleteAccounts() {
   const selected = Array.from(document.querySelectorAll(".row-checkbox:checked")).map(cb => cb.dataset.id);
   if (selected.length === 0) return;
-  if (confirm(`确定要删除选中的 ${selected.length} 个账号吗？`)) {
+  if (confirm(`Are you sure you want to delete ${selected.length} selected accounts?`)) {
     for (const id of selected) {
       await fetch(`/api/accounts/${id}`, { method: "DELETE" });
     }
     loadAccounts();
-    showToast(`已成功删除 ${selected.length} 个账号`);
+    showToast(`Successfully deleted ${selected.length} accounts`);
   }
 }
 
@@ -720,22 +720,22 @@ async function enableNSFW() {
   });
 
   const payload = { concurrency: 5 };
-  let targetText = "全部 Grok 账号";
+  let targetText = "All Grok Accounts";
 
   if (selectedIDs.length > 0) {
     if (selectedGrokIDs.length === 0) {
-      showToast("选中的账号中没有 Grok 账号", "info");
+      showToast("No Grok accounts in the selected accounts", "info");
       return;
     }
     payload.account_ids = selectedGrokIDs;
-    targetText = `选中的 ${selectedGrokIDs.length} 个 Grok 账号`;
-    if (!confirm(`确认对${targetText}启用 NSFW 吗？`)) return;
-  } else if (!confirm("未选中账号，将对全部 Grok 账号启用 NSFW，是否继续？")) {
+    targetText = `selected ${selectedGrokIDs.length} Grok accounts`;
+    if (!confirm(`Are you sure you want to enable NSFW for ${targetText}?`)) return;
+  } else if (!confirm("No accounts selected, NSFW will be enabled for all Grok accounts, continue?")) {
     return;
   }
 
   try {
-    showToast(`正在为${targetText}启用 NSFW...`, "info");
+    showToast(`Enabling NSFW for ${targetText}...`, "info");
     const res = await fetch("/api/v1/admin/tokens/nsfw/enable", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -771,13 +771,13 @@ async function enableNSFW() {
       if (failedList.length > 0) {
         console.warn("NSFW enable failures:", failedList.join(" | "));
       }
-      showToast(`NSFW 启用完成：成功 ${ok}，失败 ${fail}`, "error");
+      showToast(`NSFW enabling complete: ${ok} successful, ${fail} failed`, "error");
       return;
     }
 
-    showToast(`NSFW 启用成功：共 ${ok}/${total}`, "success");
+    showToast(`NSFW enabled successfully: ${ok}/${total} total`, "success");
   } catch (err) {
-    showToast(`NSFW 启用失败: ${err.message || err}`, "error");
+    showToast(`NSFW enable failed: ${err.message || err}`, "error");
   }
 }
 
@@ -803,12 +803,12 @@ function renderAccounts() {
     icon.className = "empty-state-mark";
     icon.textContent = "EMPTY";
     const text = document.createElement("p");
-    text.textContent = `暂无 ${currentPlatform ? currentPlatform : ''} 账号数据`;
+    text.textContent = `No ${currentPlatform ? currentPlatform : ''} account data`;
     empty.appendChild(icon);
     empty.appendChild(text);
     container.appendChild(empty);
     const paginationInfo = domCache.paginationInfo || document.getElementById("paginationInfo");
-    paginationInfo.textContent = `共 0 条记录，第 1/1 页`;
+    paginationInfo.textContent = `Total 0 records, Page 1/1`;
     renderPagination(1, 1);
     return;
   }
@@ -829,12 +829,12 @@ function renderAccounts() {
     { label: "", style: "width: 40px;" },
     { label: "ID", style: "width: 60px;" },
     { label: "Token" },
-    { label: "等级", style: "width: 90px;" },
-    { label: "配额", style: "width: 140px;" },
-    { label: "状态" },
-    { label: "调用" },
-    { label: "最后调用" },
-    { label: "操作", style: "text-align: right;" },
+    { label: "Level", style: "width: 90px;" },
+    { label: "Quota", style: "width: 140px;" },
+    { label: "Status" },
+    { label: "Calls" },
+    { label: "Last Call" },
+    { label: "Action", style: "text-align: right;" },
   ];
   headers.forEach((h, idx) => {
     const th = document.createElement("th");
@@ -855,7 +855,7 @@ function renderAccounts() {
 
   const tbody = document.createElement("tbody");
   
-  // 使用 DocumentFragment 批量构建表格行
+  // Use DocumentFragment to batch build table rows
   const fragment = document.createDocumentFragment();
   pageItems.forEach((acc) => {
     const badge = statusBadge(acc);
@@ -897,14 +897,14 @@ function renderAccounts() {
     const quota = getQuotaStats(acc);
     if (quota && quota.unknown) {
       tdQuota.style.color = "#64748b";
-      tdQuota.innerHTML = `<span>未知</span> <span style="color:#64748b;font-size:0.75rem">(Puter 暂无稳定额度接口)</span>`;
+      tdQuota.innerHTML = `<span>Unknown</span> <span style="color:#64748b;font-size:0.75rem">(Puter has no stable quota API)</span>`;
     } else if (quota) {
       const pct = quota.pctRemaining;
       const color = pct <= 10 ? "#fb7185" : pct <= 30 ? "#f59e0b" : "#34d399";
       if (normalizeAccountType(acc) === "warp" && quota.splitBonus) {
-        tdQuota.innerHTML = `<span style="color:${color}">${quota.remaining.toLocaleString()}</span> <span style="color:#64748b;font-size:0.75rem">(剩余)</span><div style="color:#64748b;font-size:0.75rem">${quota.monthlyRemaining.toLocaleString()} 月度 + ${quota.bonusRemaining.toLocaleString()} 赠送</div>`;
+        tdQuota.innerHTML = `<span style="color:${color}">${quota.remaining.toLocaleString()}</span> <span style="color:#64748b;font-size:0.75rem">(Remaining)</span><div style="color:#64748b;font-size:0.75rem">${quota.monthlyRemaining.toLocaleString()} Monthly + ${quota.bonusRemaining.toLocaleString()} Bonus</div>`;
       } else {
-        tdQuota.innerHTML = `<span style="color:${color}">${quota.remaining.toLocaleString()} / ${quota.limit.toLocaleString()}</span> <span style="color:#64748b;font-size:0.75rem">(剩余)</span>`;
+        tdQuota.innerHTML = `<span style="color:${color}">${quota.remaining.toLocaleString()} / ${quota.limit.toLocaleString()}</span> <span style="color:#64748b;font-size:0.75rem">(Remaining)</span>`;
       }
     } else {
       tdQuota.style.color = "#64748b";
@@ -930,7 +930,7 @@ function renderAccounts() {
     if (shouldShowNSFWBadge(acc)) {
       const nsfwSpan = document.createElement("span");
       nsfwSpan.className = "tag account-nsfw-tag";
-      nsfwSpan.title = "Grok NSFW 已开启";
+      nsfwSpan.title = "Grok NSFW Enabled";
       nsfwSpan.style.background = "rgba(244, 114, 182, 0.14)";
       nsfwSpan.style.color = "#f472b6";
       nsfwSpan.style.border = "none";
@@ -965,21 +965,21 @@ function renderAccounts() {
     edit.className = "action-icon";
     edit.dataset.action = "edit";
     edit.dataset.id = encodeData(acc.id);
-    edit.title = "编辑";
+    edit.title = "Edit";
     edit.textContent = "Edit";
 
     const refresh = document.createElement("i");
     refresh.className = "action-icon";
     refresh.dataset.action = "refresh";
     refresh.dataset.id = encodeData(acc.id);
-    refresh.title = "刷新";
+    refresh.title = "Refresh";
     refresh.textContent = "Sync";
 
     const del = document.createElement("i");
     del.className = "action-icon";
     del.dataset.action = "delete";
     del.dataset.id = encodeData(acc.id);
-    del.title = "删除";
+    del.title = "Delete";
     del.textContent = "Del";
 
     actionWrap.appendChild(edit);
@@ -988,18 +988,18 @@ function renderAccounts() {
     tdActions.appendChild(actionWrap);
     tr.appendChild(tdActions);
 
-    // 将行添加到 fragment 而不是直接添加到 tbody
+    // Add row to fragment instead of directly to tbody
     fragment.appendChild(tr);
   });
   
-  // 一次性将所有行插入到 tbody
+  // Insert all rows into tbody at once
   tbody.appendChild(fragment);
   table.appendChild(tbody);
   wrap.appendChild(table);
   container.appendChild(wrap);
 
   const paginationInfo = domCache.paginationInfo || document.getElementById("paginationInfo");
-  paginationInfo.textContent = `共 ${total} 条记录，第 ${currentPage}/${totalPages} 页`;
+  paginationInfo.textContent = `Total ${total} records, Page ${currentPage}/${totalPages}`;
   renderPagination(currentPage, totalPages);
   updateSelectedCount();
 
@@ -1031,15 +1031,15 @@ function renderAccounts() {
 function buildQuotaMarkup(acc) {
   const quota = getQuotaStats(acc);
   if (quota && quota.unknown) {
-    return `<span>未知</span> <span style="color:#64748b;font-size:0.75rem">(Puter 暂无稳定额度接口)</span>`;
+    return `<span>Unknown</span> <span style="color:#64748b;font-size:0.75rem">(Puter has no stable quota API)</span>`;
   }
   if (quota) {
     const pct = quota.pctRemaining;
     const color = pct <= 10 ? "#fb7185" : pct <= 30 ? "#f59e0b" : "#34d399";
     if (normalizeAccountType(acc) === "warp" && quota.splitBonus) {
-      return `<span style="color:${color}">${quota.remaining.toLocaleString()}</span> <span style="color:#64748b;font-size:0.75rem">(剩余)</span><div style="color:#64748b;font-size:0.75rem">${quota.monthlyRemaining.toLocaleString()} 月度 + ${quota.bonusRemaining.toLocaleString()} 赠送</div>`;
+      return `<span style="color:${color}">${quota.remaining.toLocaleString()}</span> <span style="color:#64748b;font-size:0.75rem">(Remaining)</span><div style="color:#64748b;font-size:0.75rem">${quota.monthlyRemaining.toLocaleString()} Monthly + ${quota.bonusRemaining.toLocaleString()} Bonus</div>`;
     }
-    return `<span style="color:${color}">${quota.remaining.toLocaleString()} / ${quota.limit.toLocaleString()}</span> <span style="color:#64748b;font-size:0.75rem">(剩余)</span>`;
+    return `<span style="color:${color}">${quota.remaining.toLocaleString()} / ${quota.limit.toLocaleString()}</span> <span style="color:#64748b;font-size:0.75rem">(Remaining)</span>`;
   }
   return `<span style="color:#64748b">-</span>`;
 }
@@ -1066,9 +1066,9 @@ function renderAccountsMobile(container, pageItems, total, totalPages) {
           <span>#${escapeHtml(acc.id === null || acc.id === undefined ? "" : String(acc.id))}</span>
         </label>
         <div class="account-mobile-actions">
-          <button type="button" class="action-icon" data-action="edit" data-id="${encodeData(acc.id)}" title="编辑">Edit</button>
-          <button type="button" class="action-icon" data-action="refresh" data-id="${encodeData(acc.id)}" title="刷新">Sync</button>
-          <button type="button" class="action-icon" data-action="delete" data-id="${encodeData(acc.id)}" title="删除">Del</button>
+          <button type="button" class="action-icon" data-action="edit" data-id="${encodeData(acc.id)}" title="Edit">Edit</button>
+          <button type="button" class="action-icon" data-action="refresh" data-id="${encodeData(acc.id)}" title="Sync">Sync</button>
+          <button type="button" class="action-icon" data-action="delete" data-id="${encodeData(acc.id)}" title="Delete">Del</button>
         </div>
       </div>
       <div class="account-mobile-token">
@@ -1076,23 +1076,23 @@ function renderAccountsMobile(container, pageItems, total, totalPages) {
       </div>
       <div class="account-mobile-grid">
         <div class="account-mobile-item">
-          <span class="account-mobile-label">状态</span>
+          <span class="account-mobile-label">Status</span>
           <div class="account-mobile-inline">${buildStatusMarkup(acc, badge)}</div>
         </div>
         <div class="account-mobile-item">
-          <span class="account-mobile-label">等级</span>
+          <span class="account-mobile-label">Level</span>
           <div class="account-mobile-inline">${buildSubscriptionMarkup(acc)}</div>
         </div>
         <div class="account-mobile-item">
-          <span class="account-mobile-label">配额</span>
+          <span class="account-mobile-label">Quota</span>
           <div class="account-mobile-value">${buildQuotaMarkup(acc)}</div>
         </div>
         <div class="account-mobile-item">
-          <span class="account-mobile-label">调用</span>
+          <span class="account-mobile-label">Calls</span>
           <span class="account-mobile-value">${escapeHtml(String(acc.request_count || 0))}</span>
         </div>
         <div class="account-mobile-item">
-          <span class="account-mobile-label">最后调用</span>
+          <span class="account-mobile-label">Last Call</span>
           <span class="account-mobile-value">${escapeHtml(acc.last_used_at && !acc.last_used_at.startsWith("0001") ? formatTime(acc.last_used_at) : "-")}</span>
         </div>
       </div>
@@ -1104,7 +1104,7 @@ function renderAccountsMobile(container, pageItems, total, totalPages) {
   container.appendChild(list);
 
   const paginationInfo = domCache.paginationInfo || document.getElementById("paginationInfo");
-  paginationInfo.textContent = `共 ${total} 条记录，第 ${currentPage}/${totalPages} 页`;
+  paginationInfo.textContent = `Total ${total} records, Page ${currentPage}/${totalPages}`;
   renderPagination(currentPage, totalPages);
   updateSelectedCount();
 
@@ -1148,8 +1148,8 @@ function renderPagination(current, total) {
   };
 
   // First & Prev
-  appendButton("首页", 1, current === 1, "btn-outline");
-  appendButton("上一页", current - 1, current === 1, "btn-outline");
+  appendButton("First", 1, current === 1, "btn-outline");
+  appendButton("Prev", current - 1, current === 1, "btn-outline");
 
   // Page Numbers (simplified logic: show surrounding)
   let startPage = Math.max(1, current - 2);
@@ -1164,8 +1164,8 @@ function renderPagination(current, total) {
   }
 
   // Next & Last
-  appendButton("下一页", current + 1, current === total, "btn-outline");
-  appendButton("末页", total, current === total, "btn-outline");
+  appendButton("Next", current + 1, current === total, "btn-outline");
+  appendButton("Last", total, current === total, "btn-outline");
   container.onclick = (e) => {
     const btn = e.target.closest("button[data-page]");
     if (!btn || !container.contains(btn) || btn.disabled) return;
@@ -1191,7 +1191,7 @@ function filterByPlatform(platform) {
   });
   const subtitle = document.getElementById("pageSubtitle");
   if (subtitle) {
-    subtitle.textContent = currentPlatform ? `管理您的 ${currentPlatform} API 凭证` : "管理您的所有 API 凭证";
+    subtitle.textContent = currentPlatform ? `Manage your ${currentPlatform} API credentials` : "Manage all your API credentials";
   }
   renderAccounts();
 }
@@ -1262,13 +1262,13 @@ function openModal(account = null) {
 
   const applyValues = () => {
     if (account) {
-      title.textContent = "编辑账号";
+      title.textContent = "Edit Account";
       document.getElementById("accountId").value = account.id;
       setAccountModalType(normalizeAccountType(account));
       document.getElementById("clientCookie").value = getAccountToken(account);
       document.getElementById("enabled").checked = account.enabled;
     } else {
-      title.textContent = "添加账号";
+      title.textContent = "Add Account";
       form.reset();
       document.getElementById("accountId").value = "";
       setAccountModalType(getActiveAccountType());
@@ -1308,12 +1308,12 @@ async function saveAccount(e) {
   if (credentials.length === 0) {
     if (duplicateInputs.length > 0 || existingConflicts.length > 0) {
       const details = []
-        .concat(duplicateInputs.slice(0, 4).map((item) => `输入重复: ${item}`))
-        .concat(existingConflicts.slice(0, 4).map((item) => `已存在: ${item}`));
-      renderAccountImportStatus("没有可添加的新凭证，重复项已全部过滤", "error", details);
-      showToast("没有可添加的新凭证，重复项已全部过滤", "error");
+        .concat(duplicateInputs.slice(0, 4).map((item) => `Duplicate input: ${item}`))
+        .concat(existingConflicts.slice(0, 4).map((item) => `Already exists: ${item}`));
+      renderAccountImportStatus("No new credentials to add, duplicates have been fully filtered", "error", details);
+      showToast("No new credentials to add, duplicates have been fully filtered", "error");
     } else {
-      showToast("请填写至少一个账号凭证", "error");
+      showToast("Please fill in at least one account credential", "error");
     }
     return;
   }
@@ -1321,10 +1321,10 @@ async function saveAccount(e) {
     clearAccountImportStatus();
     if (duplicateInputs.length > 0 || existingConflicts.length > 0) {
       const details = []
-        .concat(duplicateInputs.slice(0, 4).map((item) => `输入重复: ${item}`))
-        .concat(existingConflicts.slice(0, 4).map((item) => `账号已存在: ${item}`));
-      renderAccountImportStatus(
-        `已过滤重复凭证：输入重复 ${duplicateInputs.length}，库内重复 ${existingConflicts.length}`,
+        .concat(duplicateInputs.slice(0, 4).map((item) => `Duplicate input: ${item}`))
+        .concat(existingConflicts.slice(0, 4).map((item) => `Account already exists: ${item}`));
+      showToast(
+        `Filtered duplicate credentials: ${duplicateInputs.length} input duplicates, ${existingConflicts.length} existing duplicates`,
         "info",
         details,
       );
@@ -1339,31 +1339,31 @@ async function saveAccount(e) {
       if (!res.ok) throw new Error(await res.text());
       closeModal();
       loadAccounts();
-      showToast("保存成功");
+      showToast("Saved successfully");
       return;
     }
 
     if (credentials.length > 1) {
       const payloads = credentials.map((item) => buildAccountPayload(type, data, item));
-      renderAccountImportStatus(`正在批量添加账号 0/${payloads.length}`, "info");
+      renderAccountImportStatus(`Batch adding accounts 0/${payloads.length}`, "info");
       const { success, failed, failures } = await runAccountCreatePool(payloads, 6, (progress) => {
         renderAccountImportStatus(
-          `正在批量添加账号 ${progress.completed}/${progress.total}，成功 ${progress.success}，失败 ${progress.failed}`,
+          `Batch adding accounts ${progress.completed}/${progress.total}, successful ${progress.success}, failed ${progress.failed}`,
           progress.failed > 0 ? "error" : "info",
           progress.failures,
         );
       });
       if (failed > 0) {
-        renderAccountImportStatus(`批量添加完成：成功 ${success}，失败 ${failed}`, "error", failures);
+        renderAccountImportStatus(`Batch add complete: successful ${success}, failed ${failed}`, "error", failures);
       } else {
-        renderAccountImportStatus(`批量添加完成：成功 ${success}，失败 ${failed}`, "info");
+        renderAccountImportStatus(`Batch add complete: successful ${success}, failed ${failed}`, "info");
       }
       loadAccounts();
       if (failed === 0) {
         closeModal();
       }
       showToast(
-        failed > 0 ? `批量添加完成：成功 ${success}，失败 ${failed}` : `批量添加完成：成功 ${success}`,
+        failed > 0 ? `Batch add complete: successful ${success}, failed ${failed}` : `Batch add complete: successful ${success}`,
         failed > 0 ? "error" : "success",
       );
       return;
@@ -1372,9 +1372,9 @@ async function saveAccount(e) {
     await createAccount(buildAccountPayload(type, data, credentials[0]));
     closeModal();
     loadAccounts();
-    showToast("保存成功");
+    showToast("Save successful");
   } catch (err) {
-    showToast("保存失败: " + err.message, "error");
+    showToast("Save failed: " + err.message, "error");
   }
 }
 
@@ -1386,21 +1386,21 @@ function editAccount(id) {
 
 // Refresh token
 async function refreshToken(id) {
-  const actionText = "刷新";
-  showToast(`正在${actionText}账号信息...`, "info");
+  const actionText = "Refresh";
+  showToast(`Starting ${actionText} for account...`, "info");
   await checkAccount(id, false, actionText);
 }
 
 // Delete account
 async function deleteAccount(id) {
-  if (!confirm("确定要删除这个账号吗？")) return;
+  if (!confirm("Are you sure you want to delete this account?")) return;
   try {
     const res = await fetch(`/api/accounts/${id}`, { method: "DELETE" });
     if (!res.ok) throw new Error(await res.text());
-    showToast("删除成功");
+    showToast("Delete successful");
     loadAccounts();
   } catch (err) {
-    showToast("删除失败: " + err.message, "error");
+    showToast("Delete failed: " + err.message, "error");
   }
 }
 
@@ -1462,10 +1462,10 @@ async function importAccounts(event) {
       body: text,
     });
     const result = await res.json();
-    showToast(`导入完成: 成功 ${result.imported}, 跳过 ${result.skipped}`);
+    showToast(`Import complete: ${result.imported} successful, ${result.skipped} skipped`);
     loadAccounts();
   } catch (err) {
-    showToast("导入失败: " + err.message, "error");
+    showToast("Import failed: " + err.message, "error");
   }
   event.target.value = "";
 }

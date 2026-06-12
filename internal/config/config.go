@@ -174,11 +174,11 @@ func ApplyDefaults(cfg *Config) {
 	if cfg.AdminPass == "" {
 		generated, err := generateRandomPassword(16)
 		if err != nil {
-			slog.Error("无法生成随机密码", "error", err)
+			slog.Error("Unable to generate random password", "error", err)
 			os.Exit(1)
 		}
 		cfg.AdminPass = generated
-		slog.Warn("未设置 admin_pass，已自动生成随机密码，请在配置文件中设置 admin_pass",
+		slog.Warn("admin_pass is not set, a random password has been automatically generated, please set admin_pass in the configuration file",
 			"generated_password", generated)
 	}
 	if cfg.AdminPath == "" {

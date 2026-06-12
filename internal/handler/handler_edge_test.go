@@ -362,11 +362,11 @@ func TestHandleMessages_Dedup_DoesNotSuppressInterruptedRetry(t *testing.T) {
 	payload := map[string]any{
 		"model": "claude-3-5-sonnet",
 		"messages": []map[string]any{
-			{"role": "user", "content": []map[string]any{{"type": "text", "text": "帮我用python写一个计算器"}}},
+			{"role": "user", "content": []map[string]any{{"type": "text", "text": "Help me write a calculator in python"}}},
 			{"role": "assistant", "content": []map[string]any{{"type": "text", "text": "(no content)"}}},
 			{"role": "user", "content": []map[string]any{
 				{"type": "text", "text": "[Request interrupted by user]\n"},
-				{"type": "text", "text": "帮我用python写一个计算器"},
+				{"type": "text", "text": "Help me write a calculator in python"},
 			}},
 		},
 		"system": []any{},
@@ -659,7 +659,7 @@ func TestHandleMessages_Dedup_DoesNotSuppressToolResultFollowup(t *testing.T) {
 		return map[string]any{
 			"model": "claude-3-5-sonnet",
 			"messages": []map[string]any{
-				{"role": "user", "content": "帮我优化这个项目"},
+				{"role": "user", "content": "help me optimize this project"},
 				{"role": "assistant", "content": []map[string]any{
 					{
 						"type":  "tool_use",
@@ -720,7 +720,7 @@ func TestHandleMessages_ToolResultFollowup_DoesNotInjectLocalFallbackText(t *tes
 	payload := map[string]any{
 		"model": "claude-3-5-sonnet",
 		"messages": []map[string]any{
-			{"role": "user", "content": "这个项目使用了哪些技术架构"},
+			{"role": "user", "content": "What technology architecture is used in this project"},
 			{"role": "assistant", "content": []map[string]any{
 				{
 					"type":  "tool_use",
@@ -737,7 +737,7 @@ func TestHandleMessages_ToolResultFollowup_DoesNotInjectLocalFallbackText(t *tes
 				},
 				{
 					"type": "text",
-					"text": "请直接回答",
+					"text": "Please answer directly",
 				},
 			}},
 		},
@@ -760,8 +760,8 @@ func TestHandleMessages_ToolResultFollowup_DoesNotInjectLocalFallbackText(t *tes
 	for _, unwanted := range []string{
 		"Python",
 		"JSON",
-		"基于当前已读取内容",
-		"当前只拿到目录概览",
+		"based on currently read content",
+		"Currently we only get the directory overview",
 	} {
 		if strings.Contains(out, unwanted) {
 			t.Fatalf("did not expect local fallback text %q in %s", unwanted, out)
@@ -777,7 +777,7 @@ func TestHandleMessages_WarpCanceledFollowup_DoesNotEmitGenericEmptyFallback(t *
 	payload := map[string]any{
 		"model": "claude-3-5-sonnet",
 		"messages": []map[string]any{
-			{"role": "user", "content": "帮我优化这个项目"},
+			{"role": "user", "content": "help me optimize this project"},
 			{"role": "assistant", "content": []map[string]any{
 				{
 					"type":  "tool_use",

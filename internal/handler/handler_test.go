@@ -85,7 +85,7 @@ func TestComputeSemanticRequestHash_SkipsToolResultFollowup(t *testing.T) {
 		Model:  "claude-3-5-sonnet",
 		Stream: true,
 		Messages: []prompt.Message{
-			{Role: "user", Content: prompt.MessageContent{Text: "帮我优化这个项目"}},
+			{Role: "user", Content: prompt.MessageContent{Text: "help me optimize this project"}},
 			{
 				Role: "assistant",
 				Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{

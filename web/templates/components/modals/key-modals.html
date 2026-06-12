@@ -1,76 +1,76 @@
-<!-- 创建 Key 弹窗 -->
+<!-- Create Key Modal -->
 <div class="modal" id="createKeyModal">
   <div class="modal-content modal-content-md">
     <div class="modal-header">
-      <h3 class="modal-title">创建 API Key</h3>
+      <h3 class="modal-title">Create API Key</h3>
       <button class="modal-close" onclick="closeCreateKeyModal()">
         &times;
       </button>
     </div>
     <form onsubmit="createApiKey(event)">
       <div class="form-group">
-        <label class="form-label">名称 / 备注（支持换行批量创建）</label>
-        <textarea class="form-input" id="keyName" required placeholder="每行一个名称，例如：&#10;生产环境&#10;测试用&#10;开发者-张三"
+        <label class="form-label">Name / Note (Supports multiline batch creation)</label>
+        <textarea class="form-input" id="keyName" required placeholder="One name per line, for example:&#10;Production&#10;Testing&#10;Developer-John Doe"
           rows="4" style="resize: vertical;"></textarea>
       </div>
       <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 16px;">
-        创建
+        Create
       </button>
     </form>
   </div>
 </div>
 
-<!-- Key 展示弹窗 -->
+<!-- Key Display Modal -->
 <div class="modal" id="showKeyModal">
   <div class="modal-content modal-content-lg">
     <div class="modal-header">
-      <h3 class="modal-title">API Key 已创建</h3>
+      <h3 class="modal-title">API Key Created</h3>
     </div>
     <div class="modal-body">
     <p style="color: var(--text-secondary); margin-bottom: 16px;">
-      请立即复制并保存您的 API Key：
+      Please copy and save your API Key immediately:
     </p>
     <div id="fullKeyDisplay" class="modal-scroll">
     </div>
     <div class="warning-box">
-      <strong>请妥善保存</strong><br />
-      关闭此窗口后将无法再次查看完整 Key
+      <strong>Please save properly</strong><br />
+      You will not be able to view the full Key again after closing this window
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="copyAllKeys()">
-        复制全部
+        Copy All
       </button>
       <button class="btn btn-neutral"
         onclick="closeShowKeyModal()">
-        我已保存，关闭
+        Saved, Close
       </button>
     </div>
     </div>
   </div>
 </div>
 
-<!-- 删除 Key 确认弹窗 -->
+<!-- Delete Key Confirmation Modal -->
 <div class="modal" id="deleteKeyModal">
   <div class="modal-content modal-content-sm">
     <div class="modal-header">
-      <h3 class="modal-title">删除 API Key</h3>
+      <h3 class="modal-title">Delete API Key</h3>
       <button class="modal-close" onclick="closeDeleteKeyModal()">
         &times;
       </button>
     </div>
     <div class="modal-body">
     <p style="margin-bottom: 20px;">
-      确定要删除 Key「<strong id="deleteKeyName"></strong>」吗？<br />
-      <span class="warning-text">此操作不可撤销，使用此 Key 的应用将无法访问。</span>
+      Are you sure you want to delete Key "<strong id="deleteKeyName"></strong>"?<br />
+      <span class="warning-text">This action cannot be undone, applications using this Key will lose access.</span>
     </p>
     <input type="hidden" id="deleteKeyId" />
     <div class="modal-actions">
       <button class="btn btn-neutral"
         onclick="closeDeleteKeyModal()">
-        取消
+        Cancel
       </button>
       <button class="btn btn-danger" onclick="confirmDeleteKey()">
-        删除
+        Delete
       </button>
     </div>
     </div>

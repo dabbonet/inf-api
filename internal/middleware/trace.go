@@ -1,4 +1,4 @@
-// Package middleware 提供 HTTP 中间件
+// Package middleware provides HTTP middleware
 package middleware
 
 import (
@@ -15,30 +15,30 @@ import (
 	"orchids-api/internal/logutil"
 )
 
-// TraceIDHeader 是请求追踪 ID 的 HTTP 头名称
+// TraceIDHeader is the HTTP header name of the request trace ID
 const TraceIDHeader = "X-Trace-ID"
 
-// RequestIDHeader 是请求 ID 的 HTTP 头名称（别名）
+// RequestIDHeader is the HTTP header name (alias) of the request ID
 const RequestIDHeader = "X-Request-ID"
 
-// traceIDKey 是 context 中存储 trace ID 的 key
+// traceIDKey is the key of storage trace ID in context
 type traceIDKey struct{}
 
-// GenerateTraceID 生成一个新的 trace ID
+// GenerateTraceID generates a new trace ID
 func GenerateTraceID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		// 降级到时间戳
+		// downgrade to timestamp
 		return hex.EncodeToString([]byte(time.Now().Format("20060102150405.000000")))
 	}
 	return hex.EncodeToString(b)
 }
 
-// TraceMiddleware 添加请求追踪功能
-// 从请求头获取 trace ID，如果没有则生成新的
+// TraceMiddleware adds request tracing function
+// Get the trace ID from the request header and generate a new one if there is none
 func TraceMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 尝试从请求头获取 trace ID
+		// Try to get the trace ID from the request header
 		traceID := r.Header.Get(TraceIDHeader)
 		if traceID == "" {
 			traceID = r.Header.Get(RequestIDHeader)
@@ -47,18 +47,18 @@ func TraceMiddleware(next http.Handler) http.Handler {
 			traceID = GenerateTraceID()
 		}
 
-		// 将 trace ID 添加到响应头
+		// Add trace ID to response header
 		w.Header().Set(TraceIDHeader, traceID)
 
-		// 将 trace ID 添加到 context
+		// Add trace ID to context
 		ctx := context.WithValue(r.Context(), traceIDKey{}, traceID)
 
-		// 继续处理请求
+		// Continue processing the request
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// GetTraceID 从 context 获取 trace ID
+// GetTraceID Gets trace ID from context
 func GetTraceID(ctx context.Context) string {
 	if ctx == nil {
 		return ""
@@ -69,14 +69,14 @@ func GetTraceID(ctx context.Context) string {
 	return ""
 }
 
-// TracedResponseWriter 包装 ResponseWriter 以记录响应状态
+// TracedResponseWriter wraps ResponseWriter to record response status
 type TracedResponseWriter struct {
 	http.ResponseWriter
 	StatusCode   int
 	BytesWritten int64
 }
 
-// NewTracedResponseWriter 创建新的 TracedResponseWriter
+// NewTracedResponseWriter creates a new TracedResponseWriter
 func NewTracedResponseWriter(w http.ResponseWriter) *TracedResponseWriter {
 	return &TracedResponseWriter{
 		ResponseWriter: w,
@@ -84,27 +84,27 @@ func NewTracedResponseWriter(w http.ResponseWriter) *TracedResponseWriter {
 	}
 }
 
-// WriteHeader 实现 http.ResponseWriter
+// WriteHeader implements http.ResponseWriter
 func (w *TracedResponseWriter) WriteHeader(code int) {
 	w.StatusCode = code
 	w.ResponseWriter.WriteHeader(code)
 }
 
-// Write 实现 http.ResponseWriter
+// Write implements http.ResponseWriter
 func (w *TracedResponseWriter) Write(b []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(b)
 	w.BytesWritten += int64(n)
 	return n, err
 }
 
-// Flush 实现 http.Flusher
+// Flush implements http.Flusher
 func (w *TracedResponseWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
 }
 
-// Hijack 实现 http.Hijacker，保证 WebSocket 升级等场景可用。
+// Hijack implements http.Hijacker to ensure that scenarios such as WebSocket upgrade are available.
 func (w *TracedResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hj, ok := w.ResponseWriter.(http.Hijacker)
 	if !ok {
@@ -113,13 +113,13 @@ func (w *TracedResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return hj.Hijack()
 }
 
-// LoggingMiddleware 记录请求日志，包含 trace ID 和耗时
+// LoggingMiddleware records request logs, including trace ID and time consumption
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		traceID := GetTraceID(r.Context())
 
-		// 包装 ResponseWriter
+		// Wrapper ResponseWriter
 		wrapped := NewTracedResponseWriter(w)
 
 		if logutil.VerboseDiagnosticsEnabled() {
@@ -131,10 +131,10 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			)
 		}
 
-		// 处理请求
+		// Handle request
 		next.ServeHTTP(wrapped, r)
 
-		// 记录请求完成
+		// Logging request completed
 		duration := time.Since(start)
 		level := slog.LevelDebug
 		if wrapped.StatusCode >= 500 {
@@ -156,7 +156,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// Chain 链式组合多个中间件
+// Chain chain combination of multiple middleware
 func Chain(middlewares ...func(http.Handler) http.Handler) func(http.Handler) http.Handler {
 	return func(final http.Handler) http.Handler {
 		for i := len(middlewares) - 1; i >= 0; i-- {

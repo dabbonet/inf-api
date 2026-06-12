@@ -7,14 +7,14 @@ import (
 	"orchids-api/internal/prompt"
 )
 
-// resetMessagesForNewWorkdir 在工作目录切换时保留当前用户消息，
-// 并将之前的对话历史压缩为摘要注入到消息中，避免完全丢失上下文。
+// resetMessagesForNewWorkdir retains the current user messages when the work directory is switched.
+// And compress the previous conversation history into a summary and inject it into the message to avoid completely losing context.
 func resetMessagesForNewWorkdir(messages []prompt.Message) []prompt.Message {
 	if len(messages) == 0 {
 		return messages
 	}
 
-	// 找到最后一条用户消息
+	// Find the last user message
 	lastUserIdx := -1
 	for i := len(messages) - 1; i >= 0; i-- {
 		if strings.EqualFold(messages[i].Role, "user") {
@@ -26,12 +26,12 @@ func resetMessagesForNewWorkdir(messages []prompt.Message) []prompt.Message {
 		return []prompt.Message{}
 	}
 
-	// 如果没有历史消息需要摘要，直接返回
+	// If there is no historical message that needs summary, return directly
 	if lastUserIdx == 0 {
 		return []prompt.Message{messages[lastUserIdx]}
 	}
 
-	// 构建简短摘要
+	// build short summary
 	older := messages[:lastUserIdx]
 	summary := buildWorkdirChangeSummary(older)
 
@@ -39,7 +39,7 @@ func resetMessagesForNewWorkdir(messages []prompt.Message) []prompt.Message {
 		return []prompt.Message{messages[lastUserIdx]}
 	}
 
-	// 注入摘要作为 user 消息，让模型知道之前的上下文
+	// Inject the summary as a user message to let the model know the previous context
 	summaryMsg := prompt.Message{
 		Role:    "user",
 		Content: prompt.MessageContent{Text: fmt.Sprintf("[Previous conversation summary before working directory change]\n%s", summary)},
@@ -47,7 +47,7 @@ func resetMessagesForNewWorkdir(messages []prompt.Message) []prompt.Message {
 	return []prompt.Message{summaryMsg, messages[lastUserIdx]}
 }
 
-// buildWorkdirChangeSummary 从历史消息中提取关键上下文摘要。
+// buildWorkdirChangeSummary Extracts key contextual summaries from historical messages.
 func buildWorkdirChangeSummary(messages []prompt.Message) string {
 	if len(messages) == 0 {
 		return ""
@@ -59,7 +59,7 @@ func buildWorkdirChangeSummary(messages []prompt.Message) string {
 		if text == "" {
 			continue
 		}
-		// 截断过长的单条消息
+		// Truncate a single message that is too long
 		if len(text) > 200 {
 			text = text[:200] + "..."
 		}
@@ -70,7 +70,7 @@ func buildWorkdirChangeSummary(messages []prompt.Message) string {
 		return ""
 	}
 
-	// 限制总摘要条数，避免过长
+	// Limit the total number of abstracts to avoid being too long
 	if len(parts) > 10 {
 		parts = parts[len(parts)-10:]
 	}

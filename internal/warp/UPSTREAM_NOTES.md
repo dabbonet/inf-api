@@ -1,37 +1,31 @@
-# WARP Upstream Notes
+# WARP 上游笔记
 
-These notes track facts verified against WARP's open-source client at
-`warpdotdev/warp@1c2d4cc` and the pinned `warp-proto-apis` revision used by
-that client.
+这些笔记跟踪了针对 WARP 开源客户端验证的事实：
+`warpdotdev/warp@1c2d4cc` 以及该客户端使用的固定 `warp-proto-apis` 修订版。
 
-## Auth Storage
+## 认证存储
 
-The stable Windows app stores the persisted user at:
+稳定的 Windows 应用将持久化的用户存储在：
 
 `%LOCALAPPDATA%\warp\Warp\data\dev.warp.Warp-User`
 
-The file is encrypted with Windows DPAPI. After decryption, the refresh token is
-stored at `id_token.refresh_token`. A top-level `refresh_token` may be legacy or
-empty.
+该文件使用 Windows DPAPI 加密。解密后，刷新令牌存储在 `id_token.refresh_token` 中。顶层的 `refresh_token` 可能是遗留的或空的。
 
-## Multi-Agent Transport
+## 多代理传输
 
-The client posts protobuf requests to:
+客户端将 protobuf 请求发布到：
 
 `https://app.warp.dev/ai/multi-agent`
 
-Responses are `text/event-stream`; each SSE `data:` payload is base64-url-safe
-protobuf for `warp.multi_agent.v1.ResponseEvent`.
+响应为 `text/event-stream`；每个 SSE `data:` 有效载荷都是用于 `warp.multi_agent.v1.ResponseEvent` 的 base64-url-safe protobuf。
 
-## Protocol Source
+## 协议源
 
-WARP currently pins:
+WARP 当前固定在：
 
 `https://github.com/warpdotdev/warp-proto-apis.git@c67de64fc4949f693a679552dc88cebc9f7d0180`
 
-The public `warpdotdev/warp` repository currently points at this same proto
-revision and includes Rust application sources that consume the multi-agent API.
-The most relevant upstream comparison points are:
+公开的 `warpdotdev/warp` 仓库当前指向相同的 proto 修订版，并包含使用多代理 API 的 Rust 应用程序源代码。最相关的上游比较点是：
 
 - `app/src/ai/agent/api/impl.rs`
 - `app/src/server/server_api.rs`
@@ -39,119 +33,81 @@ The most relevant upstream comparison points are:
 - `crates/graphql/src/api/queries/get_feature_model_choices.rs`
 - `crates/warp_graphql_schema/api/schema.graphql`
 
-The useful files are under `apis/multi_agent/v1`:
+有用的文件位于 `apis/multi_agent/v1` 下：
 
 - `request.proto`
 - `response.proto`
 - `task.proto`
 
-The generated Go package is importable through
-`github.com/warpdotdev/warp-proto-apis/apis/multi_agent/v1/gen/go`. Production
-now marshals this official request type directly; the previous captured
-hex/byte-template builder has been removed.
+生成的 Go 包可以通过 `github.com/warpdotdev/warp-proto-apis/apis/multi_agent/v1/gen/go` 导入。生产环境现在直接编组这个官方请求类型；之前捕获的十六进制/字节模板构建器已被删除。
 
-## Borrowed Behaviors
+## 借用的行为
 
-- Prefer nested persisted tokens such as `id_token.refresh_token`.
-- Match official WARP headers for client version and OS metadata.
-- Suppress `User-Agent` and rely on `X-Warp-Client-ID`, matching Warp's custom
-  client-role header behavior.
-- Parse SSE base64 protobuf response events.
-- Keep fallback tool field numbers aligned with `task.proto`.
+- 首选嵌套的持久化令牌，如 `id_token.refresh_token`。
+- 匹配官方 WARP 标头中的客户端版本和操作系统元数据。
+- 抑制 `User-Agent` 并依赖于 `X-Warp-Client-ID`，匹配 Warp 自定义客户端角色标头行为。
+- 解析 SSE base64 protobuf 响应事件。
+- 保持后备工具字段编号与 `task.proto` 对齐。
 
-## Current Request Shape
+## 当前请求形状
 
-Orchids-2api now imports the same generated Go proto module used by the pinned
-`warp-proto-apis` revision and marshals a structured
-`warp.multi_agent.v1.Request` instead of patching a captured hex template.
+Orchids-2api 现在导入固定的 `warp-proto-apis` 修订版使用的相同生成的 Go proto 模块，并编组结构化的 `warp.multi_agent.v1.Request`，而不是修补捕获的十六进制模板。
 
-Current request construction mirrors upstream's `api::Request` shape:
+当前请求构建反映了上游的 `api::Request` 形状：
 
-- `task_context` is present with an empty task list.
-- `input.context` includes directory, OS, shell, and current timestamp.
-- `input.type = user_inputs`.
-- `user_inputs.inputs[].user_query.query` carries the current user turn.
-- The handler logs the same `UserQuery.query` preview that the request builder
-  marshals, instead of generating a separate local Warp prompt.
-- `metadata.conversation_id` is populated only for server-issued Warp
-  conversation IDs, not local `chat_*` placeholders.
-- `settings.model_config.base` is the requested model.
-- `settings.model_config.cli_agent = "cli-agent-auto"`.
-- `settings.model_config.computer_use_agent = "computer-use-agent-auto"`.
-- `settings.model_config.coding` is left empty because official Warp no longer
-  sends this deprecated role field.
-- `settings.model_config.base_model_context_window_limit = 0`.
+- `task_context` 存在，且任务列表为空。
+- `input.context` 包括目录、操作系统、shell 和当前时间戳。
+- `input.type = user_inputs`。
+- `user_inputs.inputs[].user_query.query` 包含当前用户轮次。
+- 处理程序记录请求构建器编组的相同的 `UserQuery.query` 预览，而不是生成单独的本地 Warp 提示。
+- `metadata.conversation_id` 仅针对服务器发出的 Warp 会话 ID 填充，而不是本地 `chat_*` 占位符。
+- `settings.model_config.base` 是请求的模型。
+- `settings.model_config.cli_agent = "cli-agent-auto"`。
+- `settings.model_config.computer_use_agent = "computer-use-agent-auto"`。
+- `settings.model_config.coding` 留空，因为官方 Warp 不再发送此已弃用的角色字段。
+- `settings.model_config.base_model_context_window_limit = 0`。
 - `settings.supports_parallel_tool_calls = true`
 - `settings.supports_reasoning_message = true`
 - `settings.web_search_enabled = true`
 - `settings.supports_v4a_file_diffs = true`
-- `settings.supported_tools` follows upstream local-session defaults for shell,
-  file, grep, MCP, subagent, document, prompt-suggestion, apply-diff, and
-  search-codebase tools when tools are enabled.
-- `settings.supported_cli_agent_tools` follows upstream local-session defaults.
-- `mcp_context.servers` groups request-declared tools under an Orchids server.
+- 当启用工具时，`settings.supported_tools` 遵循上游本地会话对于 shell、文件、grep、MCP、子代理、文档、提示建议、应用差异和搜索代码库工具的默认设置。
+- `settings.supported_cli_agent_tools` 遵循上游本地会话默认设置。
+- `mcp_context.servers` 将请求声明的工具分组在 Orchids 服务器下。
 
-## Model Discovery and Availability
+## 模型发现和可用性
 
-Official Warp runs with one logged-in user's model configuration. Orchids-2api
-runs a multi-account pool, so a model list assembled as a union across accounts
-can expose models that a selected account cannot actually call.
+官方 Warp 运行在一个已登录用户的模型配置下。Orchids-2api 运行多账号池，因此跨账号聚合的模型列表可能会暴露选定账号实际无法调用的模型。
 
-Live verification showed that GraphQL visibility is not the same as callability:
-`workspace.availableLlms(includeAllConfigurableLlms: true)` can return models
-such as Claude/Gemini variants that later fail at `/ai/multi-agent` with errors
-like `the requested base model (...) is not allowed for your account` or `No
-model available`.
+实时验证表明 GraphQL 可见性并不等同于可调用性：`workspace.availableLlms(includeAllConfigurableLlms: true)` 可能返回 Claude/Gemini 变体等模型，这些模型稍后会在 `/ai/multi-agent` 失败，并提示 `the requested base model (...) is not allowed for your account` 或 `No model available` 等错误。
 
-Upstream behavior:
+上游行为：
 
-- Fetch feature-specific model choices with `GetFeatureModelChoices`.
-- Use `workspaces[].featureModelChoice.agentMode` for agent-mode callable
-  choices.
-- `workspace.availableLlms(includeAllConfigurableLlms: true)` remains a broad
-  catalog surface, not the current agent-mode routing source.
+- 使用 `GetFeatureModelChoices` 获取特定功能的模型选项。
+- 使用 `workspaces[].featureModelChoice.agentMode` 获取代理模式可调用的选项。
+- `workspace.availableLlms(includeAllConfigurableLlms: true)` 仍然是一个宽泛的目录表面，而不是当前的代理模式路由源。
 
-Current behavior:
+当前行为：
 
-- Prefer `workspaces[].featureModelChoice.agentMode.choices` as the trusted
-  callable model source.
-- Keep `auto-open` as the default Warp model.
-- Map old auto aliases (`auto`, `auto-efficient`, `auto-genius`) to `auto-open`.
-- Retry Warp HTTP 400 model-availability failures once with `auto-open`.
-- Classify Warp model-availability errors separately from generic client 400s so
-  retry/account-switch policy can treat them as account/model availability, not
-  malformed client input.
+- 首选 `workspaces[].featureModelChoice.agentMode.choices` 作为受信任的可调用模型来源。
+- 保持 `auto-open` 为默认 Warp 模型。
+- 将旧的 auto 别名（`auto`、`auto-efficient`、`auto-genius`）映射到 `auto-open`。
+- 使用 `auto-open` 重试 Warp HTTP 400 模型可用性失败一次。
+- 将 Warp 模型可用性错误与通用客户端 400 错误分离开来，以便重试/账号切换策略可以将它们视为账号/模型可用性问题，而不是客户端输入格式错误。
 
-## Known Differences
+## 已知差异
 
-- Official `RequestParams` can send separate coding, CLI-agent, computer-use,
-  BYO key, custom provider, research-agent, bundled-skills, and orchestration
-  settings. Orchids-2api currently uses official default role models and leaves
-  those optional advanced settings disabled.
-- Official client converts native Warp conversation state into separate
-  `UserInputs` and action-result inputs. Orchids-2api receives OpenAI/Claude
-  style chat history, so it bridges the current user/tool-result turn into one
-  `UserQuery.query` until a full action-result mapper is implemented.
-- Official `ResponseEvent.StreamFinished.should_refresh_model_config` tells the
-  client when its model config is stale. We now parse and log this signal, but
-  do not yet trigger an automatic model refresh.
-- Official `StreamFinished` contains request cost and conversation usage
-  metadata. We currently keep token usage only.
-- Official model refresh is tied to a single user's current model configuration.
-  Orchids-2api keeps a per-account model-choice cache because it routes over a
-  pooled Warp account set.
+- 官方 `RequestParams` 可以发送单独的编码、CLI 代理、计算机使用、BYO 密钥、自定义提供商、研究代理、捆绑技能和编排设置。Orchids-2api 当前使用官方默认角色模型，并禁用这些可选的高级设置。
+- 官方客户端将本机 Warp 会话状态转换为单独的 `UserInputs` 和操作结果输入。Orchids-2api 接收 OpenAI/Claude 风格的聊天记录，因此它将当前的用户/工具结果轮次桥接到一个 `UserQuery.query` 中，直到实现完整的操作结果映射器。
+- 官方 `ResponseEvent.StreamFinished.should_refresh_model_config` 告诉客户端其模型配置何时过时。我们现在解析并记录此信号，但尚未触发自动模型刷新。
+- 官方 `StreamFinished` 包含请求成本和会话使用量元数据。我们目前只保留令牌使用量。
+- 官方模型刷新绑定到单个用户的当前模型配置。Orchids-2api 保留每个账号的模型选择缓存，因为它在池化的 Warp 账号集上进行路由。
 
-## Recommended Next Step
+## 建议的后续步骤
 
-The safer next step is a low-concurrency per-account model probe/cache:
+更安全的下一步是实施低并发的每个账号模型探测/缓存：
 
-- Probe only selected/default candidate models, not the full configurable
-  catalog.
-- Cache `(account_id, model_id) -> allowed/unavailable` with a short TTL.
-- Use the cache during account selection so a request for a specific model picks
-  an account known to allow it.
-- Consume `should_refresh_model_config` by scheduling a serialized Warp refresh
-  and invalidating the relevant allowedness cache.
-- Add a full mapper from incoming tool-result messages to official
-  `Request.Input.UserInputs.UserInput.ToolCallResult` when we want tighter
-  multi-turn parity with Warp's native conversation state.
+- 仅探测选定/默认的候选模型，而不是完整的可配置目录。
+- 缓存 `(account_id, model_id) -> allowed/unavailable`，设置较短的 TTL。
+- 在账号选择期间使用缓存，以便针对特定模型的请求选择已知允许该模型的账号。
+- 通过调度序列化的 Warp 刷新并使相关的允许性缓存失效来消耗 `should_refresh_model_config`。
+- 当我们希望在多轮对话上与 Warp 本都会话状态有更紧密的奇偶校验时，添加从传入的工具结果消息到官方 `Request.Input.UserInputs.UserInput.ToolCallResult` 的完整映射器。

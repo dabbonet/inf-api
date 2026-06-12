@@ -1,105 +1,105 @@
-# 配置说明
+# Configuration Guide
 
-## 1. 加载规则
+## 1. Loading Rules
 
-配置加载顺序：
+Configuration loading order:
 
-1. 启动参数 `-config` 指定文件
-2. 若未指定，则按顺序查找 `config.json` -> `config.yaml` -> `config.yml`
-3. 读取文件并应用默认值
-4. 若 Redis 中存在 `settings:config`，则以 Redis 中保存的配置覆盖文件配置
-5. 最后始终执行 `config.ApplyHardcoded()`，把一批运行时固定值重新写入
+1. File specified by startup parameter `-config`
+2. If not specified, sequentially search for `config.json` -> `config.yaml` -> `config.yml`
+3. Read file and apply default values
+4. If `settings:config` exists in Redis, overwrite the file configuration with the configuration saved in Redis
+5. Finally, always execute `config.ApplyHardcoded()` to rewrite a batch of fixed runtime values
 
-说明：
+Notes:
 
-- YAML 仅支持扁平 `key: value`
-- 不是所有历史字段都还能通过配置文件生效
+- YAML only supports flat `key: value`
+- Not all historical fields can still take effect through the configuration file
 
-## 2. 配置文件可设置的字段
+## 2. Fields Settable in Configuration File
 
-下面这些字段会从配置文件或管理接口持久化到 Redis。
+These fields below will be persisted from the configuration file or admin interface to Redis.
 
-### 2.1 服务与管理端
+### 2.1 Service and Admin Panel
 
-| 字段 | 默认值 | 说明 |
+| Field | Default Value | Description |
 |---|---|---|
-| `port` | `3002` | 服务监听端口 |
-| `debug_enabled` | `false` | 打开调试日志 |
-| `verbose_diagnostics` | `false` | 详细诊断日志 |
-| `admin_user` | `admin` | 管理端用户名 |
-| `admin_pass` | 自动生成 | 管理端密码，建议显式设置 |
-| `admin_path` | `/admin` | 管理端路径 |
-| `admin_token` | 空 | 管理端静态 token |
+| `port` | `3002` | Service listening port |
+| `debug_enabled` | `false` | Enable debug logging |
+| `verbose_diagnostics` | `false` | Detailed diagnostic logs |
+| `admin_user` | `admin` | Admin panel username |
+| `admin_pass` | Auto-generated | Admin panel password, explicitly setting is recommended |
+| `admin_path` | `/admin` | Admin panel path |
+| `admin_token` | Empty | Admin panel static token |
 
 ### 2.2 Redis
 
-| 字段 | 默认值 | 说明 |
+| Field | Default Value | Description |
 |---|---|---|
-| `store_mode` | `redis` | 当前仅支持 `redis` |
-| `redis_addr` | 空 | Redis 地址，例如 `127.0.0.1:6379` |
-| `redis_password` | 空 | Redis 密码 |
+| `store_mode` | `redis` | Currently only supports `redis` |
+| `redis_addr` | Empty | Redis address, e.g., `127.0.0.1:6379` |
+| `redis_password` | Empty | Redis password |
 | `redis_db` | `0` | Redis DB |
-| `redis_prefix` | `orchids:` | Redis key 前缀 |
+| `redis_prefix` | `orchids:` | Redis key prefix |
 
-### 2.3 缓存
+### 2.3 Cache
 
-| 字段 | 默认值 | 说明 |
+| Field | Default Value | Description |
 |---|---|---|
-| `cache_token_count` | `false` | 是否缓存 token 计数 |
-| `cache_ttl` | `5` | 通用缓存 TTL（分钟） |
-| `cache_strategy` | `mix` | 缓存策略 |
-| `enable_token_cache` | `false` | 是否启用 token cache |
-| `token_cache_ttl` | `300` | token cache TTL（秒） |
-| `token_cache_strategy` | `1` | token cache 策略 |
+| `cache_token_count` | `false` | Whether to cache token counts |
+| `cache_ttl` | `5` | General cache TTL (minutes) |
+| `cache_strategy` | `mix` | Cache strategy |
+| `enable_token_cache` | `false` | Whether to enable token cache |
+| `token_cache_ttl` | `300` | Token cache TTL (seconds) |
+| `token_cache_strategy` | `1` | Token cache strategy |
 
-### 2.4 代理
+### 2.4 Proxy
 
-| 字段 | 默认值 | 说明 |
+| Field | Default Value | Description |
 |---|---|---|
-| `proxy_http` | 空 | HTTP 代理 |
-| `proxy_https` | 空 | HTTPS 代理 |
-| `proxy_user` | 空 | 代理用户名 |
-| `proxy_pass` | 空 | 代理密码 |
-| `proxy_bypass` | 空数组 | 直连域名或网段 |
+| `proxy_http` | Empty | HTTP proxy |
+| `proxy_https` | Empty | HTTPS proxy |
+| `proxy_user` | Empty | Proxy username |
+| `proxy_pass` | Empty | Proxy password |
+| `proxy_bypass` | Empty array | Direct connection domains or subnets |
 
-## 3. 运行时硬编码默认值
+## 3. Runtime Hardcoded Defaults
 
-这些值由 [config.go](/D:/Code/Orchids-2api/internal/config/config.go) 里的 `ApplyHardcoded()` 强制覆盖，不能指望仅靠配置文件改变。
+These values are forcibly overwritten by `ApplyHardcoded()` in [config.go](/D:/Code/Orchids-2api/internal/config/config.go), do not expect to change them solely through the configuration file.
 
-| 字段 | 当前值 | 说明 |
+| Field | Current Value | Description |
 |---|---|---|
-| `output_token_mode` | `final` | 输出 token 统计模式 |
-| `context_max_tokens` | `100000` | 上下文上限 |
-| `context_summary_max_tokens` | `800` | 摘要上限 |
-| `context_keep_turns` | `6` | 会话保留轮数 |
-| `orchids_api_version` | `2` | Orchids API 版本 |
-| `orchids_allow_run_command` | `true` | Orchids 允许命令工具 |
-| `orchids_run_allowlist` | `["*"]` | Orchids 命令白名单 |
-| `orchids_cc_entrypoint_mode` | `auto` | 入口模式 |
-| `orchids_fs_ignore` | `["debug-logs","data",".claude"]` | 忽略目录 |
-| `grok_api_base_url` | `https://grok.com` | Grok 基础地址 |
-| `warp_disable_tools` | `false` | Warp 工具默认开启 |
-| `warp_max_tool_results` | `10` | Warp 单轮工具结果上限 |
-| `warp_max_history_messages` | `20` | Warp 历史消息上限 |
-| `orchids_max_tool_results` | `10` | Orchids 单轮工具结果上限 |
-| `orchids_max_history_messages` | `20` | Orchids 历史消息上限 |
-| `stream` | `true` | Chat 默认流式 |
-| `image_nsfw` | `true` | 公共 imagine 默认 NSFW 开启 |
-| `public_enabled` | `true` | 公共页面默认开启 |
-| `image_final_min_bytes` | `100000` | imagine 最终图阈值 |
-| `image_medium_min_bytes` | `30000` | imagine 中间图阈值 |
-| `max_retries` | `3` | 请求最大重试次数 |
-| `retry_delay` | `1000` | 重试基准延迟（毫秒） |
-| `request_timeout` | `600` | 请求超时（秒） |
-| `retry_429_interval` | `60` | 429 重试间隔（秒） |
-| `token_refresh_interval` | `1` | token 自动刷新间隔（分钟） |
-| `auto_refresh_token` | `true` | 自动刷新账号 token |
-| `load_balancer_cache_ttl` | `5` | 负载均衡缓存 TTL（秒） |
-| `concurrency_limit` | `100` | 并发上限 |
-| `concurrency_timeout` | `300` | 并发等待超时（秒） |
-| `adaptive_timeout` | `true` | 自适应超时 |
+| `output_token_mode` | `final` | Output token statistics mode |
+| `context_max_tokens` | `100000` | Context limit |
+| `context_summary_max_tokens` | `800` | Summary limit |
+| `context_keep_turns` | `6` | Session keep turns |
+| `orchids_api_version` | `2` | Orchids API version |
+| `orchids_allow_run_command` | `true` | Orchids allows command tool |
+| `orchids_run_allowlist` | `["*"]` | Orchids command whitelist |
+| `orchids_cc_entrypoint_mode` | `auto` | Entrypoint mode |
+| `orchids_fs_ignore` | `["debug-logs","data",".claude"]` | Ignored directories |
+| `grok_api_base_url` | `https://grok.com` | Grok base URL |
+| `warp_disable_tools` | `false` | Warp tools enabled by default |
+| `warp_max_tool_results` | `10` | Warp max tool results per turn |
+| `warp_max_history_messages` | `20` | Warp history message limit |
+| `orchids_max_tool_results` | `10` | Orchids max tool results per turn |
+| `orchids_max_history_messages` | `20` | Orchids history message limit |
+| `stream` | `true` | Chat streams by default |
+| `image_nsfw` | `true` | Public imagine NSFW enabled by default |
+| `public_enabled` | `true` | Public pages enabled by default |
+| `image_final_min_bytes` | `100000` | Imagine final image threshold |
+| `image_medium_min_bytes` | `30000` | Imagine intermediate image threshold |
+| `max_retries` | `3` | Maximum request retries |
+| `retry_delay` | `1000` | Base retry delay (milliseconds) |
+| `request_timeout` | `600` | Request timeout (seconds) |
+| `retry_429_interval` | `60` | 429 retry interval (seconds) |
+| `token_refresh_interval` | `1` | Token automatic refresh interval (minutes) |
+| `auto_refresh_token` | `true` | Automatically refresh account token |
+| `load_balancer_cache_ttl` | `5` | Load balancer cache TTL (seconds) |
+| `concurrency_limit` | `100` | Concurrency limit |
+| `concurrency_timeout` | `300` | Concurrency wait timeout (seconds) |
+| `adaptive_timeout` | `true` | Adaptive timeout |
 
-## 4. 最小可用配置
+## 4. Minimum Usable Configuration
 
 ```json
 {
@@ -113,26 +113,26 @@
 }
 ```
 
-## 5. 配置保存入口
+## 5. Configuration Save Entry Points
 
-管理端有两套常用配置接口：
+The admin panel has two sets of commonly used configuration interfaces:
 
-| 路径 | 方法 | 说明 |
+| Path | Method | Description |
 |---|---|---|
-| `/api/config` | GET/POST | 直接读取 / 覆盖整个配置对象 |
-| `/api/config/list` | GET | 读取管理端表单配置 |
-| `/api/config/save` | POST | 以 patch 方式保存管理端表单配置 |
+| `/api/config` | GET/POST | Read directly / overwrite the entire configuration object |
+| `/api/config/list` | GET | Read admin form configuration |
+| `/api/config/save` | POST | Save admin form configuration via patch |
 
-## 6. 注意事项
+## 6. Important Notes
 
-- `admin_pass` 若留空，会在启动时自动生成随机密码并写日志
-- 配置保存在 Redis 后，后续重启会优先使用 Redis 版本
-- `data/tmp`、`debug-logs` 等目录是运行期产物，不是配置项
-- 许多历史字段即使仍出现在旧配置里，也不会改变当前运行行为
+- If `admin_pass` is left empty, a random password will be automatically generated at startup and written to the log
+- After the configuration is saved in Redis, subsequent restarts will prioritize the Redis version
+- Directories like `data/tmp` and `debug-logs` are runtime products, not configuration items
+- Many historical fields, even if they still appear in old configurations, will not change current runtime behavior
 
-## 7. 建议清理的历史字段
+## 7. Recommended Historical Fields to Cleanup
 
-以下旧字段不建议继续保留在配置文件中：
+It is not recommended to keep the following old fields in the configuration file:
 
 - `summary_cache_*`
 - `tool_call_mode`

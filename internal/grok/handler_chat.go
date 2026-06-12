@@ -1466,7 +1466,7 @@ func (h *Handler) streamChat(w http.ResponseWriter, req *ChatCompletionsRequest,
 		if spec.IsVideo {
 			if progress, videoURL, _, ok := extractVideoProgress(resp); ok {
 				if progress > 0 && progress < 100 {
-					emitChunk("", fmt.Sprintf("正在生成视频中，当前进度%d%%\n", progress), "", false)
+					emitChunk("", fmt.Sprintf("Generating video, current progress %d%%\n", progress), "", false)
 				}
 				if progress >= 100 && strings.TrimSpace(videoURL) == "" {
 					for _, assetID := range extractVideoAssetIDs(resp) {

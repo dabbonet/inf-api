@@ -32,7 +32,7 @@ func sampleIncomingTools() []interface{} {
 					"type": "object",
 					"properties": map[string]interface{}{
 						"file_path": map[string]interface{}{"type": "string"},
-						"content":   map[string]interface{}{"type": "string", "description": "utf-8 内容"},
+						"content":   map[string]interface{}{"type": "string", "description": "utf-8 content"},
 					},
 				},
 			},

@@ -167,7 +167,7 @@ func (s *Store) seedModels() error {
 	}
 
 	models := []Model{
-		// Orchids 模型
+		// Orchids model
 		{ID: "6", Channel: "Orchids", ModelID: "claude-sonnet-4-5", Name: "Claude Sonnet 4.5", Status: ModelStatusAvailable, IsDefault: true, SortOrder: 0},
 		{ID: "44", Channel: "Orchids", ModelID: "claude-opus-4-6", Name: "Claude Opus 4.6", Status: ModelStatusAvailable, IsDefault: false, SortOrder: 1},
 		{ID: "45", Channel: "Orchids", ModelID: "claude-opus-4-6-thinking", Name: "Claude Opus 4.6 Thinking", Status: ModelStatusAvailable, IsDefault: false, SortOrder: 2},
@@ -177,10 +177,10 @@ func (s *Store) seedModels() error {
 		{ID: "8", Channel: "Orchids", ModelID: "claude-haiku-4-5", Name: "Claude Haiku 4.5", Status: ModelStatusAvailable, IsDefault: false, SortOrder: 6},
 		{ID: "9", Channel: "Orchids", ModelID: "claude-sonnet-4-20250514", Name: "Claude Sonnet 4", Status: ModelStatusAvailable, IsDefault: false, SortOrder: 7},
 		{ID: "10", Channel: "Orchids", ModelID: "claude-3-7-sonnet-20250219", Name: "Claude 3.7 Sonnet", Status: ModelStatusAvailable, IsDefault: false, SortOrder: 8},
-		// Puter 模型
-		// 这里采用“无前缀主模型”策略：
-		// 参考 puter2api 仓库附带的 model.json，只收录不带 provider 前缀的主模型，
-		// 不直接暴露 openrouter:/togetherai: 这类聚合源模型，避免列表膨胀过大。
+		// Puter model
+		// The "unprefixed main model" strategy is used here:
+		// Refer to the model.json included with the puter2api warehouse. Only the main model without the provider prefix is ​​included.
+		// Do not directly expose aggregate source models such as openrouter:/togetherai: to avoid excessive list expansion.
 	}
 
 	models = append(models, BuildWarpSeedModels()...)

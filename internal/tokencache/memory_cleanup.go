@@ -17,7 +17,7 @@ func (c *MemoryCache) cleanupLoop() {
 	}
 }
 
-// Close 停止后台清理 goroutine
+// Close stops background cleanup goroutine
 func (c *MemoryCache) Close() {
 	select {
 	case <-c.done:

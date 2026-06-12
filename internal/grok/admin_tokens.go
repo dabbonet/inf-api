@@ -420,6 +420,6 @@ func (h *Handler) handleAdminTokensUpdate(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "success",
-		"message": "Token 已更新",
+		"message": "Token updated",
 	})
 }

@@ -127,17 +127,17 @@ func TestWarpRequestRequiresCloudAgent(t *testing.T) {
 		},
 		{
 			name:     "plain chinese chat",
-			messages: []prompt.Message{{Role: "user", Content: prompt.MessageContent{Text: "你好"}}},
+			messages: []prompt.Message{{Role: "user", Content: prompt.MessageContent{Text: "hello"}}},
 			want:     false,
 		},
 		{
 			name:     "creative writing does not require agent",
-			messages: []prompt.Message{{Role: "user", Content: prompt.MessageContent{Text: "帮我写一个故事"}}},
+			messages: []prompt.Message{{Role: "user", Content: prompt.MessageContent{Text: "help me write a story"}}},
 			want:     false,
 		},
 		{
 			name:     "coding request without explicit tools",
-			messages: []prompt.Message{{Role: "user", Content: prompt.MessageContent{Text: "帮我用python写一个计算器"}}},
+			messages: []prompt.Message{{Role: "user", Content: prompt.MessageContent{Text: "Help me write a calculator in python"}}},
 			want:     true,
 		},
 		{
@@ -294,24 +294,24 @@ func TestClassifyTopicRequest(t *testing.T) {
 		{
 			name: "single user message treated as new topic",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "帮我用python写一个计算器"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "Help me write a calculator in python"}},
 			},
 			wantIsNew: true,
 		},
 		{
 			name: "same user message treated as same topic",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "帮我用python写一个计算器"}},
-				{Role: "assistant", Content: prompt.MessageContent{Text: "好的"}},
-				{Role: "user", Content: prompt.MessageContent{Text: "帮我用python写一个计算器"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "Help me write a calculator in python"}},
+				{Role: "assistant", Content: prompt.MessageContent{Text: "OK"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "Help me write a calculator in python"}},
 			},
 			wantIsNew: false,
 		},
 		{
 			name: "greeting treated as same topic",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "帮我用python写一个计算器"}},
-				{Role: "assistant", Content: prompt.MessageContent{Text: "好的"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "Help me write a calculator in python"}},
+				{Role: "assistant", Content: prompt.MessageContent{Text: "OK"}},
 				{Role: "user", Content: prompt.MessageContent{Text: "hi"}},
 			},
 			wantIsNew: false,
@@ -344,17 +344,17 @@ func TestBuildLocalSuggestion(t *testing.T) {
 		{
 			name: "chinese follow up offer returns chinese suggestion",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "继续处理这个问题"}},
-				{Role: "assistant", Content: prompt.MessageContent{Text: "已经定位完了。如果你要，我下一步可以直接帮你提交修复。"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "Continue to process this issue"}},
+				{Role: "assistant", Content: prompt.MessageContent{Text: "Locating is done. If you want, I can submit the fix for you next."}},
 				{Role: "user", Content: prompt.MessageContent{Text: "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]"}},
 			},
-			want: "可以",
+			want: "Okay",
 		},
 		{
 			name: "non obvious next step stays silent",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "当前运行的目录"}},
-				{Role: "assistant", Content: prompt.MessageContent{Text: "当前运行目录：`/Users/dailin/Documents/GitHub/TEST`"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "current running directory"}},
+				{Role: "assistant", Content: prompt.MessageContent{Text: "Currently running directory: `/Users/dailin/Documents/GitHub/TEST`"}},
 				{Role: "user", Content: prompt.MessageContent{Text: "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]"}},
 			},
 			want: "",
@@ -399,7 +399,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for project optimization after directory listing",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目怎么优化"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "how to optimize this project"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Read", Input: map[string]interface{}{"file_path": "README.md"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "1→README.md\n2→src/\n3→docs/\n4→test.py"}}}},
 			},
@@ -408,7 +408,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for project optimization after ls long listing",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "帮我优化这个项目"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "help me optimize this project"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "drwxr-xr-x@ 15 dailin  staff    480 Mar  7 20:26 .\ndrwxr-xr-x@  7 dailin  staff    224 Mar 10 21:26 ..\n-rw-r--r--@  1 dailin  staff   7191 Mar  5 21:41 README.md\n-rw-r--r--@  1 dailin  staff  54313 Mar  5 21:56 api.py\n-rw-r--r--@  1 dailin  staff    401 Mar  5 21:41 requirements.txt\ndrwxr-xr-x@ 15 dailin  staff    480 Mar  7 20:26 web-ui"}}}},
 			},
@@ -417,7 +417,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "does not keep tools for simple directory answer",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "当前运行的目录"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "current running directory"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "pwd"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "/tmp/project"}}}},
 			},
@@ -426,7 +426,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools after first shallow file read for optimization follow-up",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目怎么优化"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "how to optimize this project"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Read", Input: map[string]interface{}{"file_path": "test.py"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "1→import time\n2→def main():\n3→    return 1"}}}},
 			},
@@ -435,7 +435,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for optimization after readme and requirements without source reads",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "帮我优化这个项目"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "help me optimize this project"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "README.md\napi.py\nrequirements.txt\nmonitor_trump.py\ndashboard.py"}}}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_2", Name: "Read", Input: map[string]interface{}{"file_path": "README.md"}}}}},
@@ -448,7 +448,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "stops tools for optimization once directory and core files are covered",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "帮我优化这个项目"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "help me optimize this project"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "README.md\napi.py\nrequirements.txt\nweb-ui/"}}}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_2", Name: "Read", Input: map[string]interface{}{"file_path": "README.md"}}}}},
@@ -465,7 +465,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for optimization after readme requirements and one core source file",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "帮我优化这个项目"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "help me optimize this project"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "README.md\napi.py\ndashboard.py\nmonitor_trump.py\nrequirements.txt\nutils.py"}}}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_2", Name: "Read", Input: map[string]interface{}{"file_path": "README.md"}}}}},
@@ -480,7 +480,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "stops tools for deep optimization analysis once enough files are covered",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "仔细看，深入分析怎么优化这里"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "Take a closer look, in-depth analysis how to optimize here"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "README.md\napi.py\nrequirements.txt"}}}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_2", Name: "Read", Input: map[string]interface{}{"file_path": "README.md"}}}}},
@@ -497,7 +497,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools when optimization follow-up only repeats one core file",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "帮我优化这个项目"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "help me optimize this project"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "README.md\napi.py\nrequirements.txt\nweb-ui/"}}}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_2", Name: "Read", Input: map[string]interface{}{"file_path": "README.md"}}}}},
@@ -512,7 +512,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "stops tools when optimization repeats after multiple implementation files are covered",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "帮我优化这个项目"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "help me optimize this project"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "README.md\napi.py\ndashboard.py\nrequirements.txt\nutils.py"}}}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_2", Name: "Read", Input: map[string]interface{}{"file_path": "README.md"}}}}},
@@ -529,7 +529,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "does not keep tools for project purpose questions that can be answered locally",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目是干什么的"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "what is this project for"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "README.md\napi.py\ndashboard.py\nweb-ui/\nweb-ui/package.json\nweb-ui/src/\nrequirements.txt"}}}},
 			},
@@ -538,7 +538,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "does not keep tools for testing questions that can be answered locally",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目如何测试"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "How to test this project"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "tests/\npytest.ini\nplaywright.config.ts\n.github/workflows/test.yml"}}}},
 			},
@@ -547,7 +547,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "does not keep tools for dependency risk questions that can be answered locally",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目有哪些依赖风险"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "What dependencies risks does this project have?"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Read", Input: map[string]interface{}{"file_path": "requirements.txt"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "requirements.txt\nrequests>=2.0\nflask==2.3.0\npackage-lock.json"}}}},
 			},
@@ -556,7 +556,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for performance bottleneck question after directory listing",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目有哪些性能瓶颈"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "What are the performance bottlenecks in this project?"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "README.md\nsrc/\napi.py\nrequirements.txt"}}}},
 			},
@@ -565,7 +565,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for config risk question after directory listing",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目有哪些配置风险"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "What are the configuration risks of this project?"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: ".env\nconfig/\nconfig.yaml\nREADME.md"}}}},
 			},
@@ -574,7 +574,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for observability gap question after directory listing",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目有哪些可观测性缺口"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "What observability gaps does this project have?"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "api.py\nDockerfile\n.github/workflows/\nREADME.md"}}}},
 			},
@@ -583,7 +583,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for release risk question after directory listing",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目有哪些发布风险"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "What are the publishing risks of this project?"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "Dockerfile\n.github/\ndeploy/\nREADME.md"}}}},
 			},
@@ -592,7 +592,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for compatibility risk question after directory listing",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目有哪些兼容性风险"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "What compatibility risks does this project have?"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "scripts/\nrequirements.txt\nREADME.md\nDockerfile"}}}},
 			},
@@ -601,7 +601,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for operational risk question after directory listing",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目有哪些运维风险"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "What are the operation and maintenance risks of this project?"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "scripts/\ndeploy/\nDockerfile\nREADME.md"}}}},
 			},
@@ -610,7 +610,7 @@ func TestShouldKeepToolsForWarpToolResultFollowup(t *testing.T) {
 		{
 			name: "keeps tools for recovery risk question after directory listing",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "这个项目有哪些恢复与回滚风险"}},
+				{Role: "user", Content: prompt.MessageContent{Text: "What are the recovery and rollback risks of this project?"}},
 				{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Bash", Input: map[string]interface{}{"command": "ls -la"}}}}},
 				{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_result", ToolUseID: "tool_1", Content: "deploy/\nmigrations/\nDockerfile\nREADME.md"}}}},
 			},
@@ -632,7 +632,7 @@ func TestLastUserIsToolResultFollowup_AllowsTextAlongsideToolResult(t *testing.T
 		{Role: "assistant", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{{Type: "tool_use", ID: "tool_1", Name: "Read", Input: map[string]interface{}{"file_path": "utils.py"}}}}},
 		{Role: "user", Content: prompt.MessageContent{Blocks: []prompt.ContentBlock{
 			{Type: "tool_result", ToolUseID: "tool_1", Content: "import flask"},
-			{Type: "text", Text: "这个项目使用了哪些技术架构"},
+			{Type: "text", Text: "What technology architecture is used in this project"},
 		}}},
 	}
 
@@ -647,9 +647,9 @@ func TestExplicitlyRequestsDeepAnalysis(t *testing.T) {
 		input string
 		want  bool
 	}{
-		{"matches chinese keywords", "请帮我深入分析这个项目", true},
+		{"matches chinese keywords", "Please help me in-depth analyze this project", true},
 		{"matches english keywords", "can you do a deep analysis", true},
-		{"does not match normal opt", "帮我优化这个项目", false},
+		{"does not match normal opt", "help me optimize this project", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

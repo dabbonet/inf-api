@@ -69,33 +69,33 @@ func isCurrentWorkdirRequest(req ClaudeRequest) bool {
 	}
 
 	switch normalized {
-	case "当前运行的目录", "当前工作目录", "当前路径", "当前项目路径", "项目目录地址", "pwd":
+	case "current running directory", "current working directory", "current path", "current project path", "project directory address", "pwd":
 		return true
 	}
 
-	if strings.Contains(text, "当前运行的目录") || strings.Contains(text, "当前工作目录") {
+	if strings.Contains(text, "current running directory") || strings.Contains(text, "current working directory") {
 		return true
 	}
 	if strings.Contains(text, "workspace") &&
 		(strings.Contains(lower, "path") || strings.Contains(lower, "directory") || strings.Contains(lower, "where") ||
-			strings.Contains(text, "路径") || strings.Contains(text, "目录") || strings.Contains(text, "在哪") || strings.Contains(text, "哪里")) {
+			strings.Contains(text, "path") || strings.Contains(text, "directory") || strings.Contains(text, "where is") || strings.Contains(text, "where")) {
 		return true
 	}
-	if strings.Contains(text, "工作区") &&
-		(strings.Contains(text, "路径") || strings.Contains(text, "目录") || strings.Contains(text, "在哪") || strings.Contains(text, "哪里")) {
+	if strings.Contains(text, "workspace") &&
+		(strings.Contains(text, "path") || strings.Contains(text, "directory") || strings.Contains(text, "where is") || strings.Contains(text, "where")) {
 		return true
 	}
-	if strings.Contains(text, "当前路径") || strings.Contains(text, "项目路径") {
+	if strings.Contains(text, "current path") || strings.Contains(text, "project path") {
 		return true
 	}
-	if strings.Contains(text, "当前目录") &&
-		(strings.Contains(text, "路径") || strings.Contains(text, "地址") || strings.Contains(text, "在哪") ||
-			strings.Contains(text, "哪里") || strings.Contains(text, "是什么") || strings.Contains(text, "是啥")) {
+	if strings.Contains(text, "current directory") &&
+		(strings.Contains(text, "path") || strings.Contains(text, "address") || strings.Contains(text, "where is") ||
+			strings.Contains(text, "where") || strings.Contains(text, "what is") || strings.Contains(text, "what is")) {
 		return true
 	}
-	if strings.Contains(text, "项目目录") &&
-		(strings.Contains(text, "路径") || strings.Contains(text, "地址") || strings.Contains(text, "在哪") ||
-			strings.Contains(text, "哪里") || strings.Contains(text, "是什么") || strings.Contains(text, "是啥")) {
+	if strings.Contains(text, "project directory") &&
+		(strings.Contains(text, "path") || strings.Contains(text, "address") || strings.Contains(text, "where is") ||
+			strings.Contains(text, "where") || strings.Contains(text, "what is") || strings.Contains(text, "what is")) {
 		return true
 	}
 
@@ -105,9 +105,9 @@ func isCurrentWorkdirRequest(req ClaudeRequest) bool {
 func buildCurrentWorkdirAnswer(workdir string) string {
 	workdir = strings.TrimSpace(workdir)
 	if workdir == "" {
-		return "当前工作目录未在本次请求中提供，暂时无法确定。"
+		return "The current working directory is not provided in this request and cannot be determined at the moment."
 	}
-	return "当前运行的目录是 `" + workdir + "`"
+	return "current running directory is `" + workdir + "`"
 }
 
 func writeLocalTextResponse(w http.ResponseWriter, req ClaudeRequest, responseFormat adapter.ResponseFormat, text string, startTime time.Time, logger *debug.Logger) {

@@ -61,7 +61,7 @@ func (h *Handler) resolveModelAliasForChannel(ctx context.Context, channel, mode
 }
 
 // resolveWorkdir determines the working directory from headers, system prompt, or session.
-// 返回当前 workdir、上一轮 workdir、以及是否发生变更。
+// Returns the current workdir, the previous round of workdir, and whether changes have occurred.
 func (h *Handler) resolveWorkdir(r *http.Request, req ClaudeRequest, conversationKey string) (string, string, bool) {
 	prevWorkdir := ""
 	if conversationKey != "" {
@@ -362,7 +362,7 @@ func (h *Handler) syncWarpState(account *store.Account, client UpstreamClient, s
 			changed = warpClient.SyncAccountState()
 		}
 	} else if _, ok := client.(*orchids.Client); ok {
-		// Orchids 账号：通过快照比较检测 forceRefreshToken 是否更新了账号信息
+		// Orchids account: Use snapshot comparison to check whether forceRefreshToken has updated the account information.
 		changed = account.SyncState(snapshot)
 	}
 
@@ -370,7 +370,7 @@ func (h *Handler) syncWarpState(account *store.Account, client UpstreamClient, s
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := h.loadBalancer.Store.UpdateAccount(ctx, account); err != nil {
-			slog.Warn("同步账号令牌失败", "account", account.Name, "type", account.AccountType, "error", err)
+			slog.Warn("Failed to synchronize account token", "account", account.Name, "type", account.AccountType, "error", err)
 		}
 	}
 }

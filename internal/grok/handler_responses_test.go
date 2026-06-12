@@ -15,10 +15,10 @@ func TestChatRequestFromResponses_ConvertsInputToolsAndReasoning(t *testing.T) {
 	parallel := false
 	req := ResponsesCreateRequest{
 		Model:        "grok-4.20-0309",
-		Instructions: "用中文回答",
+		Instructions: "Answer in English",
 		Input: []interface{}{
 			map[string]interface{}{"type": "message", "role": "user", "content": []interface{}{
-				map[string]interface{}{"type": "input_text", "text": "上海天气"},
+				map[string]interface{}{"type": "input_text", "text": "Shanghai weather"},
 				map[string]interface{}{"type": "input_file", "file_url": "https://example.com/a.pdf"},
 			}},
 			map[string]interface{}{"type": "function_call", "call_id": "call_1", "name": "get_weather", "arguments": `{"city":"Shanghai"}`},
@@ -42,7 +42,7 @@ func TestChatRequestFromResponses_ConvertsInputToolsAndReasoning(t *testing.T) {
 	if len(chatReq.Messages) != 4 {
 		t.Fatalf("messages len=%d want 4: %#v", len(chatReq.Messages), chatReq.Messages)
 	}
-	if chatReq.Messages[0].Role != "system" || chatReq.Messages[0].Content != "用中文回答" {
+	if chatReq.Messages[0].Role != "system" || chatReq.Messages[0].Content != "Answer in English" {
 		t.Fatalf("unexpected system message: %#v", chatReq.Messages[0])
 	}
 	if got := chatReq.Messages[1].Content.([]interface{})[0].(map[string]interface{})["type"]; got != "text" {

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// HTTPStatusError 表示 Warp 上游返回了非预期 HTTP 状态码。
+// HTTPStatusError indicates that the Warp upstream returned an unexpected HTTP status code.
 type HTTPStatusError struct {
 	Operation  string
 	StatusCode int

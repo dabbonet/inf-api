@@ -14,14 +14,14 @@
 
   <main class="main-content">
     <section class="header-section" id="accountsHeader">
-      <h1 id="pageTitle">账号管理</h1>
-      <p id="pageSubtitle">统一维护渠道账号、状态和可用性，快速完成导出、清理和批量操作。</p>
+      <h1 id="pageTitle">Account Management</h1>
+      <p id="pageSubtitle">Uniformly maintain channel accounts, status and availability, quickly export, clean up and batch operate.</p>
     </section>
 
     <section class="stats-grid" id="statsGrid">
       <div class="stat-card">
         <div class="stat-info">
-          <span class="label">总账号数</span>
+          <span class="label">Total Accounts</span>
           <span class="value" id="totalAccounts">0</span>
         </div>
         <div class="stat-icon total" aria-hidden="true">
@@ -30,7 +30,7 @@
       </div>
       <div class="stat-card">
         <div class="stat-info">
-          <span class="label">状态正常</span>
+          <span class="label">Normal Status</span>
           <span class="value metric-positive" id="enabledAccounts">0</span>
         </div>
         <div class="stat-icon normal" aria-hidden="true">
@@ -39,7 +39,7 @@
       </div>
       <div class="stat-card">
         <div class="stat-info">
-          <span class="label">状态异常</span>
+          <span class="label">Abnormal Status</span>
           <span class="value metric-negative" id="disabledAccounts">0</span>
         </div>
         <div class="stat-icon abnormal" aria-hidden="true">
@@ -48,7 +48,7 @@
       </div>
       <div class="stat-card">
         <div class="stat-info">
-          <span class="label">已选中</span>
+          <span class="label">Selected</span>
           <span class="value metric-accent" id="selectedCount">0</span>
         </div>
         <div class="stat-icon selected" aria-hidden="true">
@@ -63,14 +63,14 @@
 
         <div class="toolbar-actions toolbar-actions-spread">
           <div class="inline-actions">
-            <button class="btn btn-outline" onclick="exportAccounts()">导出</button>
+            <button class="btn btn-outline" onclick="exportAccounts()">Export</button>
           </div>
           <div class="toolbar-divider"></div>
           <div class="inline-actions">
-            <button class="btn btn-outline" id="batchDeleteBtn" disabled onclick="batchDeleteAccounts()">批量删除</button>
-            <button class="btn btn-danger-outline" onclick="clearAbnormalAccounts()">清空异常</button>
+            <button class="btn btn-outline" id="batchDeleteBtn" disabled onclick="batchDeleteAccounts()">Batch Delete</button>
+            <button class="btn btn-danger-outline" onclick="clearAbnormalAccounts()">Clear Abnormal</button>
           </div>
-          <button class="btn btn-primary" onclick="openModal()">添加账号</button>
+          <button class="btn btn-primary" onclick="openModal()">Add Account</button>
         </div>
       </div>
 
@@ -78,25 +78,25 @@
         <div id="accountsList">
           <div class="empty-state empty-state-panel">
             <span class="empty-state-mark">AC</span>
-            <p>暂无账号数据</p>
+            <p>No Account Data</p>
           </div>
         </div>
       </div>
 
       <div class="pagination-shell">
-        <div id="paginationInfo" class="pagination-info">共 0 条记录，第 1/1 页</div>
+        <div id="paginationInfo" class="pagination-info">0 records in total, Page 1/1</div>
         <div class="inline-actions">
           <select class="form-input compact-select" onchange="updatePageSize(this.value)">
-            <option value="20">20 条/页</option>
-            <option value="50">50 条/页</option>
-            <option value="100">100 条/页</option>
+            <option value="20">20  per page</option>
+            <option value="50">50  per page</option>
+            <option value="100">100  per page</option>
           </select>
           <div class="pagination-controls" id="paginationControls">
-            <button class="btn btn-outline btn-page">首页</button>
-            <button class="btn btn-outline btn-page">上一页</button>
+            <button class="btn btn-outline btn-page">First</button>
+            <button class="btn btn-outline btn-page">Prev</button>
             <button class="btn btn-primary btn-page btn-page-current">1</button>
-            <button class="btn btn-outline btn-page">下一页</button>
-            <button class="btn btn-outline btn-page">末页</button>
+            <button class="btn btn-outline btn-page">Next</button>
+            <button class="btn btn-outline btn-page">Last</button>
           </div>
         </div>
       </div>

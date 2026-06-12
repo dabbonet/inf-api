@@ -2,13 +2,13 @@
 <div class="modal" id="modelModal">
   <div class="modal-content">
     <div class="modal-header">
-      <h3 class="modal-title" id="modelModalTitle">添加模型</h3>
+      <h3 class="modal-title" id="modelModalTitle">Add Model</h3>
       <button class="modal-close" onclick="closeModelModal()">&times;</button>
     </div>
     <form id="modelForm" onsubmit="saveModel(event)">
       <input type="hidden" id="modelId" />
       <div class="form-group">
-        <label class="form-label">渠道</label>
+        <label class="form-label">Channel</label>
         <select class="form-input" id="modelChannel">
           <option value="Orchids">Orchids</option>
           <option value="Warp">Warp</option>
@@ -17,24 +17,24 @@
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">模型 ID</label>
+        <label class="form-label">Model ID</label>
         <input type="text" class="form-input" id="modelModelId" required placeholder="e.g. claude-3-opus-20240229" />
       </div>
       <div class="form-group">
-        <label class="form-label">显示名称</label>
+        <label class="form-label">Display Name</label>
         <input type="text" class="form-input" id="modelName" required placeholder="e.g. Claude 3 Opus" />
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">排序权重</label>
+          <label class="form-label">Sort Weight</label>
           <input type="number" class="form-input" id="modelSortOrder" value="0" />
         </div>
         <div class="form-group">
-          <label class="form-label">状态</label>
+          <label class="form-label">Status</label>
           <select class="form-input" id="modelStatus">
-            <option value="available">可用 (Available)</option>
-            <option value="maintenance">维护 (Maintenance)</option>
-            <option value="offline">下线 (Offline)</option>
+            <option value="available">Available (Available)</option>
+            <option value="maintenance">Maintenance (Maintenance)</option>
+            <option value="offline">Offline (Offline)</option>
           </select>
         </div>
       </div>
@@ -44,14 +44,14 @@
             <input type="checkbox" id="modelIsDefault" />
             <span class="toggle-slider"></span>
           </label>
-          &nbsp;&nbsp;设为默认模型
+          &nbsp;&nbsp;Set as Default Model
         </label>
         <div class="helper-text" style="margin-top:8px;line-height:1.5;">
-          同一渠道只会保留一个默认模型，保存后会自动替换当前默认项。
+          Only one default model will be kept per channel, saving will automatically replace the current default.
         </div>
       </div>
       <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 16px">
-        保存
+        Save
       </button>
     </form>
   </div>

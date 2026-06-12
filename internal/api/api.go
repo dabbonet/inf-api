@@ -127,7 +127,7 @@ func normalizeWarpTokenInput(acc *store.Account) {
 		return
 	}
 	acc.RefreshToken = warp.ResolveRefreshToken(acc)
-	// Warp 只使用 refresh_token，清理 client_cookie 避免混用
+	// Warp only uses refresh_token and clears client_cookie to avoid mixing them.
 	acc.Token = ""
 	acc.ClientCookie = ""
 	acc.SessionCookie = ""
@@ -140,7 +140,7 @@ func normalizeWarpTokenOutput(acc *store.Account) *store.Account {
 	copyAcc := *acc
 	if strings.EqualFold(copyAcc.AccountType, "warp") {
 		copyAcc.RefreshToken = warp.ResolveRefreshToken(&copyAcc)
-		// Warp 对外只暴露 refresh_token，避免把运行时 JWT 当成用户凭据回填到前端。
+		// Warp only exposes the refresh_token to the outside world to avoid backfilling the runtime JWT as user credentials to the frontend.
 		copyAcc.Token = ""
 		copyAcc.ClientCookie = ""
 		copyAcc.SessionCookie = ""
@@ -895,7 +895,7 @@ func (a *API) HandleConfigList(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"code": 1,
-			"msg":  "获取配置失败: " + err.Error(),
+			"msg":  "Failed to get config: " + err.Error(),
 		})
 		return
 	}
@@ -1208,7 +1208,7 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// 刷新/验证成功后清理账号状态
+			// Clear account status after successful refresh/verification
 			applySuccessfulAccountRefreshStatus(acc, accountStatus)
 			checkOK = true
 

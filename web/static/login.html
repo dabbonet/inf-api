@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理登录 - CodeFreeMax</title>
+    <title>Admin Login - CodeFreeMax</title>
     <!-- Use the refined main.css -->
     <link rel="stylesheet" href="css/main.css"> 
 </head>
@@ -26,45 +26,45 @@
 
         <div class="login-hero">
             <div class="login-kicker">Admin access</div>
-            <h1>管理员登录</h1>
-            <p>进入 Orchids 控制台，统一管理渠道账号、模型配置和运行状态。</p>
+            <h1>Admin Login</h1>
+            <p>Enter the Orchids Console to manage channel accounts, model configurations, and operational status centrally.</p>
         </div>
 
         <form id="loginForm">
             <div class="form-group">
-                <label class="form-label">用户名</label>
+                <label class="form-label">Username</label>
                 <div class="input-wrapper">
                     <span class="input-icon">ID</span>
-                    <input type="text" id="username" class="form-input" placeholder="请输入用户名" required autocomplete="username">
+                    <input type="text" id="username" class="form-input" placeholder="Enter Username" required autocomplete="username">
                 </div>
             </div>
 
             <div class="form-group">
-                <label class="form-label">管理员密码</label>
+                <label class="form-label">Admin Password</label>
                 <div class="input-wrapper">
                     <span class="input-icon">PW</span>
-                    <input type="password" id="password" class="form-input" placeholder="请输入密码" required autocomplete="current-password">
-                    <button type="button" class="btn-icon password-toggle" id="passwordToggle" aria-label="切换密码可见性">••</button>
+                    <input type="password" id="password" class="form-input" placeholder="Please enter password" required autocomplete="current-password">
+                    <button type="button" class="btn-icon password-toggle" id="passwordToggle" aria-label="Toggle password visibility">••</button>
                 </div>
             </div>
 
             <button type="submit" class="btn btn-primary login-submit" id="loginBtn">
                 <div class="loading-spinner" id="spinner" style="display: none; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
-                <span>登录</span>
+                <span>Login</span>
             </button>
         </form>
 
         <div class="login-links">
             <a href="https://github.com/zhangdailin/Orchids-2api" target="_blank">GitHub</a>
             <span>•</span>
-            <a href="#">文档教程</a>
+            <a href="#">Documentation & Tutorials</a>
         </div>
     </div>
 
     <!-- Toast Notification -->
     <div id="toast" class="toast">
         <span class="toast-mark">ER</span>
-        <span id="toastMessage">登录失败，请检查账号密码</span>
+        <span id="toastMessage">Login failed, please check your account and password</span>
     </div>
 
     <style>
@@ -105,7 +105,7 @@
             // UI loading state
             loginBtn.disabled = true;
             spinner.style.display = 'block';
-            loginBtn.querySelector('span').textContent = '正在登录...';
+            loginBtn.querySelector('span').textContent = 'Logging in...';
 
             try {
                 const response = await fetch('/api/login', {
@@ -118,14 +118,14 @@
                     window.location.href = './'; 
                 } else {
                     const error = await response.text();
-                    showToast(error || '登录失败，请重试');
+                    showToast(error || 'Login failed, please try again');
                 }
             } catch (err) {
-                showToast('网络连接失败');
+                showToast('Network connection failed');
             } finally {
                 loginBtn.disabled = false;
                 spinner.style.display = 'none';
-                loginBtn.querySelector('span').textContent = '登录';
+                loginBtn.querySelector('span').textContent = 'Login';
             }
         });
     </script>

@@ -221,16 +221,16 @@ func (lb *LoadBalancer) ReleaseConnection(accountID int64) {
 }
 
 const (
-	// 401 冷却时间：token 可能已刷新，较短间隔后重试
+	// 401 Cooling time: token may have been refreshed, try again after a shorter interval
 	retry401Default = 5 * time.Minute
-	// 402 对 Puter 来说通常表示余额/credits 不足。Puter 暂无稳定额度/重置时间接口，
-	// 默认按日冷却，避免无额度账号反复撞上游。
+	// 402 to Puter usually means insufficient balance/credits. Puter currently has no stable quota/reset time API.
+	// The default is to cool down on a daily basis to prevent accounts without quota from repeatedly hitting the upstream.
 	retry402Default = 24 * time.Hour
-	// 429 冷却时间：限流通常是暂时性的，优先等待较短窗口再恢复尝试
+	// 429 Cooling time: Current limiting is usually temporary, priority is given to waiting for a shorter window before resuming attempts.
 	retry429Default = 1 * time.Minute
-	// 403/404 冷却时间：账号可能被封禁或配置错误，较长间隔后重试
+	// 403/404 Cooling time: The account may be banned or configured incorrectly. Please try again after a longer interval.
 	retry403Default = 24 * time.Hour
-	// Grok 的 403 很多是 Cloudflare challenge/临时风控，不应长时间拉黑
+	// Many of Grok's 403s are Cloudflare challenges/temporary risk control and should not be blocked for a long time.
 	retry403Grok = 10 * time.Minute
 )
 
@@ -243,12 +243,12 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 	now := time.Now()
 	switch status {
 	case "401":
-		// 401 表示 token 过期或会话失效，短时间冷却后自动恢复尝试
+		// 401 means that the token has expired or the session has expired. It will automatically resume after a short cooling period.
 		if acc.LastAttempt.IsZero() {
 			return false
 		}
 		if now.Sub(acc.LastAttempt) >= retry401Default {
-			lb.clearAccountStatus(ctx, acc, "401 冷却完成，自动恢复尝试")
+			lb.clearAccountStatus(ctx, acc, "401 Cooling completed, automatic recovery attempt")
 			return true
 		}
 		return false
@@ -259,22 +259,22 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 		cooldown := retry429Default
 		if !acc.QuotaResetAt.IsZero() {
 			if !now.Before(acc.QuotaResetAt) {
-				lb.clearAccountStatus(ctx, acc, "429 冷却完成，自动恢复尝试")
+				lb.clearAccountStatus(ctx, acc, "429 Cooling completed, automatic recovery attempt")
 				return true
 			}
 			return false
 		}
 		if now.Sub(acc.LastAttempt) >= cooldown {
-			lb.clearAccountStatus(ctx, acc, "429 冷却完成，自动恢复尝试")
+			lb.clearAccountStatus(ctx, acc, "429 Cooling completed, automatic recovery attempt")
 			return true
 		}
 		return false
 	case "402":
-		// 402 通常表示余额/credits 不足。若上游给出 reset 时间则优先尊重，
-		// 否则使用更长的冷却，避免调度器持续撞到同一个无额度账号。
+		// 402 usually means insufficient balance/credits. If the reset time is given by the upstream, it will be respected first.
+		// Otherwise use a longer cooldown to prevent the scheduler from continually hitting the same unquoted account.
 		if !acc.QuotaResetAt.IsZero() {
 			if !now.Before(acc.QuotaResetAt) {
-				lb.clearAccountStatus(ctx, acc, "402 冷却完成，自动恢复尝试")
+				lb.clearAccountStatus(ctx, acc, "402 Cooling completed, automatic recovery attempt")
 				return true
 			}
 			return false
@@ -283,13 +283,13 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 			return false
 		}
 		if now.Sub(acc.LastAttempt) >= retry402Default {
-			lb.clearAccountStatus(ctx, acc, "402 冷却完成，自动恢复尝试")
+			lb.clearAccountStatus(ctx, acc, "402 Cooling completed, automatic recovery attempt")
 			return true
 		}
 		return false
 	case "403", "404":
-		// 403/404 可能是临时封禁或配置问题。
-		// 对 Grok 来说，403 很多是 Cloudflare challenge，不应长时间拉黑。
+		// 403/404 may be a temporary ban or configuration issue.
+		// For Grok, 403s are mostly Cloudflare challenges and should not be blocked for a long time.
 		if acc.LastAttempt.IsZero() {
 			return false
 		}
@@ -298,7 +298,7 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 			cooldown = retry403Grok
 		}
 		if now.Sub(acc.LastAttempt) >= cooldown {
-			lb.clearAccountStatus(ctx, acc, status+" 冷却完成，自动恢复尝试")
+			lb.clearAccountStatus(ctx, acc, status+"Cooling completed, automatic recovery attempt")
 			return true
 		}
 		return false
@@ -309,7 +309,7 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 			return false
 		}
 		if now.Sub(acc.LastAttempt) >= retry401Default {
-			lb.clearAccountStatus(ctx, acc, status+" 未知状态冷却完成，自动恢复尝试")
+			lb.clearAccountStatus(ctx, acc, status+"Unknown status cooling completed, automatic recovery attempt")
 			return true
 		}
 		return false
@@ -317,11 +317,11 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 }
 
 func (lb *LoadBalancer) clearAccountStatus(ctx context.Context, acc *store.Account, reason string) {
-	// 清除 token 缓存，防止恢复后仍使用失效的旧 token
+	// Clear the token cache to prevent invalid old tokens from being used after recovery
 	if acc.SessionID != "" {
 		orchids.InvalidateCachedToken(acc.SessionID)
 	}
-	// 清除 warp session 缓存，确保恢复后使用新 token
+	// Clear the warp session cache to ensure new tokens are used after recovery
 	if strings.EqualFold(acc.AccountType, "warp") && acc.ID > 0 {
 		warp.InvalidateSession(acc.ID)
 	}
@@ -342,7 +342,7 @@ func (lb *LoadBalancer) clearAccountStatus(ctx context.Context, acc *store.Accou
 	lb.persistAccountStatus(ctx, acc, reason)
 }
 
-// MarkAccountStatus 标记账号状态（供后台刷新等外部调用使用）。
+// MarkAccountStatus marks the account status (for use by external calls such as background refresh).
 func (lb *LoadBalancer) MarkAccountStatus(ctx context.Context, acc *store.Account, status string) {
 	if acc == nil || lb.Store == nil || status == "" {
 		return
@@ -361,7 +361,7 @@ func (lb *LoadBalancer) MarkAccountStatus(ctx context.Context, acc *store.Accoun
 		}
 	}
 	lb.mu.Unlock()
-	lb.persistAccountStatus(ctx, acc, "后台刷新失败: "+status)
+	lb.persistAccountStatus(ctx, acc, "Background refresh failed:"+status)
 }
 
 func (lb *LoadBalancer) persistAccountStatus(ctx context.Context, acc *store.Account, reason string) {
@@ -369,8 +369,8 @@ func (lb *LoadBalancer) persistAccountStatus(ctx context.Context, acc *store.Acc
 		return
 	}
 	if err := lb.Store.UpdateAccount(ctx, acc); err != nil {
-		slog.Warn("账号状态更新失败", "account_id", acc.ID, "reason", reason, "error", err)
+		slog.Warn("Account status update failed", "account_id", acc.ID, "reason", reason, "error", err)
 		return
 	}
-	slog.Debug("账号状态已更新", "account_id", acc.ID, "status", acc.StatusCode, "reason", reason)
+	slog.Debug("Account status has been updated", "account_id", acc.ID, "status", acc.StatusCode, "reason", reason)
 }

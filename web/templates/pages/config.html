@@ -14,15 +14,15 @@
 
   <main class="main-content">
     <section class="header-section" id="configHeader">
-      <h1>配置管理</h1>
-      <p>集中管理安全参数、缓存策略、代理网络和后台访问控制。</p>
+      <h1>Configuration Management</h1>
+      <p>Centrally manage security parameters, caching strategies, proxy networks, and backend access control.</p>
     </section>
 
     <div class="content-card">
       <!-- Tabs Navigation -->
       <div id="configTabs" class="platform-tabs config-tabs-shell">
-        <button class="tab-item active" onclick="switchConfigTab('basic')">基础配置</button>
-        <button class="tab-item" onclick="switchConfigTab('auth')">API Key 管理</button>
+        <button class="tab-item active" onclick="switchConfigTab('basic')">Basic Config</button>
+        <button class="tab-item" onclick="switchConfigTab('auth')">API Key Management</button>
       </div>
 
       <!-- Configuration Sections -->
@@ -30,16 +30,16 @@
         <!-- Admin Settings -->
         <div class="config-grid config-grid-two">
           <div>
-            <label class="form-label">管理员密码</label>
+            <label class="form-label">Admin Password</label>
             <div class="input-wrapper">
-              <input type="password" id="cfg_admin_pass" class="form-input" placeholder="留空则不修改">
+              <input type="password" id="cfg_admin_pass" class="form-input" placeholder="Leave blank to not modify">
               <button type="button" class="btn-icon password-toggle" onclick="togglePassword('cfg_admin_pass')">••</button>
             </div>
           </div>
           <div>
-            <label class="form-label">API 管理 Token</label>
+            <label class="form-label">API Management Token</label>
             <div class="input-wrapper">
-              <input type="password" id="cfg_admin_token" class="form-input" placeholder="用于调用管理接口">
+              <input type="password" id="cfg_admin_token" class="form-input" placeholder="Used for calling management API">
               <div class="input-actions">
                 <button type="button" class="btn-icon" onclick="togglePassword('cfg_admin_token')">••</button>
                 <button type="button" class="btn-icon" onclick="copyFieldValue('cfg_admin_token')">CP</button>
@@ -51,16 +51,16 @@
         <div class="settings-panel settings-panel-spaced">
           <div class="settings-panel-head">
             <div class="inline-actions">
-              <h3 class="settings-panel-title">Grok 浏览器指纹</h3>
+              <h3 class="settings-panel-title">Grok Browser Fingerprint</h3>
               <span class="mini-badge">Headers</span>
             </div>
-            <span class="meta-text meta-text-xs">来自真实浏览器会话</span>
+            <span class="meta-text meta-text-xs">From real browser session</span>
           </div>
 
           <div class="config-grid config-grid-gap-sm">
             <div>
               <label class="form-label">x-statsig-id</label>
-              <input type="text" id="cfg_grok_statsig_id" class="form-input" placeholder="浏览器抓包得到的 x-statsig-id">
+              <input type="text" id="cfg_grok_statsig_id" class="form-input" placeholder="Obtained from browser network capture  x-statsig-id">
             </div>
           </div>
 
@@ -79,7 +79,7 @@
         <!-- Token Usage Cache Config -->
         <div class="settings-panel">
           <div class="settings-panel-head">
-            <h3 class="settings-panel-title">Prompt 用量缓存</h3>
+            <h3 class="settings-panel-title">Prompt Usage Cache</h3>
             <label class="toggle">
               <input type="checkbox" id="cfg_enable_token_cache" onchange="toggleCacheConfig(this.checked)">
               <span class="toggle-slider"></span>
@@ -89,38 +89,38 @@
           <div id="cacheConfigDetails" style="display: none;">
             <div class="config-grid config-grid-two config-grid-gap-sm">
               <div>
-                <label class="form-label">缓存有效期</label>
+                <label class="form-label">Cache TTL</label>
                 <input type="hidden" id="cfg_token_cache_ttl" value="300">
                 <select id="cfg_token_cache_ttl_preset" class="form-input" onchange="handleTokenCacheTTLPresetChange()">
-                  <option value="60">1 分钟</option>
-                  <option value="300">5 分钟</option>
-                  <option value="900">15 分钟</option>
-                  <option value="1800">30 分钟</option>
-                  <option value="3600">1 小时</option>
-                  <option value="86400">1 天</option>
-                  <option value="259200">3 天</option>
-                  <option value="604800">1 周</option>
-                  <option value="custom">自定义</option>
+                  <option value="60">1 Minute</option>
+                  <option value="300">5 Minutes</option>
+                  <option value="900">15 Minutes</option>
+                  <option value="1800">30 Minutes</option>
+                  <option value="3600">1 Hour</option>
+                  <option value="86400">1 Day</option>
+                  <option value="259200">3 Days</option>
+                  <option value="604800">1 Week</option>
+                  <option value="custom">Custom</option>
                 </select>
                 <div id="cfg_token_cache_ttl_custom_wrap" class="config-subsection" style="display: none;">
-                  <label class="form-label">自定义 TTL (秒)</label>
+                  <label class="form-label">Custom TTL (seconds)</label>
                   <input type="number" id="cfg_token_cache_ttl_custom" class="form-input" min="1" value="300"
                     oninput="handleTokenCacheTTLCustomInput()">
                 </div>
               </div>
               <div>
-                <label class="form-label">缓存策略</label>
+                <label class="form-label">Cache Strategy</label>
                 <select id="cfg_token_cache_strategy" class="form-input" onchange="updateMemoryEstimation()">
-                  <option value="0">完整匹配 (System + Tools)</option>
-                  <option value="1">分离缓存 (推荐)</option>
-                  <option value="2">仅缓存 System</option>
-                  <option value="3">仅缓存 Tools</option>
+                  <option value="0">Full Match (System + Tools)</option>
+                  <option value="1">Separated Cache (Recommended)</option>
+                  <option value="2">Cache System Only</option>
+                  <option value="3">Cache Tools Only</option>
                 </select>
               </div>
             </div>
 
             <div class="estimate-panel">
-              <div id="memoryEstTitle" class="estimate-title">内存估算</div>
+              <div id="memoryEstTitle" class="estimate-title">Memory Estimation</div>
               <div class="estimate-grid">
                 <div class="estimate-card estimate-card-green">
                   <div class="estimate-caption">10 QPS</div>
@@ -137,27 +137,27 @@
               </div>
               <div class="estimate-meta">
                 <span>TTL: <span id="estTTLSeconds">300</span>s</span>
-                <span>系数: <span id="estStrategyMult">× 2</span></span>
+                <span>Multiplier: <span id="estStrategyMult">× 2</span></span>
               </div>
             </div>
 
             <div class="settings-panel-foot">
-              <div id="cacheStatsText" class="meta-text">正在统计缓存...</div>
-              <button class="btn btn-outline btn-xs" onclick="clearCache()">清空缓存</button>
+              <div id="cacheStatsText" class="meta-text">Calculating cache stats...</div>
+              <button class="btn btn-outline btn-xs" onclick="clearCache()">Clear Cache</button>
             </div>
           </div>
         </div>
 
         <div class="settings-panel">
           <div class="settings-panel-head">
-            <h3 class="settings-panel-title">Token 估算缓存</h3>
+            <h3 class="settings-panel-title">Token Estimation Cache</h3>
             <label class="toggle">
               <input type="checkbox" id="cfg_cache_token_count">
               <span class="toggle-slider"></span>
             </label>
           </div>
           <div class="settings-panel-foot">
-            <div id="estimateCacheStatsText" class="meta-text">用于缓存本地 token 估算结果，不代表上游真实用量。</div>
+            <div id="estimateCacheStatsText" class="meta-text">Used to cache local token estimation results, does not represent upstream actual usage.</div>
           </div>
         </div>
 
@@ -165,38 +165,38 @@
         <div class="settings-panel settings-panel-spaced">
           <div class="settings-panel-head">
             <div class="inline-actions">
-              <h3 class="settings-panel-title">代理配置</h3>
+              <h3 class="settings-panel-title">Proxy Config</h3>
               <span class="mini-badge">URL</span>
             </div>
-            <span class="meta-text meta-text-xs">留空表示直连</span>
+            <span class="meta-text meta-text-xs">Leave blank for direct connection</span>
           </div>
 
           <div class="config-grid config-grid-gap-sm">
             <div>
-              <label class="form-label">代理 URL</label>
-              <input type="text" id="cfg_proxy_url" class="form-input" placeholder="http://user:pass@host:port/ 或 socks5://user:pass@host:port/">
-              <div class="meta-text meta-text-xs" style="margin-top: 8px;">支持 `http://`、`https://`、`socks5://`，留空则不使用代理。</div>
+              <label class="form-label">Proxy URL</label>
+              <input type="text" id="cfg_proxy_url" class="form-input" placeholder="http://user:pass@host:port/ or socks5://user:pass@host:port/">
+              <div class="meta-text meta-text-xs" style="margin-top: 8px;">Supports `http://`, `https://`, `socks5://`, leave blank to not use proxy.</div>
             </div>
           </div>
 
           <div>
-            <label class="form-label">直连域名/网段</label>
-            <textarea id="cfg_proxy_bypass" class="form-input" rows="3" placeholder="每行一个域名或 CIDR，例如 example.com 或 10.0.0.0/8"></textarea>
+            <label class="form-label">Direct Connection Domains/CIDR</label>
+            <textarea id="cfg_proxy_bypass" class="form-input" rows="3" placeholder="One domain or CIDR per line, e.g., example.com or 10.0.0.0/8"></textarea>
           </div>
         </div>
       </div>
 
       <div id="authConfig" class="config-section config-section-shell" style="display: none;">
         <div class="section-head">
-          <h2 class="section-title">API Key 管理</h2>
-          <button class="btn btn-primary" onclick="openCreateKeyModal()">+ 创建 API Key</button>
+          <h2 class="section-title">API Key Management</h2>
+          <button class="btn btn-primary" onclick="openCreateKeyModal()">+ Create API Key</button>
         </div>
         <div id="keysList"></div>
       </div>
 
       <!-- Global Save Footer -->
       <div class="save-footer">
-        <button class="btn btn-primary btn-save" onclick="saveConfiguration()">保存配置</button>
+        <button class="btn btn-primary btn-save" onclick="saveConfiguration()">Save Configuration</button>
       </div>
     </div>
   </main>

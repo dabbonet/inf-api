@@ -7,37 +7,37 @@ func TestMapModel(t *testing.T) {
 		input string
 		want  string
 	}{
-		// Opus 4.6 系列
+		// Opus 4.6 series
 		{"claude-opus-4-6", "claude-opus-4-6"},
 		{"claude-opus-4.6", "claude-opus-4-6"},
 		{"claude-opus-4-6-thinking", "claude-opus-4-6"},
 		{"claude-opus-4.6-thinking", "claude-opus-4-6"},
 
-		// Opus 4.5 系列
+		// Opus 4.5 Series
 		{"claude-opus-4-5", "claude-opus-4-6"},
 		{"claude-opus-4.5", "claude-opus-4-6"},
 		{"claude-opus-4-5-thinking", "claude-opus-4-5-thinking"},
 		{"claude-opus-4.5-thinking", "claude-opus-4-5-thinking"},
 
-		// Sonnet 3.7 精确版本
+		// Sonnet 3.7 exact version
 		{"claude-3-7-sonnet-20250219", "claude-3-7-sonnet-20250219"},
 
-		// Sonnet 4.5 系列
+		// Sonnet 4.5 series
 		{"claude-sonnet-4-5", "claude-sonnet-4-6"},
 		{"claude-sonnet-4.5", "claude-sonnet-4-6"},
 		{"claude-sonnet-4-5-thinking", "claude-sonnet-4-5-thinking"},
 		{"claude-sonnet-4.5-thinking", "claude-sonnet-4-5-thinking"},
 
-		// Sonnet 4.6 系列
+		// Sonnet 4.6 Series
 		{"claude-sonnet-4-6", "claude-sonnet-4-6"},
 		{"claude-sonnet-4.6", "claude-sonnet-4-6"},
 		{"claude-sonnet-4-6-thinking", "claude-sonnet-4-6"},
 		{"claude-sonnet-4.6-thinking", "claude-sonnet-4-6"},
 
-		// Sonnet 4 精确版本号
+		// Sonnet 4 exact version number
 		{"claude-sonnet-4-20250514", "claude-sonnet-4-20250514"},
 
-		// Haiku 4.5 系列
+		// Haiku 4.5 series
 		{"claude-haiku-4-5", "claude-haiku-4-5"},
 		{"claude-haiku-4.5", "claude-haiku-4-5"},
 
@@ -50,16 +50,16 @@ func TestMapModel(t *testing.T) {
 		{"gpt-5.2-codex", "gpt-5.2-codex"},
 		{"gpt-5.2", "gpt-5.2"},
 
-		// 其他模型
+		// Other models
 		{"grok-4.1-fast", "grok-4.1-fast"},
 		{"glm-5", "glm-5"},
 		{"kimi-k2.5", "kimi-k2.5"},
 
-		// 默认
+		// default
 		{"", "claude-sonnet-4-6"},
 		{"unknown-model", "claude-sonnet-4-6"},
 
-		// 大小写混合
+		// Mixed case
 		{"Claude-Opus-4-5", "claude-opus-4-6"},
 		{"CLAUDE-SONNET-4-5-THINKING", "claude-sonnet-4-5-thinking"},
 		{"Claude-Haiku-4.5", "claude-haiku-4-5"},

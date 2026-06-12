@@ -872,7 +872,7 @@ func TestSeedSideEffectDedupFromMessages_SuppressRepeatDeleteAcrossTurns(t *test
 	defer h.release()
 
 	history := []prompt.Message{
-		{Role: "user", Content: prompt.MessageContent{Text: "删除这个文件"}},
+		{Role: "user", Content: prompt.MessageContent{Text: "Delete this file"}},
 		{
 			Role: "assistant",
 			Content: prompt.MessageContent{
@@ -937,7 +937,7 @@ func TestSeedSideEffectDedupFromMessages_DoesNotSuppressFailedEditRetryAfterRead
 	defer h.release()
 
 	history := []prompt.Message{
-		{Role: "user", Content: prompt.MessageContent{Text: "把第三行改掉"}},
+		{Role: "user", Content: prompt.MessageContent{Text: "Change the third line"}},
 		{
 			Role: "assistant",
 			Content: prompt.MessageContent{
@@ -1030,7 +1030,7 @@ func TestSeedSideEffectDedupFromMessages_SuppressesRepeatSuccessfulEditAcrossTur
 	defer h.release()
 
 	history := []prompt.Message{
-		{Role: "user", Content: prompt.MessageContent{Text: "把第三行改掉"}},
+		{Role: "user", Content: prompt.MessageContent{Text: "Change the third line"}},
 		{
 			Role: "assistant",
 			Content: prompt.MessageContent{
@@ -1095,7 +1095,7 @@ func TestSeedSideEffectDedupFromMessages_DoesNotUseOlderTurnBeforeLatestUserText
 	defer h.release()
 
 	history := []prompt.Message{
-		{Role: "user", Content: prompt.MessageContent{Text: "先删除A"}},
+		{Role: "user", Content: prompt.MessageContent{Text: "Delete A first"}},
 		{
 			Role: "assistant",
 			Content: prompt.MessageContent{
@@ -1109,7 +1109,7 @@ func TestSeedSideEffectDedupFromMessages_DoesNotUseOlderTurnBeforeLatestUserText
 				},
 			},
 		},
-		{Role: "user", Content: prompt.MessageContent{Text: "现在处理B"}},
+		{Role: "user", Content: prompt.MessageContent{Text: "Now process B"}},
 	}
 	h.seedSideEffectDedupFromMessages(history)
 
@@ -1149,7 +1149,7 @@ func TestSeedSideEffectDedupFromMessages_DoesNotSuppressRepeatGitBashAcrossTurns
 	defer h.release()
 
 	history := []prompt.Message{
-		{Role: "user", Content: prompt.MessageContent{Text: "上传到 git"}},
+		{Role: "user", Content: prompt.MessageContent{Text: "Upload to git"}},
 		{
 			Role: "assistant",
 			Content: prompt.MessageContent{
@@ -1217,7 +1217,7 @@ func TestRepeatedReadOnlyBashToolCall_IsNotDeduped(t *testing.T) {
 	defer h.release()
 
 	history := []prompt.Message{
-		{Role: "user", Content: prompt.MessageContent{Text: "优化这个项目"}},
+		{Role: "user", Content: prompt.MessageContent{Text: "optimize this project"}},
 		{
 			Role: "assistant",
 			Content: prompt.MessageContent{

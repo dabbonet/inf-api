@@ -15,7 +15,7 @@ func TestAsyncCleaner_StartStop(t *testing.T) {
 	cleaner := NewAsyncCleaner(50 * time.Millisecond)
 	cleaner.Start(cleanFn)
 
-	// 等待至少执行 2 次清理
+	// Wait for at least 2 cleanups to be performed
 	time.Sleep(150 * time.Millisecond)
 
 	cleaner.Stop()
@@ -25,7 +25,7 @@ func TestAsyncCleaner_StartStop(t *testing.T) {
 		t.Errorf("Expected at least 2 cleanups, got %d", count)
 	}
 
-	// 验证停止后不再执行
+	// Verification will not be executed after it is stopped
 	finalCount := count
 	time.Sleep(100 * time.Millisecond)
 	afterStopCount := atomic.LoadInt32(&counter)
@@ -38,10 +38,10 @@ func TestAsyncCleaner_MultipleStops(t *testing.T) {
 	cleaner := NewAsyncCleaner(100 * time.Millisecond)
 	cleaner.Start(func() {})
 
-	// 第一次停止
+	// first stop
 	cleaner.Stop()
 
-	// 第二次停止不应 panic
+	// The second stop should not panic
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("Second Stop() caused panic: %v", r)
@@ -61,13 +61,13 @@ func TestAsyncCleaner_CleanFnPanic(t *testing.T) {
 		}
 	}
 
-	// 启动清理器，即使 cleanFn panic 也应继续执行
+	// Start the cleaner, which should continue execution even if cleanFn panics
 	cleaner.Start(cleanFn)
 
 	time.Sleep(150 * time.Millisecond)
 	cleaner.Stop()
 
-	// 有 panic 恢复机制，executed 应该 > 1
+	// There is a panic recovery mechanism, executed should be > 1
 	count := atomic.LoadInt32(&executed)
 	if count < 2 {
 		t.Errorf("Expected at least 2 executions (with panic recovery), got %d", count)

@@ -16,7 +16,7 @@ type DirectSSEEmitter interface {
 	FinishDirectSSE(stopReason string)
 }
 
-// UpstreamRequest 统一上游请求结构（Warp/Orchids 复用）
+// UpstreamRequest unified upstream request structure (Warp/Orchids reuse)
 type UpstreamRequest struct {
 	Prompt               string
 	ChatHistory          []interface{}
@@ -38,7 +38,7 @@ type UpstreamRequest struct {
 	DirectSSE            DirectSSEEmitter
 }
 
-// SSEMessage 统一上游 SSE 消息结构（Warp/Orchids 复用）
+// SSEMessage unifies the upstream SSE message structure (Warp/Orchids reuse)
 type SSEMessage struct {
 	Type    string                 `json:"type"`
 	Event   map[string]interface{} `json:"event,omitempty"`

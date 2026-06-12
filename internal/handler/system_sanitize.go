@@ -12,7 +12,7 @@ const (
 	ccEntrypointModeStrip = "strip"
 )
 
-// sanitizeSystemItems 根据配置移除可能触发 coding agent 的 cc_entrypoint。
+// sanitizeSystemItems removes cc_entrypoints that may trigger the coding agent according to configuration.
 func sanitizeSystemItems(system SystemItems, isWarp bool, isPuter bool, cfg *config.Config) (SystemItems, bool) {
 	if len(system) == 0 || cfg == nil {
 		return system, false
@@ -94,7 +94,7 @@ func filterWarpSystemItems(system SystemItems, isPuter bool) (SystemItems, bool)
 
 func isClaudeCodeSystem(text string) bool {
 	lower := strings.ToLower(text)
-	// 强特征：单独出现即可判定
+	// Strong characteristics: can be determined by appearing alone
 	strongSignals := []string{
 		"claude code",
 		"claude agent sdk",
@@ -107,7 +107,7 @@ func isClaudeCodeSystem(text string) bool {
 			return true
 		}
 	}
-	// 弱特征：需要至少命中 2 个才判定，避免误判正常内容
+	// Weak feature: It requires at least 2 hits to avoid misjudgment of normal content.
 	weakSignals := []string{
 		"task tool",
 		"vscode",

@@ -9,10 +9,10 @@ import (
 
 // **Validates: Requirements 2.4, 2.5**
 //
-// Property 2: 分片 Map 键映射一致性
+// Property 2: Sharded Map key mapping consistency
 // For any string key, multiple calls to getShard(key) should always return the same shard index.
 //
-// Property 3: 分片 Map 并发安全性
+// Property 3: Sharded Map concurrency safety
 // For any set of concurrent Get/Set/Delete operations, ShardedMap should maintain data consistency
 // and not produce deadlocks.
 

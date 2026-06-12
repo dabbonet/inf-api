@@ -45,11 +45,11 @@ function normalizeModelStatus(status) {
 function statusMeta(status) {
   switch (normalizeModelStatus(status)) {
     case "available":
-      return { label: "可用", bg: "rgba(34, 197, 94, 0.12)", color: "#4ade80", border: "rgba(34, 197, 94, 0.22)" };
+      return { label: "Available", bg: "rgba(34, 197, 94, 0.12)", color: "#4ade80", border: "rgba(34, 197, 94, 0.22)" };
     case "maintenance":
-      return { label: "维护中", bg: "rgba(245, 158, 11, 0.12)", color: "#fbbf24", border: "rgba(245, 158, 11, 0.24)" };
+      return { label: "Maintenance", bg: "rgba(245, 158, 11, 0.12)", color: "#fbbf24", border: "rgba(245, 158, 11, 0.24)" };
     default:
-      return { label: "已下线", bg: "rgba(148, 163, 184, 0.12)", color: "#cbd5e1", border: "rgba(148, 163, 184, 0.24)" };
+      return { label: "Offline", bg: "rgba(148, 163, 184, 0.12)", color: "#cbd5e1", border: "rgba(148, 163, 184, 0.24)" };
   }
 }
 
@@ -94,7 +94,7 @@ function getFilteredModels() {
 }
 
 function updateModelSummary(channelModels, filtered) {
-  const channelLabel = currentModelChannel || "全部";
+  const channelLabel = currentModelChannel || "All";
 
   const totalModelCount = document.getElementById("totalModelCount");
   if (totalModelCount) {
@@ -108,19 +108,19 @@ function updateModelSummary(channelModels, filtered) {
 
   const filterMeta = document.getElementById("modelsFilterMeta");
   if (filterMeta) {
-    filterMeta.textContent = `当前渠道共 ${channelModels.length} 条，筛选后 ${filtered.length} 条。`;
+    filterMeta.textContent = `Total ${channelModels.length} models in current channel, ${filtered.length} after filtering.`;
   }
 
   const panelTitle = document.getElementById("modelsPanelTitle");
   if (panelTitle) {
-    panelTitle.textContent = `${channelLabel} 动作区`;
+    panelTitle.textContent = `${channelLabel} Action Area`;
   }
 
   const panelHint = document.getElementById("modelsPanelHint");
   if (panelHint) {
     panelHint.textContent = filtered.length > 0
-      ? `当前筛选结果共有 ${filtered.length} 条，可直接在表格中编辑、删除或启停。默认模型请在编辑弹窗里维护。`
-      : "当前筛选条件下没有命中的模型记录。";
+      ? `Currently ${filtered.length} models matched. You can edit, delete, or toggle them in the table. Default models can be set in the edit modal.`
+      : "No model records matched under current filter conditions.";
   }
 }
 
@@ -153,17 +153,17 @@ function normalizeModelRefreshResult(data, fallbackChannel) {
 
 function modelRefreshSourceLabel(source) {
   const value = String(source || "").trim();
-  if (!value) return "未知来源";
+  if (!value) return "Unknown source";
   const labels = {
-    upstream_api: "账号上游 API",
-    public_page: "Orchids 公开页面",
-    puter_public_models: "Puter 公开模型 API",
-    puter_public_models_test_mode: "Puter 公开 API + 账号验证",
-    puter_public_models_unverified: "Puter 公开 API",
-    grok_console_probe: "Grok 账号探测",
+    upstream_api: "Upstream API",
+    public_page: "Orchids Public Page",
+    puter_public_models: "Puter Public Model API",
+    puter_public_models_test_mode: "Puter Public API + Account Verification",
+    puter_public_models_unverified: "Puter Public API",
+    grok_console_probe: "Grok Account Probe",
   };
   if (labels[value]) return labels[value];
-  if (value.startsWith("warp_graphql")) return "Warp 账号 GraphQL";
+  if (value.startsWith("warp_graphql")) return "Warp Account GraphQL";
   return value;
 }
 
@@ -187,15 +187,15 @@ function renderModelRefreshSummary() {
   }
 
   summary.hidden = false;
-  title.textContent = `${result.channel || channel} 最近一次刷新结果`;
-  meta.textContent = `来源：${modelRefreshSourceLabel(result.source)}。并发数 ${result.concurrency || modelRefreshConcurrency}。刷新只会补充新模型，已有模型的状态、名称、排序和默认项会保持不变。`;
+  title.textContent = `Latest refresh result for ${result.channel || channel}`;
+  meta.textContent = `Source: ${modelRefreshSourceLabel(result.source)}. Concurrency ${result.concurrency || modelRefreshConcurrency}. Refresh only adds new models, existing models' status, name, order, and default settings remain unchanged.`;
 
   const stats = [
-    { label: "发现", value: result.discovered },
-    { label: "同步", value: result.verified },
-    { label: "新增", value: result.added },
-    { label: "更新", value: result.updated },
-    { label: "下线", value: result.offline },
+    { label: "Discovered", value: result.discovered },
+    { label: "Verified", value: result.verified },
+    { label: "Added", value: result.added },
+    { label: "Updated", value: result.updated },
+    { label: "Offline", value: result.offline },
   ];
   statGrid.innerHTML = stats.map((item) => `
     <div class="models-refresh-stat">
@@ -253,8 +253,8 @@ function renderPagination(current, total) {
     container.appendChild(btn);
   };
 
-  appendButton("首页", 1, current === 1, false);
-  appendButton("上一页", current - 1, current === 1, false);
+  appendButton("First", 1, current === 1, false);
+  appendButton("Prev", current - 1, current === 1, false);
 
   let startPage = Math.max(1, current - 2);
   let endPage = Math.min(total, startPage + 4);
@@ -266,8 +266,8 @@ function renderPagination(current, total) {
     appendButton(String(page), page, false, page === current);
   }
 
-  appendButton("下一页", current + 1, current === total, false);
-  appendButton("末页", total, current === total, false);
+  appendButton("Next", current + 1, current === total, false);
+  appendButton("Last", total, current === total, false);
 
   container.onclick = (event) => {
     const btn = event.target.closest("button[data-page]");
@@ -300,7 +300,7 @@ function renderModels() {
 
   const paginationInfo = document.getElementById("modelsPaginationInfo");
   if (paginationInfo) {
-    paginationInfo.textContent = `共 ${total} 条记录，第 ${modelCurrentPage}/${totalPages} 页`;
+    paginationInfo.textContent = `Total ${total} records, Page ${modelCurrentPage}/${totalPages}`;
   }
   renderPagination(modelCurrentPage, totalPages);
 
@@ -308,7 +308,7 @@ function renderModels() {
     container.innerHTML = `
       <div class="models-empty empty-state-panel">
         <span class="models-empty-icon empty-state-mark">◈</span>
-        <p>当前筛选条件下暂无模型数据</p>
+        <p>No model data under current filter</p>
       </div>
     `;
     return;
@@ -321,7 +321,7 @@ function renderModels() {
 
   const rows = pageItems.map((m) => {
     const status = statusMeta(m.status);
-    const defaultBadge = m.is_default ? `<span class="models-default-badge">默认</span>` : "";
+    const defaultBadge = m.is_default ? `<span class="models-default-badge">Default</span>` : "";
 
     return `
       <tr>
@@ -332,7 +332,7 @@ function renderModels() {
               ${defaultBadge}
             </div>
             <span class="models-model-id">${escapeHtml(m.model_id || "-")}</span>
-            <span class="models-cell-sub">排序 ${escapeHtml(String(m.sort_order ?? 0))}</span>
+            <span class="models-cell-sub">Order ${escapeHtml(String(m.sort_order ?? 0))}</span>
           </div>
         </td>
         <td class="col-status">
@@ -340,15 +340,15 @@ function renderModels() {
         </td>
         <td class="col-sort">${escapeHtml(String(m.sort_order ?? 0))}</td>
         <td class="col-toggle">
-          <label class="toggle" title="${normalizeModelStatus(m.status) === "available" ? "点击下线" : "点击启用"}">
+          <label class="toggle" title="${normalizeModelStatus(m.status) === "available" ? "Click to offline" : "Click to enable"}">
             <input type="checkbox" data-action="toggle-status" data-id="${encodeData(m.id)}" ${normalizeModelStatus(m.status) === "available" ? "checked" : ""} />
             <span class="toggle-slider"></span>
           </label>
         </td>
         <td class="col-actions">
           <div class="models-actions">
-            <button type="button" class="btn btn-outline models-action-btn" data-action="edit" data-id="${encodeData(m.id)}">编辑</button>
-            <button type="button" class="btn btn-outline models-action-btn models-action-btn-danger" data-action="delete" data-id="${encodeData(m.id)}">删除</button>
+            <button type="button" class="btn btn-outline models-action-btn" data-action="edit" data-id="${encodeData(m.id)}">Edit</button>
+            <button type="button" class="btn btn-outline models-action-btn models-action-btn-danger" data-action="delete" data-id="${encodeData(m.id)}">Delete</button>
           </div>
         </td>
       </tr>
@@ -360,11 +360,11 @@ function renderModels() {
       <table class="models-table">
         <thead>
           <tr>
-            <th class="col-model">模型</th>
-            <th class="col-status">状态</th>
-            <th class="col-sort">排序</th>
-            <th class="col-toggle">启用</th>
-            <th class="col-actions">操作</th>
+            <th class="col-model">Model</th>
+            <th class="col-status">Status</th>
+            <th class="col-sort">Order</th>
+            <th class="col-toggle">Enable</th>
+            <th class="col-actions">Actions</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -395,7 +395,7 @@ function renderModels() {
 function renderModelsMobile(container, pageItems) {
   const cards = pageItems.map((m) => {
     const status = statusMeta(m.status);
-    const defaultBadge = m.is_default ? `<span class="models-default-badge">默认</span>` : "";
+    const defaultBadge = m.is_default ? `<span class="models-default-badge">Default</span>` : "";
     return `
       <article class="models-mobile-card">
         <div class="models-mobile-head">
@@ -408,24 +408,24 @@ function renderModelsMobile(container, pageItems) {
         <div class="models-model-id">${escapeHtml(m.model_id || "-")}</div>
         <div class="models-mobile-grid">
           <div class="models-mobile-item">
-            <span class="models-mobile-label">渠道</span>
+            <span class="models-mobile-label">Channel</span>
             <span>${escapeHtml(m.channel || "-")}</span>
           </div>
           <div class="models-mobile-item">
-            <span class="models-mobile-label">排序</span>
+            <span class="models-mobile-label">Order</span>
             <span>${escapeHtml(String(m.sort_order ?? 0))}</span>
           </div>
           <div class="models-mobile-item">
-            <span class="models-mobile-label">启用</span>
-            <label class="toggle" title="${normalizeModelStatus(m.status) === "available" ? "点击下线" : "点击启用"}">
+            <span class="models-mobile-label">Enable</span>
+            <label class="toggle" title="${normalizeModelStatus(m.status) === "available" ? "Click to offline" : "Click to enable"}">
               <input type="checkbox" data-action="toggle-status" data-id="${encodeData(m.id)}" ${normalizeModelStatus(m.status) === "available" ? "checked" : ""} />
               <span class="toggle-slider"></span>
             </label>
           </div>
         </div>
         <div class="models-mobile-actions">
-          <button type="button" class="btn btn-outline models-action-btn" data-action="edit" data-id="${encodeData(m.id)}">编辑</button>
-          <button type="button" class="btn btn-outline models-action-btn models-action-btn-danger" data-action="delete" data-id="${encodeData(m.id)}">删除</button>
+          <button type="button" class="btn btn-outline models-action-btn" data-action="edit" data-id="${encodeData(m.id)}">Edit</button>
+          <button type="button" class="btn btn-outline models-action-btn models-action-btn-danger" data-action="delete" data-id="${encodeData(m.id)}">Delete</button>
         </div>
       </article>
     `;
@@ -466,7 +466,7 @@ async function loadModels() {
     renderModels();
     updateRefreshButton();
   } catch (err) {
-    showToast("加载模型失败", "error");
+    showToast("Failed to load models", "error");
   }
 }
 
@@ -517,7 +517,7 @@ function openModelModal(model = null) {
   };
 
   if (model) {
-    title.textContent = "编辑模型";
+    title.textContent = "Edit Model";
     document.getElementById("modelId").value = model.id;
     setSelectValue(document.getElementById("modelChannel"), model.channel);
     document.getElementById("modelModelId").value = model.model_id;
@@ -526,7 +526,7 @@ function openModelModal(model = null) {
     setSelectValue(document.getElementById("modelStatus"), normalizeModelStatus(model.status));
     document.getElementById("modelIsDefault").checked = !!model.is_default;
   } else {
-    title.textContent = "添加模型";
+    title.textContent = "Add Model";
     form.reset();
     document.getElementById("modelId").value = "";
     setSelectValue(document.getElementById("modelChannel"), currentModelChannel || "Orchids");
@@ -572,9 +572,9 @@ async function saveModel(event) {
     if (!res.ok) throw new Error(await res.text());
     closeModelModal();
     await loadModels();
-    showToast("保存成功");
+    showToast("Saved successfully");
   } catch (err) {
-    showToast(`保存失败: ${err.message}`, "error");
+    showToast(`Failed to save: ${err.message}`, "error");
   }
 }
 
@@ -595,22 +595,22 @@ async function toggleModelStatus(id, enabled) {
       body: JSON.stringify(updatedModel),
     });
     if (!res.ok) throw new Error(await res.text());
-    showToast(enabled ? "模型已启用" : "模型已禁用");
+    showToast(enabled ? "Model enabled" : "Model disabled");
     await loadModels();
   } catch (err) {
-    showToast(`操作失败: ${err.message}`, "error");
+    showToast(`Action failed: ${err.message}`, "error");
   }
 }
 
 async function deleteModel(id) {
-  if (!confirm("确定要删除这个模型吗？")) return;
+  if (!confirm("Are you sure you want to delete this model?")) return;
   try {
     const res = await fetch(`/api/models/${id}`, { method: "DELETE" });
     if (!res.ok) throw new Error(await res.text());
-    showToast("删除成功");
+    showToast("Deleted successfully");
     await loadModels();
   } catch (err) {
-    showToast(`删除失败: ${err.message}`, "error");
+    showToast(`Failed to delete: ${err.message}`, "error");
   }
 }
 
@@ -622,11 +622,11 @@ function updateRefreshButton() {
   if (button) {
     button.disabled = modelRefreshInFlight || modelDeleteOfflineInFlight || !channel;
     if (!channel) {
-      button.textContent = "刷新当前渠道";
+      button.textContent = "Refresh current channel";
     } else {
       button.textContent = modelRefreshInFlight
-        ? `正在刷新 ${channel}...`
-        : `刷新 ${channel} 列表`;
+        ? `Refreshing ${channel}...`
+        : `Refresh ${channel} list`;
     }
   }
   if (deleteButton) {
@@ -635,8 +635,8 @@ function updateRefreshButton() {
       .length;
     deleteButton.disabled = modelRefreshInFlight || modelDeleteOfflineInFlight || !channel || offlineCount === 0;
     deleteButton.textContent = modelDeleteOfflineInFlight
-      ? "正在删除..."
-      : `删除已下线${offlineCount > 0 ? ` (${offlineCount})` : ""}`;
+      ? "Deleting..."
+      : `Delete offline${offlineCount > 0 ? ` (${offlineCount})` : ""}`;
   }
 }
 
@@ -665,7 +665,7 @@ async function refreshModelsForCurrentChannel() {
     }
 
     if (!res.ok) {
-      throw new Error(data.message || raw || "刷新失败");
+      throw new Error(data.message || raw || "Refresh failed");
     }
 
     const normalized = normalizeModelRefreshResult(data, channel);
@@ -676,17 +676,17 @@ async function refreshModelsForCurrentChannel() {
     await loadModels();
 
     const parts = [
-      `并发 ${data.concurrency ?? modelRefreshConcurrency}`,
-      `发现 ${data.discovered ?? 0}`,
-      `同步 ${data.verified ?? 0}`,
-      `新增 ${data.added ?? 0}`,
-      `更新 ${data.updated ?? 0}`,
-      `删除 ${data.deleted ?? 0}`,
+      `Concurrency ${data.concurrency ?? modelRefreshConcurrency}`,
+      `Discovered ${data.discovered ?? 0}`,
+      `Verified ${data.verified ?? 0}`,
+      `Added ${data.added ?? 0}`,
+      `Updated ${data.updated ?? 0}`,
+      `Deleted ${data.deleted ?? 0}`,
     ];
     const hasDeleted = normalized.deletedModelIDs.length > 0;
-    showToast(`${channel} 刷新完成：${parts.join("，")}${hasDeleted ? "。已在下方列出删除模型" : ""}`);
+    showToast(`${channel} refresh complete: ${parts.join(", ")}${hasDeleted ? ". Deleted models are listed below." : ""}`);
   } catch (err) {
-    showToast(`刷新失败: ${err.message}`, "error");
+    showToast(`Refresh failed: ${err.message}`, "error");
   } finally {
     modelRefreshInFlight = false;
     updateRefreshButton();
@@ -700,11 +700,11 @@ async function deleteOfflineModelsForCurrentChannel() {
   const targets = getChannelScopedModels()
     .filter((m) => normalizeModelStatus(m.status) === "offline");
   if (targets.length === 0) {
-    showToast(`${channel} 没有已下线模型`, "info");
+    showToast(`${channel} has no offline models`, "info");
     updateRefreshButton();
     return;
   }
-  if (!confirm(`确定删除 ${channel} 渠道的 ${targets.length} 个已下线模型吗？`)) {
+  if (!confirm(`Are you sure you want to delete ${targets.length} offline models in ${channel} channel?`)) {
     return;
   }
 
@@ -724,10 +724,10 @@ async function deleteOfflineModelsForCurrentChannel() {
     }
     await loadModels();
     if (failures.length > 0) {
-      showToast(`已删除 ${deleted} 个，失败 ${failures.length} 个`, "error");
+      showToast(`Deleted ${deleted}, Failed ${failures.length}`, "error");
       console.warn("delete offline models failures", failures);
     } else {
-      showToast(`已删除 ${deleted} 个已下线模型`);
+      showToast(`Deleted ${deleted} offline models`);
     }
   } finally {
     modelDeleteOfflineInFlight = false;

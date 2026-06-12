@@ -1,53 +1,53 @@
-# 架构设计
+# Architecture Design
 
-## 1. 总览
+## 1. Overview
 
-`Orchids-2api` 当前由两条主处理链组成：
+`Orchids-2api` currently consists of two main processing chains:
 
-- `internal/handler`：处理 `orchids`、`warp`、`puter`
-- `internal/grok`：处理 `grok`
+- `internal/handler`: Processes `orchids`, `warp`, `puter`
+- `internal/grok`: Processes `grok`
 
-整体目标：
+Overall goals:
 
-- 对外暴露统一的 Claude Messages 与 OpenAI 兼容接口
-- 对内按通道维护账号池、模型表、失败切换和会话状态
-- 用 Redis 保存账号、模型、配置、API Key 与缓存相关状态
+- Expose unified Claude Messages and OpenAI compatible interfaces externally
+- Internally maintain account pools, model tables, failure switching, and session states by channel
+- Use Redis to save accounts, models, configurations, API Keys, and cache-related states
 
-## 2. 当前目录结构
+## 2. Current Directory Structure
 
 ```text
 Orchids-2api/
-├── cmd/server/                  # 程序入口、路由、模型刷新
+├── cmd/server/                  # Program entry, routing, model refresh
 ├── internal/
-│   ├── api/                     # 管理端 REST API
-│   ├── auth/                    # 管理会话
-│   ├── clerk/                   # Orchids 账号鉴权辅助
-│   ├── config/                  # 配置加载与默认值
-│   ├── debug/                   # 调试日志
-│   ├── errors/                  # 错误分类
+│   ├── api/                     # Admin REST API
+│   ├── auth/                    # Manage sessions
+│   ├── clerk/                   # Orchids account authentication assistance
+│   ├── config/                  # Configuration loading and default values
+│   ├── debug/                   # Debug logs
+│   ├── errors/                  # Error classification
 │   ├── grok/                    # Grok chat/images/files/admin
-│   ├── handler/                 # Orchids/Warp/Puter 主处理器
-│   ├── loadbalancer/            # 账号选择与状态管理
+│   ├── handler/                 # Orchids/Warp/Puter main processor
+│   ├── loadbalancer/            # Account selection and status management
 │   ├── middleware/              # trace/log/session/concurrency
-│   ├── orchids/                 # Orchids 上游客户端
-│   ├── provider/                # 通道到 client 的注册表
-│   ├── prompt/                  # 共享消息结构
-│   ├── puter/                   # Puter 上游客户端
-│   ├── store/                   # Redis 存储
-│   ├── template/                # 管理页面模板
+│   ├── orchids/                 # Orchids upstream client
+│   ├── provider/                # Registry mapping channels to clients
+│   ├── prompt/                  # Shared message structure
+│   ├── puter/                   # Puter upstream client
+│   ├── store/                   # Redis storage
+│   ├── template/                # Admin page templates
 │   ├── tokencache/              # token / prompt cache
-│   ├── upstream/                # 统一上游事件结构
-│   ├── util/                    # 通用工具
-│   └── warp/                    # Warp 上游客户端
-├── web/                         # 嵌入式前端资源
+│   ├── upstream/                # Unified upstream event structure
+│   ├── util/                    # General utilities
+│   └── warp/                    # Warp upstream client
+├── web/                         # Embedded frontend resources
 └── docs/
 ```
 
-## 3. 路由与职责分层
+## 3. Routing and Responsibility Layering
 
 ### 3.1 `cmd/server/routes.go`
 
-负责统一注册：
+Responsible for unified registration:
 
 - `/*/v1/messages`
 - `/*/v1/chat/completions`
@@ -58,42 +58,42 @@ Orchids-2api/
 
 ### 3.2 `internal/handler`
 
-负责 `orchids` / `warp` / `puter`：
+Responsible for `orchids` / `warp` / `puter`:
 
-- 解析 Claude/OpenAI 请求
-- 识别通道与目标模型
-- 维护会话状态、workdir、去重和 token 统计
-- 选择账号、切换失败账号并重试
-- 把上游 SSE / 直出事件转换为 Claude 或 OpenAI 兼容响应
+- Parse Claude/OpenAI requests
+- Identify channel and target model
+- Maintain session state, workdir, deduplication, and token statistics
+- Select account, switch failed accounts, and retry
+- Convert upstream SSE / direct events to Claude or OpenAI compatible responses
 
 ### 3.3 `internal/grok`
 
-负责 `grok`：
+Responsible for `grok`:
 
 - Chat Completions
-- 图片生成与编辑
-- 本地媒体缓存文件
-- Grok 管理接口与公共 imagine/video/voice 能力
+- Image generation and editing
+- Local media cache files
+- Grok management interfaces and public imagine/video/voice capabilities
 
 ### 3.4 `internal/loadbalancer`
 
-核心职责：
+Core responsibilities:
 
-- 按通道筛选可用账号
-- 记录连接数与失败状态
-- 触发冷却与恢复
-- 为请求选择当前最合适的账号
+- Filter available accounts by channel
+- Record connections and failure status
+- Trigger cooldown and recovery
+- Select the most suitable account currently for the request
 
 ### 3.5 `internal/store`
 
-统一存储：
+Unified storage:
 
-- 账号
-- 模型
-- API Key
-- 配置快照
+- Accounts
+- Models
+- API Keys
+- Configuration snapshots
 
-## 4. 主请求流
+## 4. Main Request Flow
 
 ### 4.1 `orchids` / `warp` / `puter`
 
@@ -125,47 +125,47 @@ HTTP Request
   -> write OpenAI-compatible response
 ```
 
-## 5. 模型管理流
+## 5. Model Management Flow
 
-模型刷新入口：`POST /api/models/refresh`
+Model refresh entry: `POST /api/models/refresh`
 
-按通道的来源：
+Sources by channel:
 
-- `orchids`：上游公开模型选择列表
-- `warp`：账号 GraphQL 发现结果，失败时回退内置种子
-- `puter`：Puter 公开模型列表
-- `grok`：内置支持表 + 现存模型 + 公共文档探测
+- `orchids`: Upstream public model selection list
+- `warp`: Account GraphQL discovery results, fallback to built-in seeds on failure
+- `puter`: Puter public model list
+- `grok`: Built-in support table + existing models + public documentation probing
 
-当前策略：
+Current strategy:
 
-- 新发现模型写入本地表
-- 来源缺失模型从本地表删除
-- 不做逐个模型在线测活
+- Newly discovered models are written to the local table
+- Models missing from the source are deleted from the local table
+- No individual model online liveness testing is performed
 
-## 6. Puter 当前实现要点
+## 6. Puter Current Implementation Key Points
 
-Puter 走 `internal/puter`，特点是：
+Puter goes through `internal/puter`, characteristics are:
 
-- 上游是文本流，客户端会从文本中提取 `<tool_call>...</tool_call>`
-- handler 层会把结果重新组装成 Claude Messages 风格 `tool_use` block
-- 非流式 `tool_use` 与 `tool_result` follow-up 已有回归测试覆盖
+- Upstream is a text stream, the client extracts `<tool_call>...</tool_call>` from the text
+- The handler layer reassembles the result into Claude Messages style `tool_use` blocks
+- Non-streaming `tool_use` and `tool_result` follow-up are covered by regression tests
 
-## 7. 运行时状态
+## 7. Runtime State
 
-### 7.1 Redis 中保存
+### 7.1 Saved in Redis
 
-- 账号、模型、API Key、配置
-- 可选 token cache / prompt cache
-- 在可用时，handler 会优先用 Redis 做会话与去重存储
+- Accounts, models, API Keys, configurations
+- Optional token cache / prompt cache
+- When available, handler prioritizes Redis for session and deduplication storage
 
-### 7.2 本地目录
+### 7.2 Local Directories
 
-- `debug-logs/`：调试日志
-- `data/tmp/image`：Grok 图片缓存
-- `data/tmp/video`：Grok 视频缓存
+- `debug-logs/`: Debug logs
+- `data/tmp/image`: Grok image cache
+- `data/tmp/video`: Grok video cache
 
-## 8. 当前已知设计边界
+## 8. Current Known Design Boundaries
 
-- 很多运行时默认值由 `config.ApplyHardcoded` 强制写入，不是所有字段都能靠配置文件覆盖
-- `/metrics` 默认公开，生产环境建议放到内网或额外网关后面
-- 运行期会在 `data/tmp` 产生缓存文件，不应提交到 Git
+- Many runtime defaults are forcibly written by `config.ApplyHardcoded`, not all fields can be overridden by configuration files
+- `/metrics` is public by default, in production it's recommended to place it on an internal network or behind an additional gateway
+- Cache files are generated in `data/tmp` during runtime and should not be committed to Git

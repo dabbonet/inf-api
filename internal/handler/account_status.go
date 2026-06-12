@@ -11,8 +11,8 @@ import (
 	"orchids-api/internal/store"
 )
 
-// accountStatusMu 保护并发的 markAccountStatus 调用，
-// 避免多个 goroutine 同时修改同一 Account 的 StatusCode/LastAttempt。
+// accountStatusMu protects concurrent markAccountStatus calls,
+// Avoid multiple goroutines from modifying the StatusCode/LastAttempt of the same Account at the same time.
 var accountStatusMu sync.Mutex
 
 // classifyAccountStatus delegates to the centralized errors package.
@@ -48,10 +48,10 @@ func markAccountStatus(ctx context.Context, store *store.Store, acc *store.Accou
 	acc.LastAttempt = now
 
 	if err := store.UpdateAccount(ctx, acc); err != nil {
-		slog.Warn("账号状态更新失败", "account_id", acc.ID, "status", status, "error", err)
+		slog.Warn("Account status update failed", "account_id", acc.ID, "status", status, "error", err)
 		return
 	}
-	slog.Debug("账号状态已标记", "account_id", acc.ID, "status", status)
+	slog.Debug("Account status is marked", "account_id", acc.ID, "status", status)
 }
 
 func markWarpQuotaExhausted(ctx context.Context, store *store.Store, acc *store.Account) {
@@ -77,8 +77,8 @@ func markWarpQuotaExhausted(ctx context.Context, store *store.Store, acc *store.
 	}
 
 	if err := store.UpdateAccount(ctx, acc); err != nil {
-		slog.Warn("Warp 额度状态更新失败", "account_id", acc.ID, "error", err)
+		slog.Warn("Warp quota status update failed", "account_id", acc.ID, "error", err)
 		return
 	}
-	slog.Debug("Warp 额度已标记为不足", "account_id", acc.ID)
+	slog.Debug("Warp quota has been marked as insufficient", "account_id", acc.ID)
 }

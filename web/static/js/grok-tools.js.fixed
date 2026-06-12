@@ -3858,8 +3858,4 @@
     setVoiceStatus(t("common.notConnected"));
     syncVoiceOutputMute();
     updateCacheBatchUI();
-  }
-
-  document.addEventListener("DOMContentLoaded", init);
-}
-})();
+  }document.addEventListener("DOMContentLoaded", init);})();

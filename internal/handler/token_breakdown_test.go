@@ -147,7 +147,7 @@ func TestHandleCountTokens_WarpUsesOfficialProtoEstimator(t *testing.T) {
 	reqBody := map[string]interface{}{
 		"model": "auto-efficient",
 		"messages": []map[string]interface{}{
-			{"role": "user", "content": "当前目录"},
+			{"role": "user", "content": "current directory"},
 		},
 		"tools": []map[string]interface{}{
 			{

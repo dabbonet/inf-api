@@ -132,8 +132,8 @@ func (c *Client) cloudflareCookies() (string, string) {
 	return cfClearance, cfBM
 }
 
-// baseHeaders 是预分配的请求头模板，包含所有固定的请求头
-// 这避免了在每次请求时重新分配这些固定头，提升性能
+// baseHeaders is a pre-allocated request header template that contains all fixed request headers
+// This avoids the need to reallocate these fixed headers on each request, improving performance.
 var baseHeaders = http.Header{
 	"Accept":             []string{"*/*"},
 	"Accept-Language":    []string{"zh-CN,zh;q=0.9,en;q=0.8"},
@@ -299,15 +299,15 @@ func appChatDeviceEnvInfo() map[string]interface{} {
 }
 
 func (c *Client) headers(token string) http.Header {
-	// 从预分配的模板浅克隆请求头；固定值切片复用，动态字段再覆盖。
+	// Shallow clone request headers from pre-allocated templates; reuse fixed value slices and overwrite dynamic fields.
 	h := cloneHeaderShallow(baseHeaders, 4)
 
-	// 添加动态请求头
+	// Add dynamic request header
 	h.Set("User-Agent", c.userAgent())
 	h.Set("x-statsig-id", c.statsigID())
 	h.Set("x-xai-request-id", randomUUID())
 
-	// 构建 Cookie
+	// build Cookie
 	cfClearance, cfBM := c.cloudflareCookies()
 	if cookie := buildGrokCookie(token, cfClearance, cfBM); cookie != "" {
 		h.Set("Cookie", cookie)

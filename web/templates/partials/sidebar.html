@@ -1,5 +1,5 @@
 <div class="mobile-topbar">
-  <button class="mobile-menu-btn" type="button" onclick="toggleSidebar(true)" aria-label="打开导航菜单" aria-controls="sidebar" aria-expanded="false">
+  <button class="mobile-menu-btn" type="button" onclick="toggleSidebar(true)" aria-label="Open Navigation Menu" aria-controls="sidebar" aria-expanded="false">
     <span></span>
     <span></span>
     <span></span>
@@ -13,7 +13,7 @@
   </div>
 </div>
 <div class="sidebar-overlay" onclick="toggleSidebar(false)" aria-hidden="true"></div>
-<aside class="sidebar" id="sidebar" aria-label="主导航">
+<aside class="sidebar" id="sidebar" aria-label="Main Navigation">
   <div class="sidebar-header">
     <div class="logo">O</div>
     <div class="sidebar-brand-text">
@@ -27,7 +27,7 @@
         <span class="nav-glyph" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </span>
-        <span>账号管理</span>
+        <span>Account Management</span>
       </a>
     </li>
     <li class="sidebar-item">
@@ -35,7 +35,7 @@
         <span class="nav-glyph" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.72l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg>
         </span>
-        <span>配置管理</span>
+        <span>Config Management</span>
       </a>
     </li>
     <li class="sidebar-item">
@@ -43,7 +43,7 @@
         <span class="nav-glyph" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"/></svg>
         </span>
-        <span>模型管理</span>
+        <span>Model Management</span>
       </a>
     </li>
     <li class="sidebar-item">
@@ -51,7 +51,7 @@
         <span class="nav-glyph" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M10 20.5c.5-2.5 2-4.5 4.5-6"/><path d="M14 3.5c3 1 5.5 3.5 6.5 6.5"/><path d="M4 14c1-3 3.5-5.5 6.5-6.5"/><path d="M6 20h12"/><circle cx="12" cy="12" r="3"/></svg>
         </span>
-        <span>Grok 工具</span>
+        <span>Grok Tools</span>
       </a>
     </li>
     <li class="sidebar-item">
@@ -59,28 +59,28 @@
         <span class="nav-glyph" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5Z"/></svg>
         </span>
-        <span>使用教程</span>
+        <span>Tutorial</span>
       </a>
     </li>
   </ul>
   <div class="sidebar-footer">
     <div class="sidebar-footer-stats">
       <div class="footer-stat-item">
-        <span class="footer-stat-label">总账号</span>
+        <span class="footer-stat-label">Total Accounts</span>
         <span class="footer-stat-value" id="footerTotal">{{.Stats.TotalAccounts}}</span>
       </div>
       <div class="footer-stat-item">
-        <span class="footer-stat-label">正常</span>
+        <span class="footer-stat-label">Normal</span>
         <span class="footer-stat-value normal" id="footerNormal">{{.Stats.NormalAccounts}}</span>
       </div>
       <div class="footer-stat-item">
-        <span class="footer-stat-label">异常</span>
+        <span class="footer-stat-label">Abnormal</span>
         <span class="footer-stat-value abnormal" id="footerAbnormal">{{.Stats.AbnormalAccounts}}</span>
       </div>
     </div>
     <button class="btn btn-outline sidebar-logout" onclick="logout()">
       <span class="nav-glyph nav-glyph-small">EX</span>
-      <span>退出登录</span>
+      <span>Logout</span>
     </button>
   </div>
 </aside>

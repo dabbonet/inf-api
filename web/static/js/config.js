@@ -8,7 +8,7 @@ const TOKEN_CACHE_TTL_PRESETS = ["60", "300", "900", "1800", "3600", "86400", "2
 function switchConfigTab(tab) {
   document.querySelectorAll("#configTabs .tab-item").forEach(btn => {
     btn.classList.toggle("active",
-      (tab === 'basic' && btn.textContent.includes('基础')) ||
+      (tab === 'basic' && btn.textContent.includes('Basic')) ||
       (tab === 'auth' && btn.textContent.includes('API Key'))
     );
   });
@@ -123,7 +123,7 @@ async function loadConfiguration() {
     }
     const payload = await res.json();
     if (payload && typeof payload.code !== "undefined" && payload.code !== 0) {
-      throw new Error(payload.message || payload.msg || "加载配置失败");
+      throw new Error(payload.message || payload.msg || "Failed to load config");
     }
     const cfg = payload && payload.data ? payload.data : payload;
 
@@ -145,7 +145,7 @@ async function loadConfiguration() {
     document.getElementById("cfg_token_cache_strategy").value = cfg.token_cache_strategy || "1";
 
   } catch (err) {
-    showToast("加载配置失败", "error");
+    showToast("Failed to load config", "error");
   }
 }
 
@@ -175,11 +175,11 @@ async function saveConfiguration() {
     if (!res.ok) throw new Error(await res.text());
     const payload = await res.json();
     if (payload.code !== 0) {
-      throw new Error(payload.message || payload.msg || "保存失败");
+      throw new Error(payload.message || payload.msg || "Failed to save");
     }
-    showToast("配置保存成功");
+    showToast("Configuration saved successfully");
   } catch (err) {
-    showToast("保存失败: " + err.message, "error");
+    showToast("Failed to save: " + err.message, "error");
   }
 }
 
@@ -194,7 +194,7 @@ async function loadApiKeys() {
     apiKeys = (await res.json()) || [];
     renderApiKeys();
   } catch (err) {
-    showToast("加载 API Keys 失败", "error");
+    showToast("Failed to load API Keys", "error");
   }
 }
 
@@ -209,7 +209,7 @@ function renderApiKeys() {
     mark.className = "empty-state-mark";
     mark.textContent = "KY";
     const p = document.createElement("p");
-    p.textContent = "暂无 API Key，点击上方按钮创建";
+    p.textContent = "No API Keys, click the button above to create one";
     empty.appendChild(mark);
     empty.appendChild(p);
     container.appendChild(empty);
@@ -225,7 +225,7 @@ function renderApiKeys() {
   const table = document.createElement("table");
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
-  ["Token", "状态", "最后使用", "操作"].forEach((label) => {
+  ["Token", "Status", "Last Used", "Action"].forEach((label) => {
     const th = document.createElement("th");
     th.textContent = label;
     headRow.appendChild(th);
@@ -282,7 +282,7 @@ function renderApiKeys() {
     const tdLast = document.createElement("td");
     tdLast.style.color = "var(--text-secondary)";
     tdLast.style.fontSize = "0.8rem";
-    tdLast.textContent = k.last_used_at ? formatTime(k.last_used_at) : "从未使用";
+    tdLast.textContent = k.last_used_at ? formatTime(k.last_used_at) : "Never used";
     tr.appendChild(tdLast);
 
     const tdAction = document.createElement("td");
@@ -292,7 +292,7 @@ function renderApiKeys() {
     delBtn.dataset.action = "delete-key";
     delBtn.dataset.id = encodeData(k.id);
     delBtn.dataset.label = encodedLabel;
-    delBtn.textContent = "删除";
+    delBtn.textContent = "Delete";
     tdAction.appendChild(delBtn);
     tr.appendChild(tdAction);
 
@@ -320,14 +320,14 @@ function renderApiKeys() {
   const tipTitle = document.createElement("div");
   tipTitle.style.fontWeight = "600";
   tipTitle.style.marginBottom = "4px";
-  tipTitle.textContent = "提示";
+  tipTitle.textContent = "Tips";
   const tipText = document.createElement("div");
   tipText.style.fontSize = "0.9rem";
   tipText.style.lineHeight = "1.6";
   const tipLines = [
-    "• API Key 用于访问接口的身份认证",
-    "• 禁用的 Key 将无法访问 API",
-    "• 请妥善保管您的 API Key，不要泄露给他人",
+    "• API Key is used for identity authentication when accessing the API",
+    "• Disabled Keys will not be able to access the API",
+    "• Please keep your API Key safe and do not share it with others",
   ];
   tipLines.forEach((line, idx) => {
     if (idx > 0) tipText.appendChild(document.createElement("br"));
@@ -379,7 +379,7 @@ function renderApiKeysMobile(container) {
     const keyDisplay = k.key_full || `${k.key_prefix}****${k.key_suffix}`;
     const encodedKey = encodeURIComponent(keyDisplay);
     const encodedLabel = encodeURIComponent(`${k.key_prefix}...${k.key_suffix}`);
-    const lastUsed = k.last_used_at ? formatTime(k.last_used_at) : "从未使用";
+    const lastUsed = k.last_used_at ? formatTime(k.last_used_at) : "Never used";
     return `
       <article class="config-key-card">
         <div class="config-key-head">
@@ -394,12 +394,12 @@ function renderApiKeysMobile(container) {
         </div>
         <div class="config-key-meta">
           <div class="config-key-item">
-            <span class="config-key-label">最后使用</span>
+            <span class="config-key-label">Last Used</span>
             <span>${escapeHtml(lastUsed)}</span>
           </div>
         </div>
         <div class="config-key-actions">
-          <button type="button" class="btn btn-danger-outline" data-action="delete-key" data-id="${encodeData(k.id)}" data-label="${encodedLabel}">删除</button>
+          <button type="button" class="btn btn-danger-outline" data-action="delete-key" data-id="${encodeData(k.id)}" data-label="${encodedLabel}">Delete</button>
         </div>
       </article>
     `;
@@ -410,8 +410,8 @@ function renderApiKeysMobile(container) {
   const tip = document.createElement("div");
   tip.className = "config-key-tip";
   tip.innerHTML = `
-    <div class="config-key-tip-title">提示</div>
-    <div class="config-key-tip-body">• API Key 用于访问接口的身份认证<br>• 禁用的 Key 将无法访问 API<br>• 请妥善保管您的 API Key，不要泄露给他人</div>
+    <div class="config-key-tip-title">Tips</div>
+    <div class="config-key-tip-body">• API Key is used for identity authentication when accessing the API<br>• Disabled Keys will not be able to access the API<br>• Please keep your API Key safe and do not share it with others</div>
   `;
   container.appendChild(tip);
 
@@ -467,9 +467,9 @@ async function toggleKeyStatus(id, enabled) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
     });
-    showToast(enabled ? "已启用" : "已禁用");
+    showToast(enabled ? "Enabled" : "Disabled");
   } catch (err) {
-    showToast("操作失败", "error");
+    showToast("Action failed", "error");
   }
 }
 
@@ -578,10 +578,10 @@ async function confirmDeleteKey() {
   try {
     await fetch(`/api/keys/${id}`, { method: "DELETE" });
     closeDeleteKeyModal();
-    showToast("删除成功");
+    showToast("Deleted successfully");
     loadApiKeys();
   } catch (err) {
-    showToast("删除失败", "error");
+    showToast("Failed to delete", "error");
   }
 }
 
@@ -612,7 +612,7 @@ function updateMemoryEstimation() {
   if (ttlEl) ttlEl.textContent = String(ttlSec);
   if (multEl) multEl.textContent = mult === 2 ? "× 2" : "× 1";
   if (titleEl) {
-    titleEl.textContent = `内存估算 (当前: TTL=${ttlSec}秒, 系数=${mult})`;
+    titleEl.textContent = `Memory Estimation (Current: TTL=${ttlSec}s, Multiplier=${mult})`;
   }
 
   const calc = (qps) => {
@@ -645,39 +645,40 @@ async function loadCacheStats() {
 
     if (statsEl) {
       if (data.code !== 0 || !prompt.connected) {
-        statsEl.textContent = "Prompt 缓存未启用";
+        statsEl.textContent = "Prompt cache not enabled";
       } else {
-        statsEl.textContent = `Prompt 缓存: ${Number(prompt.key_count) || 0} 条，占用内存: ${prompt.memory_used_str || "0 B"}`;
+        statsEl.textContent = `Prompt cache: ${Number(prompt.key_count) || 0} entries, memory usage: ${prompt.memory_used_str || "0 B"}`;
       }
     }
 
     if (estimateStatsEl) {
       if (data.code !== 0 || !estimate.connected) {
-        estimateStatsEl.textContent = "Token 估算缓存未启用";
+        estimateStatsEl.textContent = "Token estimate cache not enabled";
       } else {
-        estimateStatsEl.textContent = `Token 估算缓存: ${Number(estimate.key_count) || 0} 条，占用内存: ${estimate.memory_used_str || "0 B"}`;
+        estimateStatsEl.textContent = `Token estimate cache: ${Number(estimate.key_count) || 0} entries, memory usage: ${estimate.memory_used_str || "0 B"}`;
       }
     }
   } catch (err) {
-    if (statsEl) statsEl.textContent = "缓存统计加载失败";
-    if (estimateStatsEl) estimateStatsEl.textContent = "缓存统计加载失败";
+    if (statsEl) statsEl.textContent = "Failed to load cache stats";
+    if (estimateStatsEl) estimateStatsEl.textContent = "Failed to load cache stats";
   }
 }
 
 async function clearCache() {
-  if (!confirm("确定要清空 Token 用量缓存吗？")) return;
+  if (!confirm("Are you sure you want to clear the Token usage cache?")) return;
   try {
     const res = await fetch("/api/token-cache/clear", { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     if (data.code !== 0) {
-      throw new Error(data.message || data.msg || "清空失败");
+      throw new Error(data.message || data.msg || "Failed to clear");
     }
-    const deleted = Number(data?.data?.deleted) || 0;
-    showToast(`已清空 ${deleted} 条缓存`);
+
+    const deleted = data.data?.deleted_keys || 0;
+    showToast(`Cleared ${deleted} cached entries`);
     loadCacheStats();
   } catch (err) {
-    showToast("清空失败: " + err.message, "error");
+    showToast("Failed to clear: " + err.message, "error");
   }
 }
 

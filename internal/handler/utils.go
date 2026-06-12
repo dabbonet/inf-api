@@ -125,8 +125,8 @@ func channelFromPath(path string) string {
 	return ""
 }
 
-// mapModel 根据请求的 model 名称映射到 orchids 上游实际支持的模型
-// 以当前 Orchids 公共模型为准（会随上游更新）：claude-sonnet-4-6 / claude-opus-4.6 / claude-haiku-4-5 等。
+// mapModel maps the requested model name to the model actually supported by orchids upstream
+// Based on the current Orchids public model (will be updated with upstream): claude-sonnet-4-6 / claude-opus-4.6 / claude-haiku-4-5, etc.
 func mapModel(requestModel string) string {
 	normalized := normalizeOrchidsModelKey(requestModel)
 	if normalized == "" {
@@ -297,9 +297,9 @@ func looksLikeWarpAgentIntent(text string) bool {
 	}
 
 	for _, marker := range []string{
-		"创建文件", "生成文件", "修改文件", "编辑文件", "保存到", "写入",
-		"执行命令", "运行命令", "跑一下", "跑测试", "运行测试", "编译", "构建",
-		"修复代码", "改代码", "写代码", "代码实现", "项目里", "仓库里",
+		"Create file", "Generate files", "Modify files", "Edit file", "save to", "write",
+		"execute command", "Run command", "run for a while", "Run test", "Run test", "compile", "build",
+		"fix code", "Change code", "write code", "Code implementation", "In the project", "In the warehouse",
 		"update the file", "create file", "write file", "save to",
 		"run command", "execute command", "compile", "run tests", "fix the code", "write code",
 	} {
@@ -310,7 +310,7 @@ func looksLikeWarpAgentIntent(text string) bool {
 
 	if looksLikeSourceOrCommandSubject(lower) {
 		for _, action := range []string{
-			"帮我", "写", "生成", "创建", "实现", "修改", "修复", "运行", "执行", "编译", "构建",
+			"help me", "Write", "generate", "create", "accomplish", "Revise", "repair", "run", "implement", "compile", "build",
 			"write", "create", "generate", "build", "implement", "modify", "edit", "fix", "run", "execute", "compile",
 		} {
 			if strings.Contains(lower, action) {
@@ -325,7 +325,7 @@ func looksLikeWarpAgentIntent(text string) bool {
 func looksLikeSourceOrCommandSubject(lower string) bool {
 	for _, marker := range []string{
 		"python", "golang", " go ", "javascript", "typescript", "node", "react", "vue", "java", "rust", "php", "ruby",
-		"代码", "源码", "函数", "类", "接口", "脚本", "计算器", "文件", "项目", "仓库", "应用",
+		"code", "Source code", "function", "kind", "api", "script", "calculator", "document", "project", "storehouse", "application",
 		"code", "function", "class", "api", "calculator", "file", "project", "repo", "repository", " app", "application",
 		".py", ".go", ".js", ".ts", ".tsx", ".jsx", ".java", ".rs", ".php", ".rb", "package.json", "go.mod",
 	} {
@@ -832,11 +832,11 @@ func looksLikeWarpExploratoryRequest(text string) bool {
 		return false
 	}
 	keywords := []string{
-		"项目", "工程", "仓库", "代码", "文件", "结构", "架构",
-		"优化", "改进", "重构", "分析", "查看", "检查", "排查", "修复",
-		"错误", "异常", "日志", "实现", "用途", "干什么", "做什么",
-		"配置", "配置文件", "观测", "监控", "指标", "追踪", "发布", "上线", "部署",
-		"兼容", "兼容性", "运维", "恢复", "回滚",
+		"project", "project", "storehouse", "code", "document", "structure", "architecture",
+		"optimization", "improve", "Refactor", "analyze", "Check", "examine", "troubleshooting", "repair",
+		"mistake", "abnormal", "log", "accomplish", "purpose", "what to do", "do what",
+		"Configuration", "Configuration file", "watch", "monitor", "index", "track", "publish", "go online", "deploy",
+		"compatible", "compatibility", "Operation and maintenance", "recover", "rollback",
 		"project", "repo", "repository", "codebase", "source", "file", "files",
 		"structure", "architecture", "optimize", "optimization",
 		"improve", "refactor", "analyze", "analysis", "inspect", "check",
@@ -1025,7 +1025,7 @@ func buildLocalSuggestion(messages []prompt.Message) string {
 		return ""
 	}
 	if containsHan(lastUser) || containsHan(lastAssistant) {
-		return "可以"
+		return "Okay"
 	}
 	return "go ahead"
 }
@@ -1092,8 +1092,8 @@ func looksLikeExploratoryAssistantPreface(text string) bool {
 		"let me",
 		"i'll first",
 		"i will first",
-		"让我先",
-		"我先",
+		"let me first",
+		"I first",
 	}
 	action := []string{
 		"look",
@@ -1107,15 +1107,15 @@ func looksLikeExploratoryAssistantPreface(text string) bool {
 		"review",
 		"check",
 		"learn",
-		"看看",
-		"看一下",
-		"了解",
-		"阅读",
-		"读取",
-		"理解",
-		"分析",
-		"检查",
-		"审查",
+		"have a look",
+		"Take a look",
+		"learn",
+		"read",
+		"read",
+		"understand",
+		"analyze",
+		"examine",
+		"review",
 	}
 
 	hasIntro := false
@@ -1160,15 +1160,15 @@ func hasExplicitNextStepOffer(text string) bool {
 		}
 	}
 	chineseMarkers := []string{
-		"如果你要",
-		"如果需要",
-		"如果你愿意",
-		"要的话",
-		"需要的话",
-		"我可以继续",
-		"我可以直接",
-		"我可以帮你",
-		"我下一步可以",
+		"if you want",
+		"if needed",
+		"if you want",
+		"If you want",
+		"if necessary",
+		"I'm Okay to continue",
+		"I'm Okay directly",
+		"I can help you",
+		"My next step Okay",
 	}
 	for _, marker := range chineseMarkers {
 		if strings.Contains(text, marker) {
@@ -1220,7 +1220,7 @@ func looksLikeTechStackRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"技术架构", "技术栈", "架构", "框架", "依赖", "用了哪些技术", "使用了哪些技术",
+		"technology architecture", "tech stack", "architecture", "framework", "dependencies", "what technologies are used", "make what technologies are used",
 		"tech stack", "technology stack", "architecture", "framework", "frameworks", "dependencies",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1236,7 +1236,7 @@ func looksLikeProjectPurposeRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"项目是干什么的", "这个项目是干什么的", "这个项目做什么", "这个项目有什么用", "用途", "做什么",
+		"what is this project for", "what is this project for", "what does this project do", "what is the use of this project", "purpose", "do what",
 		"what does this project do", "what is this project", "project purpose", "purpose of this project",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1252,7 +1252,7 @@ func looksLikeBackendImplementationRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"后端", "服务端", "接口", "api", "后端如何实现", "接口如何实现",
+		"backend", "server side", "api", "api", "backendhow to implement", "apihow to implement",
 		"backend", "server side", "server-side", "api implementation", "service implementation",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1268,7 +1268,7 @@ func looksLikeDataLayerRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"数据层", "存储", "数据库", "缓存", "持久化", "数据怎么存", "数据存在哪里",
+		"data layer", "storage", "database", "cache", "persistence", "how is data stored", "where is data stored",
 		"data layer", "storage", "database", "db", "cache", "persistence",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1284,7 +1284,7 @@ func looksLikeTestingRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"测试", "单测", "集成测试", "e2e", "怎么测试", "如何测试",
+		"test", "unit test", "Integrated test", "e2e", "How to test", "How to test",
 		"testing", "test strategy", "unit test", "integration test", "e2e test",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1300,7 +1300,7 @@ func looksLikeDeploymentRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"部署", "构建", "发布", "上线", "运行方式", "怎么启动",
+		"deploy", "build", "publish", "go online", "run method", "how to start",
 		"deployment", "deploy", "build", "release", "runtime", "how to run", "how to start",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1316,7 +1316,7 @@ func looksLikeSecurityRiskRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"安全风险", "安全问题", "漏洞", "风险点", "不安全", "安全隐患",
+		"security risk", "security issue", "vulnerability", "risk point", "insecure", "security hidden danger",
 		"security risk", "security risks", "security issue", "vulnerability", "vulnerabilities",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1332,7 +1332,7 @@ func looksLikePermissionRiskRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"权限风险", "权限问题", "提权", "root 权限", "高权限", "最小权限",
+		"permission risk", "permission issue", "privilege escalation", "root permission", "high permission", "least privilege",
 		"permission risk", "permissions issue", "privilege escalation", "run as root", "least privilege",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1348,7 +1348,7 @@ func looksLikeDependencyRiskRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"依赖风险", "依赖问题", "供应链风险", "依赖是否安全", "第三方依赖风险",
+		"dependenciesrisk", "dependencies problem", "supply chain risk", "Are dependencies safe?", "Third-party dependencies risk",
 		"dependency risk", "dependency risks", "package risk", "supply chain risk", "third-party dependency",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1364,7 +1364,7 @@ func looksLikeReleaseRiskRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"发布风险", "上线风险", "交付风险", "发布隐患", "发布问题",
+		"publish risk", "go online risk", "delivery risk", "publish hidden dangers", "publish problem",
 		"release risk", "rollout risk", "deployment risk", "shipping risk", "release issue",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1380,9 +1380,9 @@ func looksLikeOptimizationRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"怎么优化", "如何优化", "优化建议", "性能怎么优化", "重构建议", "改进建议",
-		"帮我优化", "优化这个项目", "项目优化", "优化下这个项目", "帮我改进这个项目",
-		"优化这个方案", "帮我优化这个方案", "优化这个设计", "帮我优化这个设计", "优化这个实现", "帮我优化这个实现",
+		"how to optimize", "how to optimize", "optimization suggestions", "performancehow to optimize", "Recommend", "improvement suggestions",
+		"help me optimize", "optimize this project", "project optimization", "optimize this project a bit", "help me improve this project",
+		"optimize this solution", "help me optimize this solution", "optimize this design", "help me optimize this design", "optimize this implementation", "help me optimize this implementation",
 		"how to optimize", "optimization advice", "performance optimization", "refactor suggestions", "improvement suggestions",
 		"optimize this plan", "optimize this design", "optimize this implementation",
 	} {
@@ -1399,7 +1399,7 @@ func explicitlyRequestsDeepAnalysis(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"深入分析", "详细分析", "深层分析", "全面分析", "deep analysis", "detailed analysis", "in-depth analysis",
+		"in-depth analysis", "detailed analysis", "deep analysis", "comprehensive analysis", "deep analysis", "detailed analysis", "in-depth analysis",
 	} {
 		if strings.Contains(lower, marker) {
 			return true
@@ -1414,7 +1414,7 @@ func looksLikeWebImplementationRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"网页", "前端", "页面", "界面", "网站", "web ui", "web-ui", "如何实现",
+		"web page", "frontend", "page", "interface", "website", "web ui", "web-ui", "how to implement",
 		"frontend", "front-end", "web", "page", "pages", "website",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1535,7 +1535,7 @@ func inspectTechStackSignals(text string) techStackSignals {
 		}, &libraries)
 
 		if strings.Contains(lower, "json.load") || strings.Contains(lower, "json.dump") || strings.Contains(lower, ".json") {
-			storage = append(storage, "本地 JSON 文件")
+			storage = append(storage, "Local JSON file")
 		}
 		if strings.Contains(lower, "sqlite") {
 			storage = append(storage, "SQLite")
@@ -1550,19 +1550,19 @@ func inspectTechStackSignals(text string) techStackSignals {
 			storage = append(storage, "Redis")
 		}
 		if strings.Contains(lower, "urllib.request") || strings.Contains(lower, "requests") || strings.Contains(lower, "httpx") || strings.Contains(lower, "aiohttp") {
-			networking = append(networking, "HTTP 抓取 / API 调用")
+			networking = append(networking, "HTTP fetch / API call")
 		}
 		if strings.Contains(lower, "socks") || strings.Contains(lower, "proxy") {
-			networking = append(networking, "代理支持")
+			networking = append(networking, "Proxy support")
 		}
 		if strings.Contains(lower, "api.py") || strings.Contains(lower, "fastapi") || strings.Contains(lower, "uvicorn") {
-			architecture = append(architecture, "API 服务")
+			architecture = append(architecture, "API service")
 		}
 		if strings.Contains(lower, "dashboard.py") || strings.Contains(lower, "streamlit") {
-			architecture = append(architecture, "仪表盘 / Web 界面")
+			architecture = append(architecture, "Dashboard/Web interface")
 		}
 		if strings.Contains(lower, "media_mapping.json") || strings.Contains(lower, "alerts") || strings.Contains(lower, "local_media_paths") {
-			architecture = append(architecture, "文件系统 + JSON 数据流")
+			architecture = append(architecture, "File system + JSON data stream")
 		}
 	}
 
@@ -1666,7 +1666,7 @@ func extractUserTexts(messages []prompt.Message) []string {
 func isGreetingText(text string) bool {
 	lower := strings.ToLower(strings.TrimSpace(text))
 	switch lower {
-	case "hi", "hello", "hey", "你好", "您好", "嗨", "在吗":
+	case "hi", "hello", "hey", "hello", "hello", "hi", "are you there":
 		return true
 	default:
 		return false
@@ -1708,8 +1708,8 @@ func generateTopicTitle(text string) string {
 	return strings.TrimSpace(string(runes))
 }
 
-// stripSystemRemindersForMode 移除 <system-reminder>...</system-reminder>，避免误判 plan/suggestion 模式
-// 使用 LastIndex 查找结束标签，正确处理嵌套的字面量标签
+// stripSystemRemindersForMode removes <system-reminder>...</system-reminder> to avoid misjudgment of plan/suggestion mode
+// Use LastIndex to find closing tags and handle nested literal tags correctly
 func stripSystemRemindersForMode(text string) string {
 	text = stripNestedModeTaggedBlock(text, "system-reminder")
 	for _, tag := range []string{

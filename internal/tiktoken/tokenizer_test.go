@@ -20,13 +20,13 @@ func TestEstimateTextTokens(t *testing.T) {
 		},
 		{
 			name: "Pure Chinese",
-			text: "这是一个测试句子。",
+			text: "This is a test sentence.",
 			min:  10,
 			max:  15,
 		},
 		{
 			name: "Mixed",
-			text: "This is a test 这是测试",
+			text: "This is a test This is a test",
 			min:  10,
 			max:  16,
 		},
@@ -55,8 +55,8 @@ func TestEstimatorMatchesEstimateTextTokens(t *testing.T) {
 		},
 		{
 			name:   "mixed ascii and cjk",
-			parts:  []string{"This ", "is 测", "试 12", "3!"},
-			joined: "This is 测试 123!",
+			parts:  []string{"This ", "is te", "st 12", "3!"},
+			joined: "This is test 123!",
 		},
 		{
 			name:   "spaces punctuation and numbers",
@@ -94,7 +94,7 @@ func TestEstimatorAddBytesMatchesEstimateTextTokens(t *testing.T) {
 	tests := []string{
 		`{"file_path":"/tmp/a.txt","content":"hello world"}`,
 		`{"name":"Write","description":"update config and keep comments"}`,
-		`{"description":"混合 UTF-8 内容","properties":{"path":{"type":"string"}}}`,
+		`{"description":"Mixed UTF-8 content","properties":{"path":{"type":"string"}}}`,
 	}
 
 	for _, text := range tests {

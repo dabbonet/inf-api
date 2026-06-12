@@ -482,7 +482,7 @@ func (c *Client) syncConfigFromStoredAccount() {
 	}
 }
 
-// persistAccountInfo 将刷新后的账号信息同步回 store，防止重启后丢失。
+// persistAccountInfo synchronizes the refreshed account information back to the store to prevent loss after restart.
 func (c *Client) persistAccountInfo(info *clerk.AccountInfo) {
 	if c.account == nil || info == nil {
 		return
@@ -693,8 +693,8 @@ func setCachedToken(sessionID, token string) {
 	tokenCache.mu.Unlock()
 }
 
-// InvalidateCachedToken 清除指定 sessionID 的 token 缓存，
-// 用于账号 401 冷却恢复后强制重新获取 token。
+// InvalidateCachedToken clears the token cache of the specified sessionID.
+// Used to force the token to be reacquired after the account 401 cooldown is restored.
 func InvalidateCachedToken(sessionID string) {
 	if sessionID == "" {
 		return

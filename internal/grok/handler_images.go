@@ -411,12 +411,12 @@ func looksLikeShortChinesePortraitPrompt(prompt string) bool {
 		return false
 	}
 	lower := strings.ToLower(p)
-	return strings.Contains(lower, "美女") ||
-		strings.Contains(lower, "女生") ||
-		strings.Contains(lower, "女孩") ||
-		strings.Contains(lower, "女人") ||
-		strings.Contains(lower, "人像") ||
-		strings.Contains(lower, "照片")
+	return strings.Contains(lower, "beauty") ||
+		strings.Contains(lower, "girl") ||
+		strings.Contains(lower, "girl") ||
+		strings.Contains(lower, "woman") ||
+		strings.Contains(lower, "portrait") ||
+		strings.Contains(lower, "photo")
 }
 
 func grokAppChatImagePrompt(prompt string) string {

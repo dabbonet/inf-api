@@ -15,12 +15,12 @@
 
   <main class="main-content grok-tools-page">
     <section class="header-section">
-      <h1>Grok 工具</h1>
-      <p>把 Grok 的对话、生成、语音和缓存能力收进一套统一控制台，让调试、切换和排障都在同一个工作台里完成。</p>
+      <h1>Grok Tools</h1>
+      <p>Integrate Grok's chat, generation, voice, and caching capabilities into a unified console, allowing debugging, switching, and troubleshooting all in one workbench.</p>
     </section>
 
     <div class="grok-tools-workspace">
-      <div class="toolbar toolbar-compact grok-tools-toolbar" aria-label="Grok 工具导航">
+      <div class="toolbar toolbar-compact grok-tools-toolbar" aria-label="Grok Tools Navigation">
         <div class="filter-tabs grok-tabs" id="grokToolsTabs">
           <button class="tab-item" data-tab="chat" onclick="switchGrokToolTab('chat')">Chat</button>
           <button class="tab-item active" data-tab="imagine" onclick="switchGrokToolTab('imagine')">Imagine</button>
@@ -34,15 +34,15 @@
         <div class="chat-layout">
           <aside class="chat-sidebar" id="grokChatSidebar">
             <div class="sidebar-header">
-              <span class="sidebar-title">会话</span>
+              <span class="sidebar-title">Sessions</span>
               <div class="sidebar-actions">
-                <button id="grokChatNewBtn" class="icon-btn sidebar-action-btn" type="button" title="新增会话">
+                <button id="grokChatNewBtn" class="icon-btn sidebar-action-btn" type="button" title="New Session">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
               </button>
-                <button id="grokChatCollapseBtn" class="icon-btn sidebar-action-btn" type="button" title="折叠会话">
+                <button id="grokChatCollapseBtn" class="icon-btn sidebar-action-btn" type="button" title="Collapse Sessions">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="15 6 9 12 15 18"></polyline>
                   </svg>
@@ -52,7 +52,7 @@
             <div id="grokSessionList" class="sidebar-list"></div>
           </aside>
           <div id="grokChatSidebarOverlay" class="sidebar-overlay"></div>
-          <button id="grokChatExpandBtn" class="icon-btn sidebar-expand-btn" type="button" title="展开会话">
+          <button id="grokChatExpandBtn" class="icon-btn sidebar-expand-btn" type="button" title="Expand Sessions">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="9 6 15 12 9 18"></polyline>
             </svg>
@@ -60,7 +60,7 @@
           <div class="chat-shell">
             <div class="chat-title">
               <div class="inline-flex-row chat-title-main">
-                <button id="grokChatSidebarToggle" class="icon-btn sidebar-toggle" type="button" title="会话列表">
+                <button id="grokChatSidebarToggle" class="icon-btn sidebar-toggle" type="button" title="Session List">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="3" y1="6" x2="21" y2="6"></line>
                     <line x1="3" y1="12" x2="21" y2="12"></line>
@@ -68,18 +68,18 @@
                   </svg>
                 </button>
                 <div>
-                <h2 class="chat-title-text">Chat 聊天</h2>
-                <p class="chat-subtitle">通过 chat 接口与 Grok 进行会话聊天</p>
+                <h2 class="chat-title-text">Chat</h2>
+                <p class="chat-subtitle">Chat with Grok via the chat interface</p>
                 </div>
               </div>
-              <span id="grokChatStatus" class="status-text">就绪</span>
+              <span id="grokChatStatus" class="status-text">Ready</span>
             </div>
             <div id="grokChatLog" class="chat-thread">
-              <div id="grokChatEmpty" class="chat-empty">输入一条消息开始对话。</div>
+              <div id="grokChatEmpty" class="chat-empty">Enter a message to start a conversation.</div>
             </div>
             <div class="composer-shell">
               <div class="composer-input">
-                <textarea id="grokPromptInput" class="composer-textarea" placeholder="询问任何内容"></textarea>
+                <textarea id="grokPromptInput" class="composer-textarea" placeholder="Ask anything"></textarea>
                 <div class="composer-actions">
                   <div class="model-chip" id="grokModelChip">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -94,16 +94,16 @@
                     <div id="grokModelDropdown" class="model-dropdown"></div>
                   </div>
                   <div class="popover">
-                    <button id="grokSettingsToggle" class="icon-btn" type="button" title="设置" aria-haspopup="dialog" aria-expanded="false">
+                    <button id="grokSettingsToggle" class="icon-btn" type="button" title="Settings" aria-haspopup="dialog" aria-expanded="false">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 9 4.6V4a2 2 0 0 1 4 0v.09c0 .69.4 1.31 1.02 1.58.52.23 1.12.2 1.6-.07l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.45.45-.58 1.12-.33 1.72.25.6.82 1 1.51 1H21a2 2 0 0 1 0 4h-.09c-.69 0-1.31.4-1.51 1Z"></path>
                       </svg>
                     </button>
-                    <div id="grokSettingsPanel" class="settings-panel chat-settings-panel" role="dialog" aria-label="Chat 设置" aria-hidden="true">
+                    <div id="grokSettingsPanel" class="settings-panel chat-settings-panel" role="dialog" aria-label="Chat Settings" aria-hidden="true">
                       <div class="settings-panel-head chat-settings-head">
-                        <h3 class="settings-panel-title">Chat 设置</h3>
-                        <button id="grokSettingsCloseBtn" class="icon-btn panel-close-btn" type="button" title="关闭">
+                        <h3 class="settings-panel-title">Chat Settings</h3>
+                        <button id="grokSettingsCloseBtn" class="icon-btn panel-close-btn" type="button" title="Close">
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M18 6 6 18"></path>
                             <path d="m6 6 12 12"></path>
@@ -113,7 +113,7 @@
                       <div class="settings-grid">
                         <div class="chat-settings-ranges">
                           <div class="settings-block">
-                            <label class="field-label" for="grokTempRange">温度</label>
+                            <label class="field-label" for="grokTempRange">Temperature</label>
                             <div class="range-row">
                               <input id="grokTempRange" type="range" min="0" max="2" step="0.05" value="0.8">
                               <span id="grokTempValue" class="range-value">0.8</span>
@@ -128,13 +128,13 @@
                           </div>
                         </div>
                         <div class="settings-block settings-block-full">
-                          <label class="field-label" for="grokSystemInput">系统提示词</label>
-                          <textarea id="grokSystemInput" class="form-input chat-input chat-system-input" rows="6" placeholder="设置系统提示词"></textarea>
+                          <label class="field-label" for="grokSystemInput">System Prompt</label>
+                          <textarea id="grokSystemInput" class="form-input chat-input chat-system-input" rows="6" placeholder="Set system prompt"></textarea>
                         </div>
                       </div>
                     </div>
                   </div>
-                  <button id="grokSendBtn" class="send-btn" type="button" title="发送">
+                  <button id="grokSendBtn" class="send-btn" type="button" title="Send">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M22 2L11 13"></path>
                       <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
@@ -150,12 +150,12 @@
       <section id="grokImagineSection" class="content-card grok-section function-stack">
         <div class="function-header-row imagine-header-row">
           <div>
-            <h2 class="function-title">Imagine 瀑布流</h2>
-            <p class="function-subtitle">按 grok2api Masonry 方式每轮生成 6 张图，支持单轮与循环出图。</p>
+            <h2 class="function-title">Imagine Waterfall</h2>
+            <p class="function-subtitle">Generate 6 images per round in grok2api Masonry style, supports single and continuous generation.</p>
           </div>
           <div class="function-actions imagine-header-actions">
-            <button id="batchDownloadBtn" class="btn btn-outline" type="button">批量下载</button>
-            <button id="imagineClearBtn" class="btn btn-outline" type="button">清空</button>
+            <button id="batchDownloadBtn" class="btn btn-outline" type="button">Batch Download</button>
+            <button id="imagineClearBtn" class="btn btn-outline" type="button">Clear</button>
           </div>
         </div>
         <div class="function-divider"></div>
@@ -163,27 +163,27 @@
           <section id="imagineGrid" class="imagine-masonry-feed waterfall">
             <div id="imagineEmpty" class="imagine-masonry-empty">
               <div class="imagine-masonry-empty-card">
-                <div class="empty-title">从一句提示词开始</div>
-                <div class="empty-subtitle">每轮固定生成 6 张图，并持续出图直到你停止。</div>
+                <div class="empty-title">Start with a prompt</div>
+                <div class="empty-subtitle">Generate a fixed 6 images per round, and continue generating until you stop.</div>
               </div>
             </div>
           </section>
 
           <section class="imagine-masonry-composer">
             <div class="imagine-masonry-input-shell">
-              <textarea id="imaginePrompt" class="form-input imagine-masonry-textarea" rows="2" placeholder="描述你想生成的画面，Enter 生成，Shift+Enter 换行"></textarea>
+              <textarea id="imaginePrompt" class="form-input imagine-masonry-textarea" rows="2" placeholder="Describe the scene you want to generate, Enter to generate, Shift+Enter for new line"></textarea>
               <div class="imagine-masonry-toolbar">
                 <div class="imagine-masonry-controls">
-                  <div id="imagineRunModeToggle" class="imagine-masonry-toggle" role="tablist" aria-label="生成轮次">
+                  <div id="imagineRunModeToggle" class="imagine-masonry-toggle" role="tablist" aria-label="Generation Rounds">
                     <button type="button" class="imagine-masonry-toggle-btn is-active" data-imagine-run-mode="single">Rounds</button>
                     <button type="button" class="imagine-masonry-toggle-btn" data-imagine-run-mode="continuous">Cycles</button>
                   </div>
-                  <div id="imagineQualityToggle" class="imagine-masonry-toggle" role="tablist" aria-label="生成质量">
+                  <div id="imagineQualityToggle" class="imagine-masonry-toggle" role="tablist" aria-label="Generation Quality">
                     <button type="button" class="imagine-masonry-toggle-btn" data-imagine-quality="basic">Basic</button>
                     <button type="button" class="imagine-masonry-toggle-btn is-active" data-imagine-quality="lite">Lite</button>
                     <button type="button" class="imagine-masonry-toggle-btn" data-imagine-quality="quality">Quality</button>
                   </div>
-                  <label id="imagineRatioWrap" class="imagine-masonry-ratio" data-ratio="2:3" aria-label="宽高比">
+                  <label id="imagineRatioWrap" class="imagine-masonry-ratio" data-ratio="2:3" aria-label="Aspect Ratio">
                     <span class="imagine-masonry-ratio-icon" aria-hidden="true"></span>
                     <select id="imagineRatio" class="form-input">
                       <option value="2:3">2:3</option>
@@ -195,14 +195,14 @@
                   </label>
                 </div>
                 <div class="imagine-masonry-actions">
-                  <span id="imagineStatus" class="status-text">未连接</span>
-                  <button class="btn btn-primary imagine-masonry-send" id="imagineStartBtn" type="button" aria-label="生成" title="生成">
+                  <span id="imagineStatus" class="status-text">Disconnected</span>
+                  <button class="btn btn-primary imagine-masonry-send" id="imagineStartBtn" type="button" aria-label="Generate" title="Generate">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M12 5v14"></path>
                       <path d="m6 11 6-6 6 6"></path>
                     </svg>
                   </button>
-                  <button class="btn btn-outline hidden" id="imagineStopBtn" type="button">停止</button>
+                  <button class="btn btn-outline hidden" id="imagineStopBtn" type="button">Stop</button>
                 </div>
               </div>
             </div>
@@ -210,64 +210,64 @@
         </div>
 
         <div id="selectionToolbar" class="selection-toolbar hidden imagine-selection-toolbar">
-          <button id="toggleSelectAllBtn" class="btn btn-outline" type="button">全选</button>
-          <button id="downloadSelectedBtn" class="btn btn-primary" type="button" disabled>下载 <span id="selectedCount" class="selected-count">0</span></button>
-          <button id="exitSelectionBtn" class="btn btn-outline" type="button">退出</button>
+          <button id="toggleSelectAllBtn" class="btn btn-outline" type="button">Select All</button>
+          <button id="downloadSelectedBtn" class="btn btn-primary" type="button" disabled>Download <span id="selectedCount" class="selected-count">0</span></button>
+          <button id="exitSelectionBtn" class="btn btn-outline" type="button">Exit</button>
         </div>
       </section>
 
       <section id="grokVideoSection" class="content-card grok-section function-stack section-hidden">
         <div class="function-header-row video-header-row">
           <div>
-            <h2 class="function-title">Video 视频生成</h2>
-            <p class="function-subtitle">生成短视频，支持参考图、进度展示与预览下载。</p>
+            <h2 class="function-title">Video Generation</h2>
+            <p class="function-subtitle">Generate short videos, supports reference images, progress display, and preview downloads.</p>
           </div>
           <div class="function-actions video-actions">
-            <button class="btn btn-primary" id="videoStartBtn" type="button">开始生成</button>
-            <button class="btn btn-outline" id="videoStopBtn" type="button" disabled>停止</button>
+            <button class="btn btn-primary" id="videoStartBtn" type="button">Start Generation</button>
+            <button class="btn btn-outline" id="videoStopBtn" type="button" disabled>Stop</button>
           </div>
         </div>
         <div class="function-divider"></div>
         <div class="function-top-grid video-top-grid">
           <div class="grok-panel video-card">
-            <div class="card-title">生成设置</div>
+            <div class="card-title">Generation Settings</div>
             <div class="settings-grid">
               <div class="settings-block prompt-block">
-                <label class="field-label">提示词</label>
-                <textarea id="videoPrompt" class="form-input video-textarea" rows="5" placeholder="例如：街头霓虹雨夜，慢镜头，胶片质感"></textarea>
+                <label class="field-label">Prompt</label>
+                <textarea id="videoPrompt" class="form-input video-textarea" rows="5" placeholder="e.g.: Neon rainy street night, slow motion, film texture"></textarea>
               </div>
               <div class="settings-block ref-block">
-                <label class="field-label">参考图</label>
+                <label class="field-label">Reference Image</label>
                 <div class="ref-controls">
-                  <input id="videoImageUrl" class="form-input" placeholder="https://... 或 data:image/...">
+                  <input id="videoImageUrl" class="form-input" placeholder="https://... or data:image/...">
                 </div>
                 <div class="ref-meta">
-                  <span id="videoImageFileName" class="ref-name">未选择文件</span>
+                  <span id="videoImageFileName" class="ref-name">No file selected</span>
                 </div>
               </div>
               <div class="settings-block ratio-block">
-                <label class="field-label">画面比例</label>
+                <label class="field-label">Aspect Ratio</label>
                 <select id="videoRatio" class="form-input">
-                  <option value="3:2">3:2 横构图</option>
-                  <option value="2:3">2:3 竖构图</option>
-                  <option value="16:9">16:9 宽屏</option>
-                  <option value="9:16">9:16 竖屏</option>
-                  <option value="1:1">1:1 方形</option>
+                  <option value="3:2">3:2 Landscape</option>
+                  <option value="2:3">2:3 Portrait</option>
+                  <option value="16:9">16:9 Widescreen</option>
+                  <option value="9:16">9:16 Vertical</option>
+                  <option value="1:1">1:1 Square</option>
                 </select>
               </div>
               <div class="settings-block length-block">
-                <label class="field-label">视频时长</label>
+                <label class="field-label">Video Length</label>
                 <input id="videoLength" class="form-input" type="number" min="6" max="30" step="1" value="6">
               </div>
               <div class="settings-block resolution-block">
-                <label class="field-label">分辨率</label>
+                <label class="field-label">Resolution</label>
                 <select id="videoResolution" class="form-input">
                   <option value="480p">480p</option>
                   <option value="720p">720p</option>
                 </select>
               </div>
               <div class="settings-block preset-block">
-                <label class="field-label">风格预设</label>
+                <label class="field-label">Style Preset</label>
                 <select id="videoPreset" class="form-input">
                   <option value="custom">Custom</option>
                   <option value="fun">Fun</option>
@@ -277,12 +277,12 @@
               </div>
               <div class="settings-block upload-block">
                 <label class="field-label">&nbsp;</label>
-                <button class="btn btn-outline" id="videoSelectImageBtn" type="button">上传</button>
+                <button class="btn btn-outline" id="videoSelectImageBtn" type="button">Upload</button>
                 <input id="videoImageFileInput" class="ref-file-input" type="file" accept="image/*">
               </div>
               <div class="settings-block clear-block">
                 <label class="field-label">&nbsp;</label>
-                <button class="btn btn-outline" id="videoClearImageBtn" type="button">清除</button>
+                <button class="btn btn-outline" id="videoClearImageBtn" type="button">Clear</button>
               </div>
               <div class="settings-block video-effort-block">
                 <label class="field-label">Reasoning</label>
@@ -301,8 +301,8 @@
 
           <div class="grok-panel video-card">
             <div class="status-header">
-              <div class="card-title">运行状态</div>
-              <span id="videoStatus" class="status-text">未连接</span>
+              <div class="card-title">Run Status</div>
+              <span id="videoStatus" class="status-text">Disconnected</span>
             </div>
             <div class="progress-wrap progress-wrap-spaced">
               <div id="videoProgressBar" class="progress-bar">
@@ -310,26 +310,26 @@
               </div>
               <div class="progress-meta">
                 <span id="videoProgressText">0%</span>
-                <span id="videoDurationValue">耗时 -</span>
+                <span id="videoDurationValue">Duration -</span>
               </div>
             </div>
             <div class="meta-grid">
-              <div class="meta-item"><div class="meta-label">比例</div><div id="videoAspectValue" class="meta-value">-</div></div>
-              <div class="meta-item"><div class="meta-label">时长</div><div id="videoLengthValue" class="meta-value">-</div></div>
-              <div class="meta-item"><div class="meta-label">分辨率</div><div id="videoResolutionValue" class="meta-value">-</div></div>
-              <div class="meta-item"><div class="meta-label">预设</div><div id="videoPresetValue" class="meta-value">-</div></div>
+              <div class="meta-item"><div class="meta-label">Ratio</div><div id="videoAspectValue" class="meta-value">-</div></div>
+              <div class="meta-item"><div class="meta-label">Length</div><div id="videoLengthValue" class="meta-value">-</div></div>
+              <div class="meta-item"><div class="meta-label">Resolution</div><div id="videoResolutionValue" class="meta-value">-</div></div>
+              <div class="meta-item"><div class="meta-label">Preset</div><div id="videoPresetValue" class="meta-value">-</div></div>
             </div>
           </div>
         </div>
 
         <div class="grok-panel video-card video-preview-card">
           <div class="video-preview-header">
-            <div class="card-title">视频预览</div>
+            <div class="card-title">Video Preview</div>
             <div class="preview-actions">
-              <button class="btn btn-outline" id="videoClearBtn" type="button">清空</button>
+              <button class="btn btn-outline" id="videoClearBtn" type="button">Clear</button>
             </div>
           </div>
-          <div id="videoEmpty" class="video-empty">等待生成视频</div>
+          <div id="videoEmpty" class="video-empty">Waiting to generate video</div>
           <div id="videoStage" class="video-stage hidden"></div>
         </div>
       </section>
@@ -337,22 +337,22 @@
       <section id="grokVoiceSection" class="content-card grok-section function-stack section-hidden">
         <div class="function-header-row voice-header-row">
           <div>
-            <h2 class="function-title">LiveKit 陪聊</h2>
-            <p class="function-subtitle">LiveKit 语音会话，连接 Grok Voice。</p>
+            <h2 class="function-title">LiveKit Chat</h2>
+            <p class="function-subtitle">LiveKit voice session, connect to Grok Voice.</p>
           </div>
           <div class="function-actions voice-actions">
-            <button class="btn btn-primary" id="voiceStartBtn">开始会话</button>
-            <button class="btn btn-outline" id="voiceStopBtn" disabled>停止会话</button>
+            <button class="btn btn-primary" id="voiceStartBtn">Start Session</button>
+            <button class="btn btn-outline" id="voiceStopBtn" disabled>Stop Session</button>
           </div>
         </div>
         <div class="function-divider"></div>
         <div class="voice-grid">
           <section class="voice-primary">
             <div class="grok-panel voice-card">
-              <div class="card-title">连接设置</div>
+              <div class="card-title">Connection Settings</div>
               <div class="function-settings-row">
                 <div class="function-settings-block">
-                  <label class="field-label">声音</label>
+                  <label class="field-label">Voice</label>
                   <select id="voiceName" class="form-input">
                     <option value="ara">Ara (Warm Female)</option>
                     <option value="eve">Eve (Energetic Female)</option>
@@ -364,7 +364,7 @@
                   </select>
                 </div>
                 <div class="function-settings-block">
-                  <label class="field-label">个性</label>
+                  <label class="field-label">Personality</label>
                   <select id="voicePersonality" class="form-input">
                     <option value="assistant">Assistant (Default)</option>
                     <option value="custom">Custom</option>
@@ -388,29 +388,29 @@
                 <div class="meta-value">Stable 2.7.3</div>
               </div>
               <div id="voiceCustomBlock" class="function-settings-block hidden">
-                <label class="field-label" for="voiceCustomID">自定义 voice_id</label>
-                <input id="voiceCustomID" class="form-input" type="text" autocomplete="off" spellcheck="false" placeholder="粘贴 xAI Custom Voice 返回的 voice_id">
+                <label class="field-label" for="voiceCustomID">Custom voice_id</label>
+                <input id="voiceCustomID" class="form-input" type="text" autocomplete="off" spellcheck="false" placeholder="Paste voice_id returned by xAI Custom Voice">
               </div>
               <div class="function-settings-block voice-speed-block">
                 <div class="function-header-row function-header-row-tight">
-                  <label class="field-label" for="voiceSpeed">语速</label>
+                  <label class="field-label" for="voiceSpeed">Speed</label>
                   <span class="range-value"><span id="voiceSpeedValue">1.0</span>x</span>
                 </div>
                 <input id="voiceSpeed" class="range-input" type="range" min="0.5" max="2" step="0.1" value="1.0">
               </div>
               <div class="function-settings-block">
-                <label class="field-label" for="voiceInstruction">自定义指令</label>
-                <textarea id="voiceInstruction" class="form-input voice-instruction-input" rows="4" placeholder="暂不发送到 LiveKit。请优先使用 Personality，避免 Grok agent 反复重连。"></textarea>
+                <label class="field-label" for="voiceInstruction">Custom Instruction</label>
+                <textarea id="voiceInstruction" class="form-input voice-instruction-input" rows="4" placeholder="Not sent to LiveKit currently. Please prioritize using Personality to avoid Grok agent repeated reconnections."></textarea>
               </div>
-              <p class="voice-hint voice-hint-spaced">提示：LiveKit 当前只发送 Voice / Personality / Speed。自定义指令会保留在页面里，但不会传给 Grok agent，以避免反复重连。</p>
+              <p class="voice-hint voice-hint-spaced">Hint: LiveKit currently only sends Voice / Personality / Speed. Custom instructions will be kept in the page, but not passed to Grok agent to avoid repeated reconnections.</p>
             </div>
 
             <div class="grok-panel voice-card">
               <div class="voice-log-header">
-                <div class="card-title">会话日志</div>
+                <div class="card-title">Session Log</div>
                 <div class="voice-log-actions">
-                  <button class="btn btn-outline" id="voiceCopyLogBtn">复制</button>
-                  <button class="btn btn-outline" id="voiceClearLogBtn">清空</button>
+                  <button class="btn btn-outline" id="voiceCopyLogBtn">Copy</button>
+                  <button class="btn btn-outline" id="voiceClearLogBtn">Clear</button>
                 </div>
               </div>
               <pre id="voiceLogOutput" class="voice-log"></pre>
@@ -420,8 +420,8 @@
           <aside class="voice-side">
             <div class="grok-panel voice-card">
               <div class="voice-log-header voice-status-header">
-                <div class="card-title">会话状态</div>
-                <span id="voiceStatus" class="status-text">未连接</span>
+                <div class="card-title">Session Status</div>
+                <span id="voiceStatus" class="status-text">Disconnected</span>
               </div>
               <div class="meta-grid">
                 <div class="meta-item"><div class="meta-label">Voice</div><div id="voiceStatusVoice" class="meta-value">-</div></div>
@@ -434,10 +434,10 @@
 
             <div class="grok-panel voice-card">
               <div class="voice-log-header">
-                <div class="card-title">音频输出</div>
-                <button class="btn btn-outline" id="voiceMuteOutputBtn" type="button">静音输出</button>
+                <div class="card-title">Audio Output</div>
+                <button class="btn btn-outline" id="voiceMuteOutputBtn" type="button">Mute Output</button>
               </div>
-              <div class="voice-hint">订阅到的音轨会自动插入此区域。</div>
+              <div class="voice-hint">Subscribed audio tracks will automatically be inserted here.</div>
               <div id="voiceAudioRoot" class="audio-root"></div>
             </div>
 
@@ -447,51 +447,51 @@
 
       <section id="grokCacheSection" class="content-card grok-section grok-tools-grid section-hidden">
         <div class="grok-panel">
-          <h3>缓存总览</h3>
-          <p>本地缓存 + 在线资产概览。</p>
+          <h3>Cache Overview</h3>
+          <p>Local Cache + Online Assets Overview.</p>
           <div class="grok-form-grid">
-            <div class="grok-kv"><span>图片缓存</span><strong id="cacheImageSummary">0 / 0 B</strong></div>
-            <div class="grok-kv"><span>视频缓存</span><strong id="cacheVideoSummary">0 / 0 B</strong></div>
-            <div class="grok-kv"><span>总计</span><strong id="cacheTotalSummary">0 / 0 B</strong></div>
-            <div class="grok-kv"><span>目录</span><strong id="cacheBaseDir">-</strong></div>
-            <div class="grok-kv"><span>在线资产</span><strong id="cacheOnlineCount">0</strong></div>
-            <div class="grok-kv"><span>在线状态</span><strong id="cacheOnlineStatus">未加载</strong></div>
-            <div class="grok-kv"><span>在线范围</span><strong id="cacheOnlineScope">none</strong></div>
-            <div class="grok-kv"><span>上次清理</span><strong id="cacheOnlineLastClear">-</strong></div>
+            <div class="grok-kv"><span>Image Cache</span><strong id="cacheImageSummary">0 / 0 B</strong></div>
+            <div class="grok-kv"><span>Video Cache</span><strong id="cacheVideoSummary">0 / 0 B</strong></div>
+            <div class="grok-kv"><span>Total</span><strong id="cacheTotalSummary">0 / 0 B</strong></div>
+            <div class="grok-kv"><span>Directory</span><strong id="cacheBaseDir">-</strong></div>
+            <div class="grok-kv"><span>Online Assets</span><strong id="cacheOnlineCount">0</strong></div>
+            <div class="grok-kv"><span>Online Status</span><strong id="cacheOnlineStatus">Not Loaded</strong></div>
+            <div class="grok-kv"><span>Online Scope</span><strong id="cacheOnlineScope">none</strong></div>
+            <div class="grok-kv"><span>Last Cleared</span><strong id="cacheOnlineLastClear">-</strong></div>
           </div>
           <div class="grok-form-grid">
             <div>
-              <label class="form-label">类型过滤</label>
+              <label class="form-label">Type Filter</label>
               <select id="cacheTypeFilter" class="form-input">
-                <option value="">全部</option>
+                <option value="">All</option>
                 <option value="image">image</option>
                 <option value="video">video</option>
               </select>
             </div>
             <div class="cache-inline-actions">
-              <button class="btn btn-outline" id="cacheRefreshBtn">刷新</button>
-              <button class="btn btn-danger-outline" id="cacheClearBtn">清空</button>
+              <button class="btn btn-outline" id="cacheRefreshBtn">Refresh</button>
+              <button class="btn btn-danger-outline" id="cacheClearBtn">Clear</button>
             </div>
           </div>
         </div>
 
         <div class="grok-panel">
-          <h3>本地缓存列表</h3>
-          <p>支持单个缓存文件删除。</p>
+          <h3>Local Cache List</h3>
+          <p>Supports deleting individual cache files.</p>
           <div class="cache-list">
             <table>
               <thead>
                 <tr>
-                  <th>类型</th>
-                  <th>文件</th>
-                  <th>大小</th>
-                  <th>更新时间</th>
-                  <th>操作</th>
+                  <th>Type</th>
+                  <th>File</th>
+                  <th>Size</th>
+                  <th>Update Time</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody id="cacheListBody">
                 <tr>
-                  <td colspan="5" class="table-empty-cell">暂无数据</td>
+                  <td colspan="5" class="table-empty-cell">No Data</td>
                 </tr>
               </tbody>
             </table>
@@ -499,18 +499,18 @@
         </div>
 
         <div class="grok-panel">
-          <h3>在线资产账号</h3>
-          <p>支持按账号加载在线资产数量并执行在线清理。</p>
+          <h3>Online Asset Accounts</h3>
+          <p>Supports loading online asset count by account and executing online cleanup.</p>
           <div class="cache-batch-actions">
-            <button class="btn btn-outline" id="cacheOnlineLoadSelectedBtn">加载选中统计</button>
-            <button class="btn btn-outline" id="cacheOnlineLoadAllBtn">加载全部统计</button>
-            <button class="btn btn-danger-outline" id="cacheOnlineClearSelectedBtn">清理选中在线资产</button>
+            <button class="btn btn-outline" id="cacheOnlineLoadSelectedBtn">Load Selected Stats</button>
+            <button class="btn btn-outline" id="cacheOnlineLoadAllBtn">Load All Stats</button>
+            <button class="btn btn-danger-outline" id="cacheOnlineClearSelectedBtn">Clear Selected Online Assets</button>
           </div>
           <div class="cache-batch-progress">
-            <span class="tag" id="cacheOnlineBatchStatus">空闲</span>
+            <span class="tag" id="cacheOnlineBatchStatus">Idle</span>
             <span class="cache-progress-text" id="cacheOnlineBatchProgress">0/0</span>
             <progress id="cacheOnlineBatchBar" class="cache-progress-bar" value="0" max="100"></progress>
-            <button class="btn btn-outline is-hidden" id="cacheOnlineBatchCancelBtn">取消任务</button>
+            <button class="btn btn-outline is-hidden" id="cacheOnlineBatchCancelBtn">Cancel Task</button>
           </div>
           <div class="cache-list">
             <table>
@@ -520,16 +520,16 @@
                     <input id="cacheOnlineSelectAll" type="checkbox" />
                   </th>
                   <th>Token</th>
-                  <th>池</th>
-                  <th>资产数</th>
-                  <th>状态</th>
-                  <th>上次清理</th>
-                  <th>操作</th>
+                  <th>Pool</th>
+                  <th>Asset Count</th>
+                  <th>Status</th>
+                  <th>Last Cleared</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody id="cacheOnlineBody">
                 <tr>
-                  <td colspan="7" class="table-empty-cell">暂无在线账号</td>
+                  <td colspan="7" class="table-empty-cell">No Online Accounts</td>
                 </tr>
               </tbody>
             </table>

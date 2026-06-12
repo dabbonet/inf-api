@@ -1,98 +1,98 @@
-# 架构复核
+# Architecture Review
 
-本文件是 2026-03-21 的当前实现复核，不再保留早期三通道时代的历史判断。
+This document is the current implementation review as of 2026-03-21, no longer retaining historical judgments from the early three-channel era.
 
-## 1. 当前架构结论
+## 1. Current Architecture Conclusions
 
-Orchids-2api 目前是四通道结构：
+Orchids-2api currently has a four-channel structure:
 
-- `internal/handler` 统一处理 `orchids`、`warp`、`puter`
-- `internal/grok` 单独处理 `grok`
-- [routes.go](/D:/Code/Orchids-2api/cmd/server/routes.go) 负责统一注册公开、管理、兼容别名和 public/admin 路由
-- Redis 不只保存账号和模型，也承载了会话、去重、审计和 cache 的运行时状态
-- 模型刷新走 [model_refresh.go](/D:/Code/Orchids-2api/cmd/server/model_refresh.go) 的来源同步逻辑，不再逐个模型测活
+- `internal/handler` uniformly processes `orchids`, `warp`, `puter`
+- `internal/grok` processes `grok` separately
+- [routes.go](/D:/Code/Orchids-2api/cmd/server/routes.go) is responsible for uniformly registering public, admin, compatible aliases, and public/admin routes
+- Redis not only saves accounts and models, but also carries runtime states of sessions, deduplication, auditing, and cache
+- Model refresh uses the source synchronization logic in [model_refresh.go](/D:/Code/Orchids-2api/cmd/server/model_refresh.go), no longer testing individual model liveness
 
-整体上，这已经不是“只能继续硬编码加通道”的状态了。`provider` 注册表已经接入主流程，扩新通道的成本明显低于旧版本。
+Overall, it is no longer in a state where "we can only continue to hardcode to add channels". The `provider` registry has been integrated into the main flow, and the cost of expanding new channels is significantly lower than in older versions.
 
-## 2. 已经完成的关键改进
+## 2. Key Improvements Completed
 
-相对旧版复核，下面这些点已经不是问题或已明显缓解：
+Compared to the older version review, the following points are no longer issues or have been significantly mitigated:
 
-- 不再有固定默认密码 `admin123`，`admin_pass` 为空时会自动生成随机密码
-- 全局安全响应头已经挂在中间件链上
-- 管理认证中的敏感值比较已经改成常量时间比较
-- handler 的会话存储、去重存储、审计日志在 Redis 可用时都能落到 Redis
-- 账号 client 创建已经通过 `internal/provider` 做注册表派发，而不是全部散落在 handler 里硬编码分支
-- Puter 非流式 `tool_use` / `tool_result` 回归已经固化为集成测试
+- There is no longer a fixed default password `admin123`. When `admin_pass` is empty, a random password will be automatically generated.
+- Global security response headers are now mounted on the middleware chain.
+- Sensitive value comparisons in admin authentication have been changed to constant-time comparisons.
+- Handler's session storage, deduplication storage, and audit logs can all fall back to Redis when Redis is available.
+- Account client creation is now dispatched through the registry via `internal/provider`, rather than being scattered across hardcoded branches in the handler.
+- Puter non-streaming `tool_use` / `tool_result` regressions have been solidified into integration tests.
 
-## 3. 当前仍然成立的主要风险
+## 3. Main Risks Still Existing
 
-### 3.1 配置层仍然偏“半硬编码”
+### 3.1 Configuration Layer is Still Somewhat "Semi-Hardcoded"
 
-[config.go](/D:/Code/Orchids-2api/internal/config/config.go) 里 `ApplyHardcoded()` 仍会强制覆盖大量运行时值。结果是：
+`ApplyHardcoded()` in [config.go](/D:/Code/Orchids-2api/internal/config/config.go) still forcibly overrides a large number of runtime values. As a result:
 
-- 文档需要明确区分“可配置字段”和“最终固定字段”
-- 运维会误以为某些历史配置项还能生效
-- 后续若要做热更新或按环境差异化部署，约束会比较大
+- Documentation needs to clearly distinguish between "configurable fields" and "final fixed fields".
+- Operations may mistakenly believe that some historical configuration items can still take effect.
+- Subsequent thermal updates or differentiated deployments by environment will be heavily constrained.
 
-这是当前最明显的“可维护性风险”，不是功能 bug，但会持续影响部署和排障。
+This is currently the most obvious "maintainability risk". It is not a functional bug, but it will continuously affect deployment and troubleshooting.
 
-### 3.2 管理端 session 仍是进程内存
+### 3.2 Admin Session is Still in Process Memory
 
-[auth.go](/D:/Code/Orchids-2api/internal/auth/auth.go) 里的 `session_token` 仍保存在进程内 map 中。当前影响：
+The `session_token` in [auth.go](/D:/Code/Orchids-2api/internal/auth/auth.go) is still stored in an in-process map. Current impact:
 
-- 单实例没问题
-- 进程重启后 session 失效
-- 多实例部署时 session 不能共享
+- Fine for single instance.
+- Session becomes invalid after process restart.
+- Sessions cannot be shared in multi-instance deployments.
 
-请求处理链路的会话状态已经可以走 Redis，但管理登录态还没有同步过去。
+The session state of the request processing link can already go through Redis, but the admin login state has not been synchronized over yet.
 
-### 3.3 超大文件仍然是主要维护成本
+### 3.3 Overly Large Files Remain the Main Maintenance Cost
 
-当前最明显的维护热点仍是：
+The most obvious maintenance hotspots are still:
 
 - `internal/grok/handler.go`
 - `internal/grok/client.go`
 - `internal/api/api.go`
 - `internal/handler/stream_handler.go`
 
-这些文件承担的职责都偏多。它们不是立刻导致错误的点，但会持续降低修改速度，也更容易把回归风险藏进去。
+These files all have too many responsibilities. They are not points that immediately cause errors, but they will continuously slow down modification speed and are more likely to hide regression risks.
 
-### 3.4 `/metrics` 仍默认公开
+### 3.4 `/metrics` is Still Public by Default
 
-主路由里 `/metrics` 直接公开挂载。对内网部署问题不大，但放公网时建议交给外层网关或访问控制，不建议裸露。
+`/metrics` is directly exposed in the main routing. This is fine for internal network deployment, but when placed on the public network, it is recommended to hand it over to an outer gateway or access control; direct exposure is not recommended.
 
-### 3.5 Public API 的“空 key 即放开”语义需要被明确理解
+### 3.5 Public API's "Empty Key Means Open" Semantics Need Clear Understanding
 
-[session.go](/D:/Code/Orchids-2api/internal/middleware/session.go) 当前约定是：
+The current convention in [session.go](/D:/Code/Orchids-2api/internal/middleware/session.go) is:
 
-- `public_key` 为空时，public API 不做鉴权
-- 页面是否显示由 `public_enabled` 控制
+- When `public_key` is empty, public API does not authenticate.
+- Whether the page is displayed is controlled by `public_enabled`.
 
-这套语义是明确实现出来的，不是偶然行为；但运维如果没看文档，容易误判“页面关闭了就等于 API 也关了”。
+This set of semantics is explicitly implemented, not accidental behavior; but if operations don't read the documentation, they can easily misjudge that "closing the page equals closing the API".
 
-## 4. 当前架构的优点
+## 4. Advantages of the Current Architecture
 
-- 路由已经集中在 `routes.go`，比早期 `main.go` 内联注册清晰很多
-- handler 与 grok 拆成两条主链路，职责边界清楚
-- provider registry 已经把新通道接入成本压下来了
-- 模型刷新逻辑变成“来源驱动同步”，行为更可预测，也更适合管理端自动删除
-- Puter 的真实工具链回归已经进入测试，不再完全依赖人工点点点验证
+- Routing is centralized in `routes.go`, much clearer than inline registration in the early `main.go`.
+- handler and grok are split into two main links, with clear responsibility boundaries.
+- The provider registry has already driven down the cost of accessing new channels.
+- Model refresh logic has become "source-driven synchronization", behavior is more predictable and more suitable for automatic deletion by the admin end.
+- Puter's real toolchain regressions have entered testing, no longer entirely reliant on manual clicking for verification.
 
-## 5. 建议的下一轮清理顺序
+## 5. Recommended Next Round of Cleanup Order
 
-1. 把管理端 session 迁到 Redis，补齐多实例一致性
-2. 继续压缩 `ApplyHardcoded()`，把真正需要可调的运维项放回配置层
-3. 先拆 `internal/grok/handler.go` 和 `internal/api/api.go`
-4. 给 `/metrics` 增加外层保护策略说明，至少在部署文档里明确
-5. 保持 Puter / Grok 这两条易回归链路的集成测试继续扩充
+1. Migrate admin session to Redis to fix multi-instance consistency.
+2. Continue compressing `ApplyHardcoded()`, put operations items that truly need to be adjustable back to the configuration layer.
+3. Split `internal/grok/handler.go` and `internal/api/api.go` first.
+4. Add outer layer protection strategy description for `/metrics`, at least clearly state it in the deployment documentation.
+5. Keep expanding integration tests for Puter / Grok, these two error-prone paths.
 
-## 6. 结论
+## 6. Conclusion
 
-当前架构已经从“快速堆功能”进入“可以持续维护但仍有局部技术债”的阶段。
+The current architecture has moved from the "rapidly stacking features" stage to the "sustainably maintainable but still having localized technical debt" stage.
 
-最值得继续优化的不是再加一层抽象，而是三件具体的事：
+The most worthwhile continuous optimizations are not adding another layer of abstraction, but three specific things:
 
-- 收敛硬编码配置
-- 迁移管理 session
-- 拆大文件
+- Converge hardcoded configurations
+- Migrate admin session
+- Split large files

@@ -568,12 +568,12 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	responseFormat := adapter.DetectResponseFormat(r.URL.Path)
 
-	// 初始化调试日志
+	// Initialize debug log
 	logger := debug.New(h.config.DebugEnabled, h.config.DebugLogSSE)
 	defer logger.Close()
 	verboseDiagnostics := logutil.VerboseDiagnosticsEnabled()
 
-	// 1. 记录进入的 Claude 请求
+	// 1. Log incoming Claude requests
 	logger.LogIncomingRequest(req)
 
 	reqHash := h.computeRequestHash(r, bodyBytes)
@@ -721,9 +721,9 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	effectiveWorkdir, prevWorkdir, workdirChanged := h.resolveWorkdir(r, req, conversationKey)
 	if workdirChanged {
-		slog.Warn("检测到工作目录变化，已清空历史", "prev", prevWorkdir, "next", effectiveWorkdir, "session", conversationKey)
+		slog.Warn("A change in the work directory has been detected and the history has been cleared.", "prev", prevWorkdir, "next", effectiveWorkdir, "session", conversationKey)
 		req.Messages = resetMessagesForNewWorkdir(req.Messages)
-		// 工作目录变化时清除上游会话ID，强制开启新对话
+		// Clear the upstream session ID when the work directory changes and force a new session to open.
 		if conversationKey != "" {
 			h.sessionStore.DeleteSession(r.Context(), conversationKey)
 		}
@@ -802,7 +802,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	requireWarpCloudAgent := preSelectWarpRequest && !warpChatMode && (warpAgentMode || warpRequestRequiresCloudAgent(req.Messages, effectiveTools))
 
-	// 选择账号 (Initial Selection)
+	// Initial Selection
 	failedAccountIDs := []int64{}
 	failedAccountSet := make(map[int64]struct{})
 
@@ -824,7 +824,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("Checkpoint: selectAccount success")
 	}
 
-	// 捕获账号快照，用于请求结束后检测 forceRefreshToken 是否更新了账号信息
+	// Capture an account snapshot to check whether forceRefreshToken has updated the account information after the request is completed.
 	var accountSnapshot *store.Account
 	if currentAccount != nil {
 		snap := *currentAccount
@@ -857,7 +857,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		if sanitized, changed := sanitizeSystemItems(req.System, false, false, h.config); changed {
 			req.System = sanitized
 			if verboseDiagnostics {
-				slog.Debug("系统提示已移除 cc_entrypoint", "mode", h.config.OrchidsCCEntrypointMode, "warp", false)
+				slog.Debug("The system prompts that cc_entrypoint has been removed", "mode", h.config.OrchidsCCEntrypointMode, "warp", false)
 			}
 		}
 	}
@@ -874,7 +874,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("Checkpoint: message processing done")
 	}
 
-	// 手动管理连接计数，账号切换时需要释放旧账号、获取新账号
+	// Manually manage the connection count. When switching accounts, you need to release the old account and obtain a new account.
 	trackedAccountID := int64(0)
 	trackedAccountID = h.acquireTrackedAccount(currentAccount)
 	defer func() {
@@ -887,14 +887,14 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		h.sessionStore.Touch(r.Context(), conversationKey)
 	}
 
-	// 构建 prompt（V2 Markdown 格式）
+	// build prompt (V2 Markdown format)
 	startBuild := time.Now()
 	if verboseDiagnostics {
 		slog.Debug("Starting prompt build...", "conversation_id", conversationKey)
 	}
 	isOrchidsProtocol := strings.EqualFold(targetChannel, "orchids") && !isWarpRequest && !isPuterRequest
 
-	// 映射模型（用于上游请求与提示一致）
+	// Mapping model (for upstream requests consistent with hints)
 	mappedModel := mapModel(req.Model)
 	if currentAccount != nil && strings.EqualFold(currentAccount.AccountType, "warp") {
 		mappedModel = upstreamWarpModelID(req.Model)
@@ -948,7 +948,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	isStream := req.Stream
 
 	if isStream {
-		// 设置 SSE 响应头
+		// Set SSE response headers
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
@@ -962,7 +962,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 	}
 
-	// 状态管理
+	// Status management
 	// msgID is now managed by streamHandler
 
 	var chatHistory []interface{}
@@ -982,7 +982,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		builtPrompt = injectToolGate(builtPrompt, toolGateMessage)
 	}
 
-	// 2. 记录转换后的 prompt
+	// 2. Record the converted prompt
 	if verboseDiagnostics {
 		slog.Debug("Checkpoint: LogConvertedPrompt")
 	}
@@ -1025,7 +1025,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		breakdown.Total,
 	)
 
-	// Token 计数（用于前置 usage 展示）
+	// Token count (for front usage display)
 	inputTokens := breakdown.Total
 	if inputTokens <= 0 {
 		inputTokens = h.estimateInputTokens(r.Context(), req.Model, builtPrompt)
@@ -1080,7 +1080,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	sh.seedSideEffectDedupFromMessages(upstreamMessages)
 	sh.setUsageTokens(inputTokens, -1) // Correctly initialize input tokens
 	sh.setCacheTokens(cacheReadTokens, cacheCreationTokens)
-	// 捕获上游返回的 conversationID，持久化到 session 以便后续请求复用
+	// Capture the conversationID returned by the upstream and store the persistence in the session for reuse in subsequent requests.
 	sh.onConversationID = func(id string) {
 		if conversationKey == "" {
 			return
@@ -1133,7 +1133,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 
 	// Main execution
 	run := func() {
-		// 复用上游返回的 conversationID，保持会话连续性
+		// Reuse the conversationID returned by the upstream to maintain session continuity
 		if chatSessionID == "" {
 			chatSessionID = "chat_" + randomSessionID()
 		}
@@ -1305,7 +1305,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 
 			// Check for non-retriable errors
 			slog.Error("Request error", "trace_id", traceID, "attempt", upstreamReq.Attempt, "error", err, "category", errClass.Category, "retryable", errClass.Retryable)
-			// 标记账号状态（auth 类错误始终标记，无论是否可重试）
+			// Mark account status (auth errors are always marked, regardless of whether they can be retried)
 			if currentAccount != nil && h.loadBalancer != nil && h.loadBalancer.Store != nil {
 				if status := classifyAccountStatus(errStr); status != "" {
 					// Mark status if it's auth-related OR a quota/rate-limit style cooldown.
@@ -1313,10 +1313,10 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 						skipAccountStatusMark := isWarpRequest && status == "403" && warpCloudAgentForbidden
 						if skipAccountStatusMark {
 							if verboseDiagnostics {
-								slog.Debug("跳过账号全局 403 标记: Warp cloud agent 能力不足", "account_id", currentAccount.ID, "category", errClass.Category)
+								slog.Debug("Skip account global 403 tag: Warp cloud agent has insufficient capabilities", "account_id", currentAccount.ID, "category", errClass.Category)
 							}
 						} else if verboseDiagnostics {
-							slog.Debug("标记账号状态", "account_id", currentAccount.ID, "status", status, "category", errClass.Category)
+							slog.Debug("Mark account status", "account_id", currentAccount.ID, "status", status, "category", errClass.Category)
 						}
 						if !skipAccountStatusMark {
 							if isWarpRequest && errClass.Category == "rate_limit" && isWarpQuotaExhaustedError(errStr) {
@@ -1381,7 +1381,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 				}
 				slog.Warn("Account request failed, switching account", "account", currentAccount.Name, "unsuccessful_attempts", len(failedAccountIDs))
 
-				// 释放旧账号的连接计数
+				// Release the connection count of the old account
 				if trackedAccountID != 0 {
 					h.releaseTrackedAccount(trackedAccountID)
 					trackedAccountID = 0
@@ -1447,7 +1447,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 
 	run()
 
-	// 确保有最终响应
+	// ensure final response
 	if !sh.hasReturn {
 		sh.finishResponse("end_turn")
 	}

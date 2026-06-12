@@ -11,7 +11,7 @@ import (
 
 // **Validates: Requirements 6.1, 6.2**
 //
-// Property 4: LRU 驱逐正确性
+// Property 4: LRU eviction correctness
 // For any cache state, when the cache is full and a new entry is inserted,
 // the evicted entry should be the one with the earliest access time.
 

@@ -298,7 +298,7 @@ type streamHandler struct {
 	lastScanTime time.Time
 
 	// Callbacks
-	onConversationID func(string) // 濠电姷鏁搁崑鐐哄垂閸洖绠伴柟闂寸劍閺呮繈鏌曟径鍡樻珕闁稿顦甸弻銈囩矙鐠恒劋绮垫繛瀛樺殠閸婃繈寮婚敓鐘茬＜婵炴垶锕╅崵瀣磽娴ｆ彃浜鹃梺?conversationID 闂傚倸鍊风粈渚€骞栭锕€鐤柛鎰ゴ閺嬫牗绻涢幋鐐╂（婵炲樊浜滈崘鈧銈嗗姧缁蹭粙顢?
+	onConversationID func(string) // on conversation ID
 	// Logger
 	logger *debug.Logger
 }
@@ -796,7 +796,6 @@ func (h *streamHandler) resetRoundState() {
 	// Ensure any currently open block is closed before resetting state
 	h.closeActiveBlockLocked()
 
-	// 濠电姷鏁搁崑鐐哄垂閸洖绠伴柛婵勫劤閻捇鏌ｉ幋婵愭綗闁逞屽墮閹虫﹢寮崘顔肩＜婵﹩鍘肩粊鍫曟⒒娓氣偓濞佳団€﹂崼銉ョ閹艰揪绲挎稉宥囨喐閻楀牆绗氶柍閿嬪灴閺岀喓绱掑Ο铏诡儌闂佺粯甯楅幃鍌炲蓟濞戙垺鏅查柛娑卞枟閸犳劗绱?h.blockIndex闂?	// 濠电姷鏁搁崕鎴犲緤閽樺娲晜閻愵剙搴婇梺鍛婃处閸ㄦ澘效閺屻儲鐓冪憸婊堝礈濞戞碍顫曢柟鐑樻尵閻熷綊鏌涢…鎴濇灓濞寸姾鍋愮槐鎾存媴閻熼偊鏆㈤梺鍝勬噽婵炩偓鐎殿喖顭峰畷銊╁级閹寸媭鍞洪梻浣筋潐閹矂宕㈤挊澶樼唵闁哄啫鐗婇埛鎴︽煕濞戞﹫鍔熼柟铏姍閺屾盯濡搁妸銉у帿闁诲酣娼ч妶鎼佸春閿熺姴宸濇い鎾跺濡差垶鏌ｆ惔锛勭暛闁稿酣浜惰棟妞ゆ牗鍩冮弸宥夋煏韫囧鈧牠宕戦敐澶嬬厱闁靛绲芥俊鐣岀磼閳ь剟宕橀埡鈧换鍡涙煟閹邦厼绲婚柍褜鍓濋褍宓勯梺鍦濠㈡﹢锝為崨瀛樼厽婵☆垰鍚嬮弳鈺呮煃鐟欏嫮娲存慨濠冩そ楠炴牠鎮欓幓鎺懶戦梻浣侯焾椤戝洭宕伴幘璇茬闁圭儤顨忛弫鍐煥閺冨洤袚婵炲懏鐗犻弻锝堢疀閺囩偘鎴烽梺鐑╁墲濡啫鐣烽悽绋课у璺侯儑閸橀箖姊绘担鍝ヤ虎妞ゆ垵妫涚槐鐐哄箣閻愵亙绨婚梺瑙勫劤绾绢厾绮旈悜姗嗘闁绘劕妯婇崕鎰亜閿旀儳顣奸柟顖涙椤㈡瑩鎳￠妶鍥风闯闂傚倸鍊烽懗鍫曘€佹繝鍕濞村吋娼欑壕鍧楁煟閵忋埄鐒鹃柡?"Mismatched content block type"闂?
 	h.activeThinkingBlockIndex = -1
 	h.activeThinkingSSEIndex = -1
 	h.activeTextBlockIndex = -1
@@ -2452,7 +2451,6 @@ func (h *streamHandler) finalizeCompletion(stopReason string) {
 	h.completionLogged = true
 	h.mu.Unlock()
 
-	// 闂傚倷娴囧畷鍨叏閹惰姤鍊块柨鏇楀亾妞ゎ厼鐏濊灒闁兼祴鏅濋ˇ顖炴倵楠炲灝鍔氭い锔诲灣缁鎮滃Ο鍦畾濡炪倖鐗楁笟妤呭磿閵夛妇绠?
 	h.mu.Lock()
 	suppressedDedup := h.toolDedupCount
 	dedupKeys := make(map[string]int, len(h.toolDedupKeys))
@@ -3682,7 +3680,7 @@ func (h *streamHandler) handleMessage(msg upstream.SSEMessage) {
 		h.toolInputNames[toolID] = toolName
 		h.toolInputBuffers[toolID] = perf.AcquireStringBuilder()
 		h.toolInputHadDelta[toolID] = false
-		// 婵犵數濮烽弫鎼佸磻濞戔懞鍥敇閵忕姷顦悗骞垮劚椤︻垳绮堥崼婢濆綊鎮℃惔锝嗘喖闂佸搫鎷嬮崜姘跺箞閵娿儺娼ㄩ柛鈩冦仦缁ㄤ粙姊洪懡銈呮瀾缂佽鐗撻獮鍐倻閽樺宓嗗┑顔斤耿绾危椤斿皷鏀介柣姗嗗亜娴?tool-input-start 闂傚倷娴囬褏鎹㈤幇顔藉床闁归偊鍓涢弳锔姐亜閹烘垵鏆斿ù婊冪秺閺屾稑鐣濋埀顒勫磻閻愮儤鍊?tool_use闂傚倸鍊烽悞锔锯偓绗涘懐鐭欓柟杈鹃檮閸庢鏌涚仦鍓р槈妞ゆ洟浜堕弻宥夊传閸曨剙娅ｇ紓浣插亾闁稿本澹曢崑鎾荤嵁閸喖濮庨柣搴㈠嚬閸ｏ綁骞冮悜钘夌疀妞ゆ挾濮烽鏇㈡⒑閻熸澘鈷旂紒顕呭灠閳诲秴顭ㄩ崼鐔哄幘闂佸壊鐓堥崑鍕倶鐎电硶鍋撳▓鍨珮闁告挾鍠栭妴浣割潨閳ь剟骞冨鍫濆耿婵°倓绶￠崯宀勬⒒閸屾瑨鍏岄柛妯犲洤搴婇柡灞诲劜閸嬨倝鏌曟繛鍨壔?tool_result闂?		return
+		// return
 
 	case "model.tool-input-delta":
 		toolID, _ := msg.Event["id"].(string)
