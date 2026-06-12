@@ -21,6 +21,11 @@
         <textarea class="form-input account-token-input" id="clientCookie" rows="8" wrap="off" spellcheck="false" required placeholder="One __session per line"></textarea>
         <small id="tokenHint" class="helper-text">Supports raw __client, full Cookie Header, or Cookie JSON. One per line when adding; only the first line is used when editing</small>
       </div>
+      <div class="form-group" id="usageLimitGroup" hidden>
+        <label class="form-label" id="usageLimitLabel">Monthly Quota (USD)</label>
+        <input type="number" min="0" step="0.01" class="form-input" id="usageLimit" placeholder="e.g. 20.00 (leave 0 to skip quota tracking)" />
+        <small class="helper-text">Aihubmix and Zenmux do not expose a quota endpoint, so set your plan's monthly USD limit here if you want usage tracking. The scheduler will skip accounts that exhaust their quota.</small>
+      </div>
       <div class="form-group">
         <label class="form-label">
           <label class="toggle">

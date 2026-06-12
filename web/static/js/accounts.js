@@ -169,10 +169,14 @@ function applyTokenLabels(type) {
   const input = document.getElementById("clientCookie");
   const hint = document.getElementById("tokenHint");
   const warpImportActions = document.getElementById("warpLocalImportActions");
+  const usageLimitGroup = document.getElementById("usageLimitGroup");
   const accountId = String(document.getElementById("accountId")?.value || "");
   if (!label || !input || !hint) return;
   if (warpImportActions) {
     warpImportActions.hidden = type !== "warp";
+  }
+  if (usageLimitGroup) {
+    usageLimitGroup.hidden = type !== "aihubmix" && type !== "zenmux";
   }
   if (type === 'warp') {
     label.textContent = "Warp Auth";
@@ -194,7 +198,21 @@ function applyTokenLabels(type) {
         ? "Only the first line auth_token is saved during Puter editing. Get it at https://docs.puter.com/playground/ai-chatgpt/"
         : "Supports bulk addition for Puter. One auth_token per line; get it at https://docs.puter.com/playground/ai-chatgpt/";
       input.required = true;
-    } else {
+    } else if (type === 'aihubmix') {
+    label.textContent = "Aihubmix API Key";
+    input.placeholder = "One Aihubmix API key per line (sk-...)";
+    hint.textContent = accountId
+      ? "Only the first line API key is saved during editing. Get your key at https://aihubmix.com"
+      : "Supports bulk addition for Aihubmix. One API key per line; get it at https://aihubmix.com";
+    input.required = true;
+  } else if (type === 'zenmux') {
+    label.textContent = "Zenmux API Key";
+    input.placeholder = "One Zenmux API key per line";
+    hint.textContent = accountId
+      ? "Only the first line API key is saved during editing. Get your key at https://zenmux.ai"
+      : "Supports bulk addition for Zenmux. One API key per line; get it at https://zenmux.ai";
+    input.required = true;
+  } else {
     label.textContent = "Cookie / __client / __session";
     input.placeholder = "Supports raw __client, full Cookie Header, or Cookie JSON";
     hint.textContent = accountId
@@ -400,6 +418,16 @@ function buildAccountPayload(type, baseData, credential) {
     payload.refresh_token = credential;
   } else {
     payload.client_cookie = credential;
+  }
+  if (type === "aihubmix" || type === "zenmux") {
+    const usageInput = document.getElementById("usageLimit");
+    if (usageInput) {
+      const raw = String(usageInput.value || "").trim();
+      const parsed = raw === "" ? 0 : Number(raw);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        payload.usage_limit = parsed;
+      }
+    }
   }
   return payload;
 }
@@ -1272,6 +1300,11 @@ function openModal(account = null) {
       setAccountModalType(normalizeAccountType(account));
       document.getElementById("clientCookie").value = getAccountToken(account);
       document.getElementById("enabled").checked = account.enabled;
+      const usageInput = document.getElementById("usageLimit");
+      if (usageInput) {
+        const lim = account.usage_limit || account.warp_monthly_limit || 0;
+        usageInput.value = lim > 0 ? String(lim) : "";
+      }
     } else {
       title.textContent = "Add Account";
       form.reset();
@@ -1279,6 +1312,8 @@ function openModal(account = null) {
       setAccountModalType(getActiveAccountType());
       document.getElementById("enabled").checked = true;
       document.getElementById("clientCookie").value = "";
+      const usageInput = document.getElementById("usageLimit");
+      if (usageInput) usageInput.value = "";
     }
   };
 

@@ -367,9 +367,47 @@ func buildQuotaResponseFields(acc *store.Account) map[string]interface{} {
 		fields["quota_mode"] = "remaining"
 		fields["quota_unit"] = "credits"
 	default:
+		at := strings.ToLower(strings.TrimSpace(acc.AccountType))
+		if at == "aihubmix" || at == "zenmux" {
+			if limit <= 0 {
+				fields["quota_limit"] = 0.0
+				fields["quota_used"] = 0.0
+				fields["quota_remaining"] = 0.0
+				fields["quota_mode"] = "unknown"
+				fields["quota_unit"] = "USD"
+				fields["quota_supported"] = false
+				break
+			}
+			used := current
+			if used < 0 {
+				used = 0
+			}
+			if used > limit {
+				used = limit
+			}
+			remaining := limit - used
+			if remaining < 0 {
+				remaining = 0
+			}
+			fields["quota_limit"] = limit
+			fields["quota_used"] = used
+			fields["quota_remaining"] = remaining
+			fields["quota_mode"] = "used"
+			fields["quota_unit"] = "USD"
+			break
+		}
+		if limit <= 0 {
+			fields["quota_limit"] = 0.0
+			fields["quota_used"] = 0.0
+			fields["quota_remaining"] = 0.0
+			fields["quota_mode"] = "unknown"
+			fields["quota_unit"] = "credits"
+			fields["quota_supported"] = false
+			break
+		}
 		fields["quota_limit"] = limit
 		remaining := current
-		if remaining > limit && limit > 0 {
+		if remaining > limit {
 			remaining = limit
 		}
 		used := limit - remaining
