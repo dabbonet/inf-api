@@ -286,12 +286,17 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 	case "403", "404":
 		// 403/404 may be a temporary ban or configuration issue.
 		// For Grok, 403s are mostly Cloudflare challenges and should not be blocked for a long time.
+		// For aihubmix/zenmux (Bearer-token auth), 403 is usually a bad key or insufficient
+		// credits — keep a short cooldown so users can recover after rotating keys.
 		if acc.LastAttempt.IsZero() {
 			return false
 		}
 		cooldown := retry403Default
-		if strings.EqualFold(acc.AccountType, "grok") {
+		switch strings.ToLower(strings.TrimSpace(acc.AccountType)) {
+		case "grok":
 			cooldown = retry403Grok
+		case "aihubmix", "zenmux":
+			cooldown = 5 * time.Minute
 		}
 		if now.Sub(acc.LastAttempt) >= cooldown {
 			lb.clearAccountStatus(ctx, acc, status+"Cooling completed, automatic recovery attempt")

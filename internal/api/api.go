@@ -211,6 +211,64 @@ func normalizeAccountOutput(acc *store.Account) *store.Account {
 	return out
 }
 
+func encodeAccountWithQuota(w http.ResponseWriter, acc *store.Account) error {
+ {
+		out := normalizeAccountOutput(acc)
+		if out == nil {
+			http.Error(w, "account not found", http.StatusNotFound)
+			return fmt.Errorf("account not found")
+		}
+		// Use a typed alias so the JSON encoder can serialize both the embedded
+		// account struct and the additional quota_* fields in one pass.
+		type quotaEnvelope struct {
+			*store.Account
+			QuotaLimit      float64 `json:"quota_limit"`
+			QuotaUsed       float64 `json:"quota_used"`
+			QuotaRemaining  float64 `json:"quota_remaining"`
+			QuotaMode       string  `json:"quota_mode"`
+			QuotaUnit       string  `json:"quota_unit"`
+			QuotaSupported  bool    `json:"quota_supported"`
+		}
+		fields := buildQuotaResponseFields(out)
+		env := quotaEnvelope{
+			Account:        out,
+			QuotaLimit:     toFloat(fields["quota_limit"]),
+			QuotaUsed:      toFloat(fields["quota_used"]),
+			QuotaRemaining: toFloat(fields["quota_remaining"]),
+			QuotaMode:      toString(fields["quota_mode"]),
+			QuotaUnit:      toString(fields["quota_unit"]),
+			QuotaSupported: toBool(fields["quota_supported"]),
+		}
+		return json.NewEncoder(w).Encode(env)
+	}
+}
+
+func toFloat(v interface{}) float64 {
+	switch t := v.(type) {
+	case float64:
+		return t
+	case int:
+		return float64(t)
+	case int64:
+		return float64(t)
+	}
+	return 0
+}
+
+func toString(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func toBool(v interface{}) bool {
+	if b, ok := v.(bool); ok {
+		return b
+	}
+	return false
+}
+
 func normalizedAccountCredentialKey(acc *store.Account) string {
 	if acc == nil {
 		return ""
@@ -802,14 +860,36 @@ func (a *API) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 		if accounts == nil {
 			accounts = []*store.Account{}
 		}
-		normalized := make([]*store.Account, 0, len(accounts))
+		type quotaEnvelope struct {
+			*store.Account
+			QuotaLimit     float64 `json:"quota_limit"`
+			QuotaUsed      float64 `json:"quota_used"`
+			QuotaRemaining float64 `json:"quota_remaining"`
+			QuotaMode      string  `json:"quota_mode"`
+			QuotaUnit      string  `json:"quota_unit"`
+			QuotaSupported bool    `json:"quota_supported"`
+		}
+		out := make([]quotaEnvelope, 0, len(accounts))
 		for _, acc := range accounts {
 			if acc == nil {
 				continue
 			}
-			normalized = append(normalized, normalizeAccountOutput(acc))
+			nacc := normalizeAccountOutput(acc)
+			if nacc == nil {
+				continue
+			}
+			fields := buildQuotaResponseFields(nacc)
+			out = append(out, quotaEnvelope{
+				Account:        nacc,
+				QuotaLimit:     toFloat(fields["quota_limit"]),
+				QuotaUsed:      toFloat(fields["quota_used"]),
+				QuotaRemaining: toFloat(fields["quota_remaining"]),
+				QuotaMode:      toString(fields["quota_mode"]),
+				QuotaUnit:      toString(fields["quota_unit"]),
+				QuotaSupported: toBool(fields["quota_supported"]),
+			})
 		}
-		json.NewEncoder(w).Encode(normalized)
+		json.NewEncoder(w).Encode(out)
 
 	case http.MethodPost:
 		var acc store.Account
@@ -865,7 +945,7 @@ func (a *API) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(normalizeAccountOutput(&acc))
+		encodeAccountWithQuota(w, &acc)
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -922,7 +1002,7 @@ func (a *API) HandleWarpUserFileImport(w http.ResponseWriter, r *http.Request) {
 		a.syncAccountAfterCreate(*acc)
 	}
 
-	json.NewEncoder(w).Encode(normalizeAccountOutput(acc))
+	encodeAccountWithQuota(w, acc)
 }
 
 func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
@@ -1057,7 +1137,7 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Failed to save checked account: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-			json.NewEncoder(w).Encode(normalizeAccountOutput(acc))
+			encodeAccountWithQuota(w, acc)
 			return
 		}
 		acc, err := a.store.GetAccount(r.Context(), id)
@@ -1065,7 +1145,7 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		json.NewEncoder(w).Encode(normalizeAccountOutput(acc))
+		encodeAccountWithQuota(w, acc)
 
 	case http.MethodPut:
 		existing, err := a.store.GetAccount(r.Context(), id)
@@ -1089,10 +1169,22 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 			normalizeGrokTokenInput(&acc)
 		} else if strings.EqualFold(acc.AccountType, "aihubmix") {
 			if strings.TrimSpace(acc.Token) == "" {
+				if acc.ClientCookie == "" {
+					acc.ClientCookie = existing.ClientCookie
+				}
+				if acc.RefreshToken == "" {
+					acc.RefreshToken = existing.RefreshToken
+				}
 				acc.Token = aihubmix.ResolveAPIKey(&acc)
 			}
 		} else if strings.EqualFold(acc.AccountType, "zenmux") {
 			if strings.TrimSpace(acc.Token) == "" {
+				if acc.ClientCookie == "" {
+					acc.ClientCookie = existing.ClientCookie
+				}
+				if acc.RefreshToken == "" {
+					acc.RefreshToken = existing.RefreshToken
+				}
 				acc.Token = zenmux.ResolveAPIKey(&acc)
 			}
 		}

@@ -930,7 +930,8 @@ function renderAccounts() {
     const quota = getQuotaStats(acc);
     if (quota && quota.unknown) {
       tdQuota.style.color = "#64748b";
-      tdQuota.innerHTML = `<span>Unknown</span> <span style="color:#64748b;font-size:0.75rem">(Puter has no stable quota API)</span>`;
+      const hint = quota.hint || "Puter has no stable quota API";
+      tdQuota.innerHTML = `<span>Unknown</span> <span style="color:#64748b;font-size:0.75rem">(${hint})</span>`;
     } else if (quota) {
       const pct = quota.pctRemaining;
       const color = pct <= 10 ? "#fb7185" : pct <= 30 ? "#f59e0b" : "#34d399";

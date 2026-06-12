@@ -82,8 +82,14 @@ func normalizeAihubmixPublicModels(rawModels []aihubmixPublicModel) []aihubmixMo
 		if id == "" {
 			continue
 		}
-		// Only keep chat (llm) and image_generation endpoints. The aihubmix
-		// catalog also contains embedding/rerank/stt/tts/ocr/video.
+		// Whitelist: only keep the curated set of aihubmix models we want to
+		// surface in the UI. The full aihubmix catalog has 700+ entries
+		// (chat, image, embedding, rerank, tts, stt, ocr, video, ...) — we
+		// only need a handful of free chat/image models.
+		if !aihubmixModelAllowed(id) {
+			continue
+		}
+		// Belt-and-suspenders filter on the upstream `types` field.
 		types := strings.ToLower(raw.Types)
 		isLLM := strings.Contains(types, "llm")
 		isImage := strings.Contains(types, "image_generation")
@@ -91,7 +97,6 @@ func normalizeAihubmixPublicModels(rawModels []aihubmixPublicModel) []aihubmixMo
 			continue
 		}
 		lower := strings.ToLower(id)
-		// Belt-and-suspenders filter on model id.
 		if strings.HasPrefix(lower, "text-embedding") || strings.HasPrefix(lower, "moderation") {
 			continue
 		}
@@ -112,6 +117,20 @@ func normalizeAihubmixPublicModels(rawModels []aihubmixPublicModel) []aihubmixMo
 		return out[i].ID < out[j].ID
 	})
 	return out
+}
+
+// aihubmixAllowedModels is the curated whitelist of aihubmix model IDs that
+// will be visible in the admin UI and exposed at /aihubmix/v1/models.
+var aihubmixAllowedModels = map[string]struct{}{
+	"gpt-5.5-free":             {},
+	"gpt-image-2-free":         {},
+	"coding-glm-5.1-free":      {},
+	"qwen3.6-plus-preview-free": {},
+}
+
+func aihubmixModelAllowed(id string) bool {
+	_, ok := aihubmixAllowedModels[strings.ToLower(strings.TrimSpace(id))]
+	return ok
 }
 
 func aihubmixDisplayName(modelID string) string {

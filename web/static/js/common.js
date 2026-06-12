@@ -57,6 +57,14 @@ function getSidebarQuotaStats(acc) {
     return { supported: true, limit: explicitLimit, remaining: Math.max(0, Math.floor(acc.quota_remaining || 0)) };
   }
 
+  if ((type === "aihubmix" || type === "zenmux") && acc.quota_supported === false) {
+    return {
+      supported: false,
+      unknown: true,
+      hint: "No monthly quota configured. Click Edit to set a USD limit (auto-tracked locally for these providers).",
+    };
+  }
+
   const limit = Math.floor(acc.usage_limit || 0);
   if (limit <= 0) return null;
   const current = Math.floor(acc.usage_current || 0);
