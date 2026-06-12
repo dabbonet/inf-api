@@ -884,6 +884,17 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		mappedModel = upstreamWarpModelID(req.Model)
 	} else if isPuterRequest {
 		mappedModel = strings.TrimSpace(req.Model)
+	} else if currentAccount != nil {
+		// aihubmix/zenmux (and any future static-key provider) must pass the
+		// requested model ID through verbatim — the upstream's model list is
+		// the source of truth. Without this guard, an unknown model would be
+		// silently remapped to claude-sonnet-4-6 by the Warp/Grok mapModel
+		// fallback and the upstream would reject it as a "model not in
+		// allowed list" 403.
+		at := strings.ToLower(strings.TrimSpace(currentAccount.AccountType))
+		if at == "aihubmix" || at == "zenmux" {
+			mappedModel = strings.TrimSpace(req.Model)
+		}
 	}
 
 	var promptHistory []map[string]string

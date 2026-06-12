@@ -132,7 +132,7 @@ func (c *Client) SendRequestWithPayload(
 	if err != nil {
 		return fmt.Errorf("failed to create openai request: %w", err)
 	}
-	c.applyHeaders(httpReq, true)
+	c.applyHeaders(httpReq, req.Stream)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {

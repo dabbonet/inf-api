@@ -268,6 +268,8 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 	case "402":
 		// 402 usually means insufficient balance/credits. If the reset time is given by the upstream, it will be respected first.
 		// Otherwise use a longer cooldown to prevent the scheduler from continually hitting the same unquoted account.
+		// For aihubmix/zenmux (Bearer-token auth) the user often just needs to
+		// top up — keep the cooldown short so a recharge takes effect quickly.
 		if !acc.QuotaResetAt.IsZero() {
 			if !now.Before(acc.QuotaResetAt) {
 				lb.clearAccountStatus(ctx, acc, "402 Cooling completed, automatic recovery attempt")
@@ -278,7 +280,11 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 		if acc.LastAttempt.IsZero() {
 			return false
 		}
-		if now.Sub(acc.LastAttempt) >= retry402Default {
+		cooldown := retry402Default
+		if at := strings.ToLower(strings.TrimSpace(acc.AccountType)); at == "aihubmix" || at == "zenmux" {
+			cooldown = 5 * time.Minute
+		}
+		if now.Sub(acc.LastAttempt) >= cooldown {
 			lb.clearAccountStatus(ctx, acc, "402 Cooling completed, automatic recovery attempt")
 			return true
 		}

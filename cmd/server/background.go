@@ -62,6 +62,15 @@ func startTokenRefreshLoop(ctx context.Context, cfg *config.Config, s *store.Sto
 			if strings.TrimSpace(acc.Name) == "" {
 				continue
 			}
+			// aihubmix and zenmux use static Bearer API keys — there is no
+			// Clerk / Grok / Warp session to refresh, so skip them here.
+			// Without this skip the Clerk probe below would call the session
+			// endpoint with a Bearer token, get 403, and poison the account
+			// status every TokenRefreshInterval.
+			at := strings.ToLower(strings.TrimSpace(acc.AccountType))
+			if at == "aihubmix" || at == "zenmux" {
+				continue
+			}
 			if strings.EqualFold(acc.AccountType, "warp") {
 				if !acc.QuotaResetAt.IsZero() && time.Now().Before(acc.QuotaResetAt) {
 					continue
