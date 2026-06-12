@@ -72,17 +72,10 @@ These values are forcibly overwritten by `ApplyHardcoded()` in [config.go](/D:/C
 | `context_max_tokens` | `100000` | Context limit |
 | `context_summary_max_tokens` | `800` | Summary limit |
 | `context_keep_turns` | `6` | Session keep turns |
-| `orchids_api_version` | `2` | Orchids API version |
-| `orchids_allow_run_command` | `true` | Orchids allows command tool |
-| `orchids_run_allowlist` | `["*"]` | Orchids command whitelist |
-| `orchids_cc_entrypoint_mode` | `auto` | Entrypoint mode |
-| `orchids_fs_ignore` | `["debug-logs","data",".claude"]` | Ignored directories |
 | `grok_api_base_url` | `https://grok.com` | Grok base URL |
 | `warp_disable_tools` | `false` | Warp tools enabled by default |
 | `warp_max_tool_results` | `10` | Warp max tool results per turn |
 | `warp_max_history_messages` | `20` | Warp history message limit |
-| `orchids_max_tool_results` | `10` | Orchids max tool results per turn |
-| `orchids_max_history_messages` | `20` | Orchids history message limit |
 | `stream` | `true` | Chat streams by default |
 | `image_nsfw` | `true` | Public imagine NSFW enabled by default |
 | `public_enabled` | `true` | Public pages enabled by default |
@@ -138,4 +131,3 @@ It is not recommended to keep the following old fields in the configuration file
 - `tool_call_mode`
 - `warp_tool_call_mode`
 - `disable_tool_filter`
-- `orchids_impl`

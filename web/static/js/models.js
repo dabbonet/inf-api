@@ -12,7 +12,7 @@ let modelRefreshResults = {};
 let modelRefreshConcurrency = 4;
 
 function modelChannels() {
-  const defaultChannels = ["Orchids", "Warp", "Puter", "Grok"];
+  const defaultChannels = ["Warp", "Puter", "Grok"];
   const seen = new Set();
   const ordered = [];
 
@@ -156,7 +156,6 @@ function modelRefreshSourceLabel(source) {
   if (!value) return "Unknown source";
   const labels = {
     upstream_api: "Upstream API",
-    public_page: "Orchids Public Page",
     puter_public_models: "Puter Public Model API",
     puter_public_models_test_mode: "Puter Public API + Account Verification",
     puter_public_models_unverified: "Puter Public API",
@@ -529,7 +528,7 @@ function openModelModal(model = null) {
     title.textContent = "Add Model";
     form.reset();
     document.getElementById("modelId").value = "";
-    setSelectValue(document.getElementById("modelChannel"), currentModelChannel || "Orchids");
+    setSelectValue(document.getElementById("modelChannel"), currentModelChannel || "Warp");
     document.getElementById("modelSortOrder").value = "0";
     setSelectValue(document.getElementById("modelStatus"), "available");
   }

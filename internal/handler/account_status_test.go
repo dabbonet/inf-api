@@ -46,8 +46,8 @@ func TestClassifyAccountStatus(t *testing.T) {
 			expected: "401",
 		},
 		{
-			name:     "Missing Orchids client cookie",
-			errStr:   "signed out: missing orchids client cookie",
+			name:     "Missing client cookie",
+			errStr:   "signed out: missing client cookie",
 			expected: "401",
 		},
 		{

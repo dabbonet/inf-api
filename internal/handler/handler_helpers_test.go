@@ -65,9 +65,17 @@ func TestValidateModelAvailability_RejectsOfflineExactMatchEvenWhenAliasExists(t
 
 	ctx := context.Background()
 
-	exact, err := s.GetModelByChannelAndModelID(ctx, "orchids", "claude-opus-4-6")
-	if err != nil {
-		t.Fatalf("GetModelByModelID(exact) error = %v", err)
+	exact := &store.Model{
+		ID:        "100",
+		Channel:   "Warp",
+		ModelID:   "claude-opus-4-6",
+		Name:      "Claude Opus 4.6",
+		Status:    store.ModelStatusAvailable,
+		IsDefault: false,
+		SortOrder: 0,
+	}
+	if err := s.CreateModel(ctx, exact); err != nil {
+		t.Fatalf("CreateModel(exact) error = %v", err)
 	}
 	exact.Status = store.ModelStatusOffline
 	if err := s.UpdateModel(ctx, exact); err != nil {
@@ -76,7 +84,7 @@ func TestValidateModelAvailability_RejectsOfflineExactMatchEvenWhenAliasExists(t
 
 	alias := &store.Model{
 		ID:        "200",
-		Channel:   "Orchids",
+		Channel:   "Warp",
 		ModelID:   "claude-opus-4.6",
 		Name:      "Claude Opus 4.6",
 		Status:    store.ModelStatusAvailable,
@@ -87,7 +95,7 @@ func TestValidateModelAvailability_RejectsOfflineExactMatchEvenWhenAliasExists(t
 		t.Fatalf("UpdateModel(alias) error = %v", err)
 	}
 
-	got, err := h.validateModelAvailability(ctx, "claude-opus-4-6", "orchids")
+	got, err := h.validateModelAvailability(ctx, "claude-opus-4-6", "warp")
 	if err == nil {
 		t.Fatalf("validateModelAvailability() error = nil, got model=%v", got)
 	}
@@ -105,9 +113,17 @@ func TestValidateModelAvailability_ReturnsOfflineExactMatch(t *testing.T) {
 
 	ctx := context.Background()
 
-	exact, err := s.GetModelByChannelAndModelID(ctx, "orchids", "claude-opus-4-6")
-	if err != nil {
-		t.Fatalf("GetModelByModelID(exact) error = %v", err)
+	exact := &store.Model{
+		ID:        "101",
+		Channel:   "Warp",
+		ModelID:   "claude-opus-4-6",
+		Name:      "Claude Opus 4.6",
+		Status:    store.ModelStatusAvailable,
+		IsDefault: false,
+		SortOrder: 0,
+	}
+	if err := s.CreateModel(ctx, exact); err != nil {
+		t.Fatalf("CreateModel(exact) error = %v", err)
 	}
 	exact.Status = store.ModelStatusOffline
 	if err := s.UpdateModel(ctx, exact); err != nil {
@@ -116,7 +132,7 @@ func TestValidateModelAvailability_ReturnsOfflineExactMatch(t *testing.T) {
 
 	alias := &store.Model{
 		ID:        "201",
-		Channel:   "Orchids",
+		Channel:   "Warp",
 		ModelID:   "claude-opus-4.6",
 		Name:      "Claude Opus 4.6",
 		Status:    store.ModelStatusOffline,
@@ -127,7 +143,7 @@ func TestValidateModelAvailability_ReturnsOfflineExactMatch(t *testing.T) {
 		t.Fatalf("UpdateModel(alias) error = %v", err)
 	}
 
-	_, err = h.validateModelAvailability(ctx, "claude-opus-4-6", "orchids")
+	_, err := h.validateModelAvailability(ctx, "claude-opus-4-6", "warp")
 	if err == nil {
 		t.Fatal("validateModelAvailability() error = nil, want model not available")
 	}

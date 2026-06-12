@@ -18,10 +18,7 @@ func sanitizeSystemItems(system SystemItems, isWarp bool, isPuter bool, cfg *con
 		return system, false
 	}
 
-	mode := strings.ToLower(strings.TrimSpace(cfg.OrchidsCCEntrypointMode))
-	if mode == "" {
-		mode = ccEntrypointModeAuto
-	}
+	mode := ccEntrypointModeAuto
 	switch mode {
 	case ccEntrypointModeKeep, ccEntrypointModeAuto, ccEntrypointModeStrip:
 	default:

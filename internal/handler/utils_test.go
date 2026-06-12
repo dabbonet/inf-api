@@ -11,7 +11,7 @@ import (
 
 func TestConversationKeyForRequestPriority(t *testing.T) {
 	baseReq := func() *http.Request {
-		r := httptest.NewRequest(http.MethodPost, "http://example.com/orchids/v1/messages", nil)
+		r := httptest.NewRequest(http.MethodPost, "http://example.com/warp/v1/messages", nil)
 		r.RemoteAddr = "203.0.113.9:1234"
 		r.Header.Set("User-Agent", "test-agent")
 		return r
@@ -100,7 +100,7 @@ func TestChannelFromPath(t *testing.T) {
 		path string
 		want string
 	}{
-		{path: "/orchids/v1/messages", want: "orchids"},
+		{path: "/unknown/v1/messages", want: ""},
 		{path: "/warp/v1/messages", want: "warp"},
 		{path: "/puter/v1/messages", want: "puter"},
 		{path: "/grok/v1/chat/completions", want: "grok"},

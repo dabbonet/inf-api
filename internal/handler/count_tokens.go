@@ -6,7 +6,6 @@ import (
 	"github.com/goccy/go-json"
 
 	"orchids-api/internal/debug"
-	"orchids-api/internal/orchids"
 )
 
 // HandleCountTokens handles /v1/messages/count_tokens requests.
@@ -40,13 +39,8 @@ func (h *Handler) HandleCountTokens(w http.ResponseWriter, r *http.Request) {
 		profile = "puter"
 	}
 	if breakdown.Total == 0 {
-		builtPrompt, promptHistory, meta := orchids.BuildCodeFreeMaxPromptAndHistoryWithMeta(
-			req.Messages,
-			req.System,
-			true, /* noThinking */
-		)
-		breakdown = estimateOrchidsInputTokenBreakdown(builtPrompt, promptHistory)
-		profile = meta.Profile
+		breakdown = estimateInputTokenBreakdown(extractUserText(req.Messages), nil, req.Tools)
+		profile = "default"
 	}
 
 	w.Header().Set("Content-Type", "application/json")

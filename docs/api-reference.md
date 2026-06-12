@@ -8,7 +8,6 @@ This document is based on the current implementations of [routes.go](/D:/Code/Or
 
 | Path | Method | Description |
 |---|---|---|
-| `/orchids/v1/messages` | POST | Orchids channel Claude Messages proxy |
 | `/warp/v1/messages` | POST | Warp channel Claude Messages proxy |
 | `/puter/v1/messages` | POST | Puter channel Claude Messages proxy |
 | `/*/v1/messages/count_tokens` | POST | Input token estimation |
@@ -17,7 +16,6 @@ This document is based on the current implementations of [routes.go](/D:/Code/Or
 
 | Path | Method | Description |
 |---|---|---|
-| `/orchids/v1/chat/completions` | POST | Orchids OpenAI compatible entry |
 | `/warp/v1/chat/completions` | POST | Warp OpenAI compatible entry |
 | `/puter/v1/chat/completions` | POST | Puter OpenAI compatible entry |
 | `/grok/v1/chat/completions` | POST | Grok OpenAI compatible entry |
@@ -40,7 +38,6 @@ This document is based on the current implementations of [routes.go](/D:/Code/Or
 |---|---|---|
 | `/v1/models` | GET | All-channel model list |
 | `/v1/models/{id}` | GET | Query single model |
-| `/orchids/v1/models` | GET | Orchids model list |
 | `/warp/v1/models` | GET | Warp model list |
 | `/puter/v1/models` | GET | Puter model list |
 | `/grok/v1/models` | GET | Grok model list |
@@ -191,19 +188,7 @@ Notes:
 
 ## 5. Common Request Examples
 
-### 5.1 Orchids Claude Messages
-
-```bash
-curl -s http://127.0.0.1:3002/orchids/v1/messages \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model": "claude-sonnet-4-6",
-    "messages": [{"role":"user","content":"hello"}],
-    "stream": false
-  }'
-```
-
-### 5.2 Puter Claude Messages First Round Tool Call
+### 5.1 Puter Claude Messages
 
 ```bash
 curl -s http://127.0.0.1:3002/puter/v1/messages \
@@ -225,7 +210,7 @@ curl -s http://127.0.0.1:3002/puter/v1/messages \
   }'
 ```
 
-### 5.3 Grok Chat Completions
+### 5.2 Grok Chat Completions
 
 ```bash
 curl -s http://127.0.0.1:3002/grok/v1/chat/completions \

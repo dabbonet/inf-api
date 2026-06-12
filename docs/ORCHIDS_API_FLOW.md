@@ -1,6 +1,6 @@
-# Orchids-2api Request Flow
+# Request Flow (Legacy Orchids Channel Removed)
 
-File names retain historical naming, but the current content covers four channels: `orchids`, `warp`, `puter`, and `grok`.
+> **Note:** The `orchids` channel has been removed from this codebase. This file previously documented the Orchids-2api request flow but has been updated to reflect the current supported channels: `warp`, `puter`, and `grok`.
 
 ## 1. Startup Process
 
@@ -31,13 +31,11 @@ Key points:
 
 ### 2.1 Claude Messages
 
-- `/orchids/v1/messages`
 - `/warp/v1/messages`
 - `/puter/v1/messages`
 
 ### 2.2 OpenAI Chat Completions
 
-- `/orchids/v1/chat/completions`
 - `/warp/v1/chat/completions`
 - `/puter/v1/chat/completions`
 - `/grok/v1/chat/completions`
@@ -55,7 +53,7 @@ Key points:
 - `/api/v1/admin/*`, `/v1/admin/*`
 - `/api/v1/public/*`, `/v1/public/*`
 
-## 3. `orchids` / `warp` / `puter` Processing Flow
+## 3. `warp` / `puter` Processing Flow
 
 These channels uniformly use [handler.go](/D:/Code/Orchids-2api/internal/handler/handler.go) and [stream_handler.go](/D:/Code/Orchids-2api/internal/handler/stream_handler.go).
 
@@ -150,7 +148,6 @@ Admin Request
 
 Current sources:
 
-- `orchids`: Upstream public model selection list
 - `warp`: Account GraphQL discovery, fallback to seed models on failure
 - `puter`: Public model list
 - `grok`: Built-in supported models + existing models + public documentation probing

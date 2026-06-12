@@ -76,14 +76,6 @@ func TestGetModelByChannelAndModelID_AllowsDuplicateModelIDsAcrossChannels(t *te
 
 	ctx := context.Background()
 
-	orchidsModel, err := s.GetModelByChannelAndModelID(ctx, "orchids", "claude-opus-4-6")
-	if err != nil {
-		t.Fatalf("GetModelByChannelAndModelID(orchids) error = %v", err)
-	}
-	if orchidsModel.Channel != "Orchids" {
-		t.Fatalf("orchids model channel = %q, want Orchids", orchidsModel.Channel)
-	}
-
 	warpModel, err := s.GetModelByChannelAndModelID(ctx, "warp", "auto-open")
 	if err != nil {
 		t.Fatalf("GetModelByChannelAndModelID(warp) error = %v", err)
@@ -91,7 +83,15 @@ func TestGetModelByChannelAndModelID_AllowsDuplicateModelIDsAcrossChannels(t *te
 	if warpModel.Channel != "Warp" {
 		t.Fatalf("warp model channel = %q, want Warp", warpModel.Channel)
 	}
-	if warpModel.ID == orchidsModel.ID {
+
+	grokModel, err := s.GetModelByChannelAndModelID(ctx, "grok", "grok-4.3")
+	if err != nil {
+		t.Fatalf("GetModelByChannelAndModelID(grok) error = %v", err)
+	}
+	if grokModel.Channel != "Grok" {
+		t.Fatalf("grok model channel = %q, want Grok", grokModel.Channel)
+	}
+	if warpModel.ID == grokModel.ID {
 		t.Fatalf("expected different records across channels, got same id %q", warpModel.ID)
 	}
 }

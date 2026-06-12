@@ -43,7 +43,7 @@ func (p *panicUpstream) SendRequestWithPayload(ctx context.Context, req upstream
 	panic("unexpected upstream request")
 }
 
-func TestHandleMessages_Orchids_StreamAndJSON(t *testing.T) {
+func TestHandleMessages_Warp_StreamAndJSON_Local(t *testing.T) {
 	cfg := &config.Config{DebugEnabled: false, RequestTimeout: 10, ContextMaxTokens: 1024, ContextSummaryMaxTokens: 256, ContextKeepTurns: 2}
 	h := NewWithLoadBalancer(cfg, nil)
 	h.client = &mockUpstream{events: []upstream.SSEMessage{
@@ -67,7 +67,7 @@ func TestHandleMessages_Orchids_StreamAndJSON(t *testing.T) {
 	// non-stream JSON
 	{
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "http://x/orchids/v1/messages", bytes.NewReader(mkBody(false)))
+		req := httptest.NewRequest(http.MethodPost, "http://x/warp/v1/messages", bytes.NewReader(mkBody(false)))
 		h.HandleMessages(rec, req)
 		if rec.Code != 200 {
 			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -87,7 +87,7 @@ func TestHandleMessages_Orchids_StreamAndJSON(t *testing.T) {
 	// stream SSE
 	{
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "http://x/orchids/v1/messages", bytes.NewReader(mkBody(true)))
+		req := httptest.NewRequest(http.MethodPost, "http://x/warp/v1/messages", bytes.NewReader(mkBody(true)))
 		h.HandleMessages(rec, req)
 		if rec.Code != 200 {
 			t.Fatalf("expected 200, got %d", rec.Code)
@@ -122,7 +122,7 @@ func TestHandleMessages_CurrentWorkdir_LocalAnthropicJSON(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "http://x/orchids/v1/messages", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "http://x/warp/v1/messages", bytes.NewReader(body))
 	req.Header.Set("X-Workdir", `C:\Users\zhangdailin\Desktop\New folder`)
 	h.HandleMessages(rec, req)
 
@@ -176,7 +176,7 @@ func TestHandleMessages_CurrentWorkdir_LocalOpenAIStream(t *testing.T) {
 	}
 }
 
-func TestHandleMessages_Orchids_DoesNotFilterToolCallsByDeclaredTools(t *testing.T) {
+func TestHandleMessages_DoesNotFilterToolCallsByDeclaredTools(t *testing.T) {
 	cfg := &config.Config{DebugEnabled: false, RequestTimeout: 10, ContextMaxTokens: 1024, ContextSummaryMaxTokens: 256, ContextKeepTurns: 2}
 	h := NewWithLoadBalancer(cfg, nil)
 	h.client = &mockUpstream{events: []upstream.SSEMessage{
@@ -207,7 +207,7 @@ func TestHandleMessages_Orchids_DoesNotFilterToolCallsByDeclaredTools(t *testing
 	})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "http://x/orchids/v1/messages", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "http://x/v1/messages", bytes.NewReader(body))
 	h.HandleMessages(rec, req)
 
 	if rec.Code != 200 {
@@ -770,7 +770,7 @@ func TestHandleMessages_SuggestionMode_LocalResponse(t *testing.T) {
 
 	{
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "http://x/orchids/v1/messages", bytes.NewReader(mkBody(false)))
+		req := httptest.NewRequest(http.MethodPost, "http://x/warp/v1/messages", bytes.NewReader(mkBody(false)))
 		h.HandleMessages(rec, req)
 		if rec.Code != 200 {
 			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -785,7 +785,7 @@ func TestHandleMessages_SuggestionMode_LocalResponse(t *testing.T) {
 
 	{
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "http://x/orchids/v1/messages", bytes.NewReader(mkBody(true)))
+		req := httptest.NewRequest(http.MethodPost, "http://x/warp/v1/messages", bytes.NewReader(mkBody(true)))
 		h.HandleMessages(rec, req)
 		if rec.Code != 200 {
 			t.Fatalf("expected 200, got %d", rec.Code)
@@ -823,7 +823,7 @@ func TestHandleMessages_TitleGeneration_LocalResponse(t *testing.T) {
 	body, _ := json.Marshal(payload)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "http://x/orchids/v1/messages", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "http://x/warp/v1/messages", bytes.NewReader(body))
 	h.HandleMessages(rec, req)
 	if rec.Code != 200 {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())

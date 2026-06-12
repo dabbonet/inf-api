@@ -127,8 +127,8 @@ func TestSelectAccount_UsesHandlerConnTracker(t *testing.T) {
 		mini.Close()
 	}()
 
-	acc1 := createEnabledTestAccount(t, s, "acc-1", "orchids")
-	acc2 := createEnabledTestAccount(t, s, "acc-2", "orchids")
+	acc1 := createEnabledTestAccount(t, s, "acc-1", "warp")
+	acc2 := createEnabledTestAccount(t, s, "acc-2", "warp")
 
 	lb := loadbalancer.NewWithCacheTTL(s, time.Second)
 	globalTracker := newSpyConnTracker(map[int64]int64{
@@ -147,7 +147,7 @@ func TestSelectAccount_UsesHandlerConnTracker(t *testing.T) {
 		return &trackerTestUpstream{}
 	})
 
-	_, selected, err := h.selectAccount(context.Background(), "orchids", true, nil)
+	_, selected, err := h.selectAccount(context.Background(), "warp", true, nil)
 	if err != nil {
 		t.Fatalf("selectAccount() error = %v", err)
 	}
@@ -251,8 +251,20 @@ func TestHandleMessages_AccountSwitchUsesHandlerConnTracker(t *testing.T) {
 		mini.Close()
 	}()
 
-	acc1 := createEnabledTestAccount(t, s, "acc-1", "orchids")
-	acc2 := createEnabledTestAccount(t, s, "acc-2", "orchids")
+	acc1 := createEnabledTestAccount(t, s, "acc-1", "warp")
+	acc2 := createEnabledTestAccount(t, s, "acc-2", "warp")
+
+	if err := s.CreateModel(context.Background(), &store.Model{
+		ID:        "test-warp-claude-opus",
+		Channel:   "Warp",
+		ModelID:   "claude-opus-4-6",
+		Name:      "Claude Opus 4.6",
+		Status:    store.ModelStatusAvailable,
+		IsDefault: false,
+		SortOrder: 0,
+	}); err != nil {
+		t.Fatalf("CreateModel() error = %v", err)
+	}
 
 	lb := loadbalancer.NewWithCacheTTL(s, time.Second)
 	globalTracker := newSpyConnTracker(nil)
@@ -296,7 +308,7 @@ func TestHandleMessages_AccountSwitchUsesHandlerConnTracker(t *testing.T) {
 	body, _ := json.Marshal(payload)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "http://x/orchids/v1/messages", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "http://x/warp/v1/messages", bytes.NewReader(body))
 	h.HandleMessages(rec, req)
 
 	if rec.Code != http.StatusOK {

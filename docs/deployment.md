@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This document is based on the current code implementation and applies to the four channels: `orchids`, `warp`, `puter`, and `grok`.
+This document is based on the current code implementation and applies to the three channels: `warp`, `puter`, and `grok`.
 
 ## 1. Prerequisites
 

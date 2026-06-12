@@ -11,7 +11,6 @@ import (
 	"time"
 
 	apperrors "orchids-api/internal/errors"
-	"orchids-api/internal/orchids"
 	"orchids-api/internal/store"
 	"orchids-api/internal/warp"
 )
@@ -133,9 +132,6 @@ func (h *Handler) selectAccountWithOptions(ctx context.Context, targetChannel st
 				return nil, nil, err
 			}
 			if h.client != nil {
-				if _, ok := h.client.(*orchids.Client); ok && h.config != nil {
-					h.client = orchids.New(h.config)
-				}
 				slog.Debug("Load balancer: no available accounts for channel, using default config", "channel", targetChannel)
 				return h.client, nil, nil
 			}
@@ -147,9 +143,6 @@ func (h *Handler) selectAccountWithOptions(ctx context.Context, targetChannel st
 		}
 		return client, account, nil
 	} else if h.client != nil {
-		if _, ok := h.client.(*orchids.Client); ok && h.config != nil {
-			h.client = orchids.New(h.config)
-		}
 		return h.client, nil, nil
 	}
 	return nil, nil, errors.New("no client configured")
@@ -312,9 +305,6 @@ func (h *Handler) validateModelAvailability(ctx context.Context, modelID, forced
 	}
 	if forcedChannel != "" {
 		mChannel := strings.TrimSpace(m.Channel)
-		if mChannel == "" {
-			mChannel = "orchids"
-		}
 		if !sameModelChannel(mChannel, forcedChannel) {
 			return nil, fmt.Errorf("model not found")
 		}
@@ -327,9 +317,6 @@ func sameModelChannel(a, b string) bool {
 		value = strings.ToLower(strings.TrimSpace(value))
 		value = strings.ReplaceAll(value, "_", "-")
 		value = strings.ReplaceAll(value, " ", "-")
-		if value == "" {
-			return "orchids"
-		}
 		return value
 	}
 	return normalize(a) == normalize(b)
@@ -361,9 +348,6 @@ func (h *Handler) syncWarpState(account *store.Account, client UpstreamClient, s
 		if warpClient, ok := client.(*warp.Client); ok {
 			changed = warpClient.SyncAccountState()
 		}
-	} else if _, ok := client.(*orchids.Client); ok {
-		// Orchids account: Use snapshot comparison to check whether forceRefreshToken has updated the account information.
-		changed = account.SyncState(snapshot)
 	}
 
 	if changed {

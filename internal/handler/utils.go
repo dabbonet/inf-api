@@ -110,9 +110,6 @@ func extractWorkdirFromRequest(r *http.Request, req ClaudeRequest) (string, stri
 }
 
 func channelFromPath(path string) string {
-	if strings.HasPrefix(path, "/orchids/") {
-		return "orchids"
-	}
 	if strings.HasPrefix(path, "/warp/") {
 		return "warp"
 	}
@@ -125,20 +122,19 @@ func channelFromPath(path string) string {
 	return ""
 }
 
-// mapModel maps the requested model name to the model actually supported by orchids upstream
-// Based on the current Orchids public model (will be updated with upstream): claude-sonnet-4-6 / claude-opus-4.6 / claude-haiku-4-5, etc.
+// mapModel maps the requested model name to the model actually supported by the upstream.
 func mapModel(requestModel string) string {
-	normalized := normalizeOrchidsModelKey(requestModel)
+	normalized := normalizeModelKey(requestModel)
 	if normalized == "" {
 		return "claude-sonnet-4-6"
 	}
-	if mapped, ok := orchidsModelMap[normalized]; ok {
+	if mapped, ok := modelMap[normalized]; ok {
 		return mapped
 	}
 	return "claude-sonnet-4-6"
 }
 
-func normalizeOrchidsModelKey(model string) string {
+func normalizeModelKey(model string) string {
 	normalized := strings.ToLower(strings.TrimSpace(model))
 	if strings.HasPrefix(normalized, "claude-") {
 		normalized = strings.ReplaceAll(normalized, "4.6", "4-6")
@@ -147,7 +143,7 @@ func normalizeOrchidsModelKey(model string) string {
 	return normalized
 }
 
-var orchidsModelMap = map[string]string{
+var modelMap = map[string]string{
 	"claude-sonnet-4-5":          "claude-sonnet-4-6",
 	"claude-sonnet-4-6":          "claude-sonnet-4-6",
 	"claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",

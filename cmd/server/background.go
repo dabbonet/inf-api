@@ -14,7 +14,6 @@ import (
 	apperrors "orchids-api/internal/errors"
 	"orchids-api/internal/grok"
 	"orchids-api/internal/loadbalancer"
-	"orchids-api/internal/orchids"
 	"orchids-api/internal/store"
 	"orchids-api/internal/util"
 	"orchids-api/internal/warp"
@@ -153,32 +152,6 @@ func startTokenRefreshLoop(ctx context.Context, cfg *config.Config, s *store.Sto
 				proxyFunc = util.ProxyFuncFromConfig(cfg)
 			}
 			if strings.TrimSpace(acc.ClientCookie) == "" {
-				jwt := strings.TrimSpace(acc.Token)
-				if jwt == "" {
-					continue
-				}
-				if sid, sub := clerk.ParseSessionInfoFromJWT(jwt); sub != "" {
-					if acc.SessionID == "" && sid != "" {
-						acc.SessionID = sid
-					}
-					if acc.UserID == "" {
-						acc.UserID = sub
-					}
-				}
-				creditsInfo, creditsErr := orchids.FetchCreditsWithProxy(context.Background(), jwt, acc.UserID, proxyFunc)
-				if creditsErr != nil {
-					slog.Warn("Orchids credits sync failed (token-only)", "account", acc.Name, "error", creditsErr)
-					continue
-				}
-				if creditsInfo != nil {
-					acc.Subscription = strings.ToLower(creditsInfo.Plan)
-					acc.UsageCurrent = creditsInfo.Credits
-					acc.UsageLimit = orchids.PlanCreditLimit(creditsInfo.Plan)
-					slog.Debug("Orchids credits synced (token-only)", "account", acc.Name, "credits", acc.UsageCurrent, "limit", acc.UsageLimit, "plan", acc.Subscription)
-				}
-				if err := s.UpdateAccount(context.Background(), acc); err != nil {
-					slog.Warn("Auto refresh token: update account failed (token-only)", "account", acc.Name, "error", err)
-				}
 				continue
 			}
 			info, err := clerk.FetchAccountInfoWithSessionContextProxy(acc.ClientCookie, acc.SessionCookie, acc.ClientUat, acc.SessionID, proxyFunc)
@@ -215,25 +188,6 @@ func startTokenRefreshLoop(ctx context.Context, cfg *config.Config, s *store.Sto
 			}
 			if info.ClientCookie != "" {
 				acc.ClientCookie = info.ClientCookie
-			}
-
-			// Sync Orchids credits via RSC Server Action
-			if info.JWT != "" {
-				creditsCtx, creditsCancel := context.WithTimeout(context.Background(), 15*time.Second)
-				uid := info.UserID
-				if strings.TrimSpace(uid) == "" {
-					uid = acc.UserID
-				}
-				creditsInfo, creditsErr := orchids.FetchCreditsWithProxy(creditsCtx, info.JWT, uid, proxyFunc)
-				creditsCancel()
-				if creditsErr != nil {
-					slog.Warn("Orchids credits sync failed", "account", acc.Name, "error", creditsErr)
-				} else if creditsInfo != nil {
-					acc.Subscription = strings.ToLower(creditsInfo.Plan)
-					acc.UsageCurrent = creditsInfo.Credits
-					acc.UsageLimit = orchids.PlanCreditLimit(creditsInfo.Plan)
-					slog.Debug("Orchids credits synced", "account", acc.Name, "credits", acc.UsageCurrent, "limit", acc.UsageLimit, "plan", acc.Subscription)
-				}
 			}
 
 			if err := s.UpdateAccount(context.Background(), acc); err != nil {
@@ -281,93 +235,4 @@ func startAuthCleanupLoop(ctx context.Context) {
 			}
 		}
 	}()
-}
-
-func hasOrchidsModelSyncCredentials(acc *store.Account) bool {
-	if acc == nil || !strings.EqualFold(acc.AccountType, "orchids") {
-		return false
-	}
-	return strings.TrimSpace(acc.Token) != "" ||
-		strings.TrimSpace(acc.ClientCookie) != "" ||
-		strings.TrimSpace(acc.SessionID) != ""
-}
-
-func fetchOrchidsModelChoices(ctx context.Context, cfg *config.Config, s *store.Store) ([]orchidsPublicModelChoice, string, error) {
-	probeCfg := refreshModelRequestConfig(cfg, "orchids")
-	accounts, err := s.GetEnabledAccounts(ctx)
-	if err == nil {
-		for _, acc := range accounts {
-			if !hasOrchidsModelSyncCredentials(acc) {
-				continue
-			}
-			client := orchids.NewFromAccount(acc, probeCfg)
-			upstreamModels, fetchErr := client.FetchUpstreamModels(ctx)
-			client.Close()
-			if fetchErr == nil && len(upstreamModels) > 0 {
-				out := make([]orchidsPublicModelChoice, 0, len(upstreamModels))
-				for _, m := range upstreamModels {
-					id := strings.TrimSpace(m.ID)
-					if id == "" {
-						continue
-					}
-					out = append(out, orchidsPublicModelChoice{
-						ID:   id,
-						Name: id,
-					})
-				}
-				if len(out) > 0 {
-					return normalizeOrchidsModelChoices(out), "upstream_api", nil
-				}
-			}
-			if fetchErr != nil {
-				err = fetchErr
-				break
-			}
-		}
-	}
-
-	proxyFunc := http.ProxyFromEnvironment
-	if cfg != nil {
-		proxyFunc = util.ProxyFuncFromConfig(cfg)
-	}
-	publicModels, fallbackErr := fetchOrchidsPublicModelChoicesWithProxy(ctx, proxyFunc)
-	if fallbackErr != nil {
-		if err != nil {
-			return nil, "", fmt.Errorf("upstream api fetch failed: %v; public page fetch failed: %w", err, fallbackErr)
-		}
-		return nil, "", fallbackErr
-	}
-	return normalizeOrchidsModelChoices(publicModels), "public_page", err
-}
-
-func normalizeOrchidsModelChoices(items []orchidsPublicModelChoice) []orchidsPublicModelChoice {
-	if len(items) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(items))
-	out := make([]orchidsPublicModelChoice, 0, len(items))
-	for _, item := range items {
-		id := strings.TrimSpace(item.ID)
-		if resolved, ok := orchids.ResolveOrchidsModelID(id); ok {
-			id = resolved
-		} else {
-			id = strings.ToLower(id)
-		}
-		if id == "" {
-			continue
-		}
-		if _, exists := seen[id]; exists {
-			continue
-		}
-		seen[id] = struct{}{}
-		name := strings.TrimSpace(item.Name)
-		if name == "" {
-			name = id
-		}
-		out = append(out, orchidsPublicModelChoice{
-			ID:   id,
-			Name: name,
-		})
-	}
-	return out
 }

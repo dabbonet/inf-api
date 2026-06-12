@@ -198,7 +198,7 @@ function applyTokenLabels(type) {
     label.textContent = "Cookie / __client / __session";
     input.placeholder = "Supports raw __client, full Cookie Header, or Cookie JSON";
     hint.textContent = accountId
-      ? "Supports directly pasting raw __client of clerk.orchids.app; full Cookie has a higher success rate, only __session of www.orchids.app is usually not enough"
+      ? "Supports directly pasting raw __client; full Cookie has a higher success rate"
       : "Supports raw __client, full Cookie Header, or Cookie JSON; recommend bringing __client_uat to improve completion success rate";
     input.required = true;
   }
@@ -412,19 +412,18 @@ function accountTypeLabel(type) {
       return "Puter";
     case "grok":
       return "Grok";
-    case "orchids":
     default:
-      return "Orchids";
+      return "Unknown";
   }
 }
 
 function getActiveAccountType() {
   const platform = String(currentPlatform || "").trim().toLowerCase();
-  return platform || "orchids";
+  return platform || "warp";
 }
 
 function setAccountModalType(type) {
-  const normalized = String(type || "orchids").trim().toLowerCase() || "orchids";
+  const normalized = String(type || "warp").trim().toLowerCase() || "warp";
   const typeEl = document.getElementById("accountType");
   const displayEl = document.getElementById("accountTypeDisplay");
   if (typeEl) typeEl.value = normalized;
@@ -499,7 +498,7 @@ async function runAccountCreatePool(payloads, concurrency = 6, onProgress = null
 function renderPlatformTabs() {
   const container = document.getElementById("platformFilters");
   if (!container) return;
-  const defaultTypes = ["orchids", "warp", "puter", "grok"];
+  const defaultTypes = ["warp", "puter", "grok"];
   const types = new Set([...defaultTypes, ...accounts.map(normalizeAccountType)]);
   const sorted = Array.from(types).sort();
   const tabs = [...sorted];
@@ -584,8 +583,6 @@ function evaluateAccountStatus(acc) {
     if (!getAccountToken(acc)) {
       return { normal: false, text: 'Incomplete', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Missing Puter auth_token' };
     }
-  } else if (!acc.session_id && !acc.session_cookie) {
-    return { normal: false, text: 'Incomplete', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Missing Session Info' };
   }
 
   const quota = getQuotaStats(acc);

@@ -20,10 +20,10 @@ import (
 	"orchids-api/internal/config"
 	"orchids-api/internal/debug"
 	"orchids-api/internal/logutil"
-	"orchids-api/internal/orchids"
 	"orchids-api/internal/perf"
 	"orchids-api/internal/prompt"
 	"orchids-api/internal/tiktoken"
+	"orchids-api/internal/toolname"
 	"orchids-api/internal/upstream"
 )
 
@@ -398,7 +398,7 @@ func (h *streamHandler) rewriteWebToolCallToClient(name, input string) (string, 
 	clientTools := h.clientTools
 	h.mu.Unlock()
 
-	canonical := strings.ToLower(strings.TrimSpace(orchids.NormalizeToolNameFallback(name)))
+	canonical := strings.ToLower(strings.TrimSpace(toolname.NormalizeToolNameFallback(name)))
 	if canonical != "web_fetch" && canonical != "web_search" {
 		return name, input
 	}
@@ -406,11 +406,25 @@ func (h *streamHandler) rewriteWebToolCallToClient(name, input string) (string, 
 		return canonical, input
 	}
 
-	mapped := strings.TrimSpace(orchids.MapToolNameToClient(canonical, clientTools, nil))
-	if mapped == "" {
-		return canonical, input
+	for _, tool := range clientTools {
+		tm, ok := tool.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		clientName, _ := tm["name"].(string)
+		clientName = strings.TrimSpace(clientName)
+		if clientName == "" {
+			continue
+		}
+		if strings.EqualFold(clientName, canonical) {
+			return clientName, input
+		}
+		fallback := strings.ToLower(strings.TrimSpace(toolname.NormalizeToolNameFallback(clientName)))
+		if fallback == canonical {
+			return clientName, input
+		}
 	}
-	return mapped, input
+	return canonical, input
 }
 
 func (h *streamHandler) release() {
@@ -1483,7 +1497,7 @@ func normalizeUpstreamToolCall(name, input, workdir string) (string, string) {
 }
 
 func normalizeUpstreamToolName(name string) string {
-	mapped := orchids.NormalizeToolNameFallback(name)
+	mapped := toolname.NormalizeToolNameFallback(name)
 	if strings.TrimSpace(mapped) == "" {
 		return name
 	}

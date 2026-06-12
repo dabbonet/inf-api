@@ -20,12 +20,10 @@ import (
 	"github.com/goccy/go-json"
 
 	"orchids-api/internal/auth"
-	"orchids-api/internal/clerk"
 	"orchids-api/internal/config"
 	apperrors "orchids-api/internal/errors"
 	"orchids-api/internal/grok"
 	"orchids-api/internal/middleware"
-	"orchids-api/internal/orchids"
 	"orchids-api/internal/puter"
 	"orchids-api/internal/store"
 	"orchids-api/internal/tokencache"
@@ -49,12 +47,6 @@ type API struct {
 	checkNextAllowed map[int64]time.Time
 	checkSem         chan struct{}
 }
-
-var orchidsGetAccountToken = func(acc *store.Account, cfg *config.Config) (string, error) {
-	return orchids.NewFromAccount(acc, cfg).GetToken()
-}
-
-var orchidsFetchCredits = orchids.FetchCreditsWithProxy
 
 var puterVerifyAccount = func(ctx context.Context, acc *store.Account, cfg *config.Config) error {
 	client := puter.NewFromAccount(acc, cfg)
@@ -200,73 +192,6 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-func normalizeOrchidsCredentialInput(acc *store.Account) error {
-	if acc == nil || !strings.EqualFold(acc.AccountType, "orchids") {
-		return nil
-	}
-
-	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(acc.ClientCookie), "Bearer "))
-	if raw == "" {
-		return nil
-	}
-
-	if parsed, ok, err := clerk.ParseOrchidsCookies(raw); err != nil {
-		return fmt.Errorf("invalid orchids cookies: %w", err)
-	} else if ok {
-		acc.ClientCookie = strings.TrimSpace(parsed.ClientCookie)
-		acc.ClientUat = strings.TrimSpace(parsed.ClientUat)
-		if sessionJWT := strings.TrimSpace(parsed.SessionCookie); sessionJWT != "" {
-			acc.SessionCookie = sessionJWT
-			if sid, sub := clerk.ParseSessionInfoFromJWT(sessionJWT); sid != "" {
-				acc.SessionID = sid
-				if acc.UserID == "" {
-					acc.UserID = sub
-				}
-			}
-			if strings.TrimSpace(acc.ClientCookie) == "" {
-				acc.Token = sessionJWT
-			}
-		}
-		return nil
-	}
-
-	if isLikelyJWT(raw) {
-		if jwtHasRotatingToken(raw) {
-			acc.ClientCookie = raw
-			acc.SessionCookie = ""
-			acc.SessionID = ""
-			acc.Token = ""
-			return nil
-		}
-		acc.Token = raw
-		acc.ClientCookie = ""
-		acc.SessionCookie = raw
-		if sid, sub := clerk.ParseSessionInfoFromJWT(raw); sid != "" {
-			acc.SessionID = sid
-			if acc.UserID == "" {
-				acc.UserID = sub
-			}
-		}
-		return nil
-	}
-
-	clientJWT, sessionJWT, err := clerk.ParseClientCookies(raw)
-	if err != nil {
-		return err
-	}
-	acc.ClientCookie = clientJWT
-	if sessionJWT != "" {
-		acc.SessionCookie = sessionJWT
-		if sid, sub := clerk.ParseSessionInfoFromJWT(sessionJWT); sid != "" {
-			acc.SessionID = sid
-			if acc.UserID == "" {
-				acc.UserID = sub
-			}
-		}
-	}
-	return nil
-}
-
 func normalizeAccountOutput(acc *store.Account) *store.Account {
 	out := normalizeWarpTokenOutput(acc)
 	if out == nil {
@@ -299,8 +224,6 @@ func normalizedAccountCredentialKey(acc *store.Account) string {
 		token = grok.NormalizeSSOToken(firstNonEmptyString(acc.ClientCookie, acc.RefreshToken, acc.Token))
 	case "puter":
 		token = puter.ResolveAuthToken(acc)
-	case "orchids":
-		token = strings.TrimSpace(firstNonEmptyString(acc.SessionCookie, acc.ClientCookie, acc.Token))
 	default:
 		token = strings.TrimSpace(firstNonEmptyString(acc.RefreshToken, acc.SessionCookie, acc.ClientCookie, acc.Token))
 	}
@@ -345,52 +268,6 @@ func duplicateAccountError(existing *store.Account) error {
 		accountType = "account"
 	}
 	return fmt.Errorf("duplicate %s token already exists on account #%d", accountType, existing.ID)
-}
-
-func hasOrchidsCredentials(acc *store.Account) bool {
-	if acc == nil || !strings.EqualFold(strings.TrimSpace(acc.AccountType), "orchids") {
-		return false
-	}
-	return strings.TrimSpace(acc.ClientCookie) != "" ||
-		strings.TrimSpace(acc.SessionCookie) != "" ||
-		strings.TrimSpace(acc.Token) != ""
-}
-
-func shouldHydrateOrchidsAccountInfo(acc *store.Account, force bool) bool {
-	if !hasOrchidsCredentials(acc) {
-		return false
-	}
-	if force {
-		return true
-	}
-	return strings.TrimSpace(acc.SessionID) == "" ||
-		strings.TrimSpace(acc.ClientCookie) == "" ||
-		strings.TrimSpace(acc.ClientUat) == "" ||
-		strings.TrimSpace(acc.ProjectID) == "" ||
-		strings.TrimSpace(acc.UserID) == "" ||
-		strings.TrimSpace(acc.Email) == "" ||
-		strings.TrimSpace(acc.Token) == ""
-}
-
-func hydrateOrchidsAccountInfo(acc *store.Account, cfg *config.Config, force bool) error {
-	if !shouldHydrateOrchidsAccountInfo(acc, force) {
-		return nil
-	}
-
-	token, err := orchidsGetAccountToken(acc, cfg)
-	if err != nil {
-		return err
-	}
-	if tok := strings.TrimSpace(token); tok != "" {
-		acc.Token = tok
-		if sid, sub := clerk.ParseSessionInfoFromJWT(tok); sid != "" || sub != "" {
-			acc.SessionID = sid
-			acc.UserID = sub
-		}
-	}
-	acc.StatusCode = ""
-	acc.LastAttempt = time.Time{}
-	return nil
 }
 
 func buildQuotaResponseFields(acc *store.Account) map[string]interface{} {
@@ -519,44 +396,6 @@ func applyPuterMonthlyUsage(acc *store.Account, usage *puter.MonthlyUsage) {
 	acc.UsageLimit = limit
 }
 
-func orchidsCreditsToken(acc *store.Account) string {
-	if acc == nil {
-		return ""
-	}
-	if sessionJWT := strings.TrimSpace(acc.SessionCookie); sessionJWT != "" {
-		return sessionJWT
-	}
-	tok := strings.TrimSpace(acc.Token)
-	if tok == "" {
-		return ""
-	}
-	if tok == strings.TrimSpace(acc.ClientCookie) {
-		return ""
-	}
-	return tok
-}
-
-func applyOrchidsQuotaFromCredits(acc *store.Account, creditsInfo *orchids.CreditsInfo) {
-	if acc == nil || creditsInfo == nil {
-		return
-	}
-	acc.Subscription = strings.ToLower(creditsInfo.Plan)
-	acc.UsageCurrent = creditsInfo.Credits
-	acc.UsageLimit = orchids.PlanCreditLimit(creditsInfo.Plan)
-}
-
-func isNonFatalOrchidsCreditsRefreshError(err error) bool {
-	if err == nil {
-		return false
-	}
-	switch classifyAccountStatusFromError(err.Error()) {
-	case "401", "403", "429":
-		return false
-	default:
-		return true
-	}
-}
-
 func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (string, int, error) {
 	if acc == nil {
 		return "", http.StatusBadRequest, fmt.Errorf("account is nil")
@@ -664,7 +503,6 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 		}
 		return "", 0, nil
 	}
-
 	if strings.EqualFold(acc.AccountType, "puter") {
 		if puter.ResolveAuthToken(acc) == "" {
 			return "", http.StatusBadRequest, fmt.Errorf("failed to verify puter account: missing auth token")
@@ -677,6 +515,7 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 			}
 			return "", 0, nil
 		}
+
 		usageStatus := classifyAccountStatusFromError(usageErr.Error())
 		httpStatus := http.StatusBadGateway
 		if usageStatus != "" {
@@ -685,49 +524,7 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 		return usageStatus, httpStatus, fmt.Errorf("failed to fetch puter usage: %w", usageErr)
 	}
 
-	cfg := a.config.Load()
-	proxyFunc := util.ProxyFuncFromConfig(cfg)
-
-	jwt, err := orchidsGetAccountToken(acc, cfg)
-	if err != nil {
-		status := classifyAccountStatusFromError(err.Error())
-		httpStatus := http.StatusBadRequest
-		if status != "" {
-			httpStatus = httpStatusFromAccountStatus(status)
-		}
-		if strings.TrimSpace(acc.ClientCookie) == "" &&
-			strings.TrimSpace(acc.SessionCookie) == "" &&
-			strings.TrimSpace(acc.Token) == "" {
-			httpStatus = http.StatusBadRequest
-		}
-		return status, httpStatus, fmt.Errorf("failed to refresh account: %w", err)
-	}
-
-	acc.Token = strings.TrimSpace(jwt)
-	if sid, sub := clerk.ParseSessionInfoFromJWT(acc.Token); sub != "" {
-		if acc.SessionID == "" && sid != "" {
-			acc.SessionID = sid
-		}
-		if acc.UserID == "" {
-			acc.UserID = sub
-		}
-	}
-
-	creditsInfo, creditsErr := orchidsFetchCredits(ctx, acc.Token, acc.UserID, proxyFunc)
-	if creditsErr != nil {
-		if isNonFatalOrchidsCreditsRefreshError(creditsErr) {
-			slog.Warn("Orchids quota refresh skipped due to upstream server action mismatch; keeping auth refresh successful", "account_id", acc.ID, "error", creditsErr)
-			return "", 0, nil
-		}
-		status := classifyAccountStatusFromError(creditsErr.Error())
-		httpStatus := http.StatusBadRequest
-		if status != "" {
-			httpStatus = httpStatusFromAccountStatus(status)
-		}
-		return status, httpStatus, fmt.Errorf("failed to refresh account: %w", creditsErr)
-	}
-	applyOrchidsQuotaFromCredits(acc, creditsInfo)
-	return "", 0, nil
+	return "", http.StatusBadRequest, fmt.Errorf("unsupported account type: %s", acc.AccountType)
 }
 
 type ExportData struct {
@@ -964,27 +761,11 @@ func (a *API) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if strings.TrimSpace(acc.AccountType) == "" {
-			acc.AccountType = "orchids"
-		}
-		orchidsCredentialInput := hasOrchidsCredentials(&acc)
 		if strings.EqualFold(acc.AccountType, "warp") {
 			normalizeWarpTokenInput(&acc)
 		} else if strings.EqualFold(acc.AccountType, "grok") {
 			normalizeGrokTokenInput(&acc)
 			acc.NSFWEnabled = true
-		} else if acc.ClientCookie != "" {
-			if err := normalizeOrchidsCredentialInput(&acc); err != nil {
-				http.Error(w, "Invalid client cookie: "+err.Error(), http.StatusBadRequest)
-				return
-			}
-		}
-		if strings.EqualFold(acc.AccountType, "orchids") {
-			err := hydrateOrchidsAccountInfo(&acc, a.config.Load(), orchidsCredentialInput)
-			if err != nil {
-				applyAccountStatusFromError(&acc, err)
-				slog.Warn("Failed to fetch account info, saving without session data", "error", err)
-			}
 		}
 		if existing, err := a.findDuplicateAccountByCredential(r.Context(), &acc, 0); err != nil {
 			slog.Error("Failed to detect duplicate account token", "error", err)
@@ -1242,19 +1023,10 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(acc.AccountType) == "" {
 			acc.AccountType = existing.AccountType
 		}
-		if strings.TrimSpace(acc.AccountType) == "" {
-			acc.AccountType = "orchids"
-		}
-		orchidsCredentialInput := hasOrchidsCredentials(&acc)
 		if strings.EqualFold(acc.AccountType, "warp") {
 			normalizeWarpTokenInput(&acc)
 		} else if strings.EqualFold(acc.AccountType, "grok") {
 			normalizeGrokTokenInput(&acc)
-		} else if acc.ClientCookie != "" {
-			if err := normalizeOrchidsCredentialInput(&acc); err != nil {
-				http.Error(w, "Invalid client cookie: "+err.Error(), http.StatusBadRequest)
-				return
-			}
 		}
 
 		if acc.SessionID == "" {
@@ -1285,12 +1057,6 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 		}
 		if acc.Email == "" {
 			acc.Email = existing.Email
-		}
-		if strings.EqualFold(acc.AccountType, "orchids") {
-			if err := hydrateOrchidsAccountInfo(&acc, a.config.Load(), orchidsCredentialInput); err != nil {
-				applyAccountStatusFromError(&acc, err)
-				slog.Warn("Failed to refresh Orchids account info during update", "account_id", acc.ID, "error", err)
-			}
 		}
 		if duplicate, err := a.findDuplicateAccountByCredential(r.Context(), &acc, id); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1363,19 +1129,10 @@ func (a *API) HandleImport(w http.ResponseWriter, r *http.Request) {
 	for _, acc := range exportData.Accounts {
 		acc.ID = 0
 		acc.RequestCount = 0
-		if strings.TrimSpace(acc.AccountType) == "" {
-			acc.AccountType = "orchids"
-		}
 		if strings.EqualFold(acc.AccountType, "warp") {
 			normalizeWarpTokenInput(&acc)
 		} else if strings.EqualFold(acc.AccountType, "grok") {
 			normalizeGrokTokenInput(&acc)
-		} else if acc.ClientCookie != "" {
-			if err := normalizeOrchidsCredentialInput(&acc); err != nil {
-				slog.Warn("Invalid client cookie in import", "name", acc.Name, "error", err)
-				result.Skipped++
-				continue
-			}
 		}
 		if err := a.store.CreateAccount(r.Context(), &acc); err != nil {
 			slog.Warn("Failed to import account", "name", acc.Name, "error", err)
@@ -1734,7 +1491,7 @@ func normalizeConfigPatchValue(key string, value interface{}) interface{} {
 	switch key {
 	case "enable_token_refresh", "enable_usage_refresh", "enable_token_count", "cache_token_count",
 		"enable_token_cache", "auto_refresh_token", "kiro_use_builtin_proxy", "warp_use_builtin_proxy",
-		"orchids_use_builtin_proxy", "antigravity_use_builtin_proxy", "warp_credit_refund",
+		"antigravity_use_builtin_proxy", "warp_credit_refund",
 		"enable_context_compress", "debug_enabled":
 		if b, ok := parseBoolish(value); ok {
 			return b
@@ -1823,7 +1580,7 @@ func shouldSyncAccountOnCreate(acc *store.Account) bool {
 	if acc == nil {
 		return false
 	}
-	return !strings.EqualFold(strings.TrimSpace(acc.AccountType), "orchids")
+	return true
 }
 
 func wantsAsyncAccountSync(r *http.Request) bool {

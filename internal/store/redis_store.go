@@ -40,7 +40,7 @@ func newRedisStore(addr, password string, db int, prefix string) (*redisStore, e
 	}
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
-		prefix = "orchids:"
+		prefix = "warp:"
 	}
 	if !strings.HasSuffix(prefix, ":") {
 		prefix += ":"
@@ -94,7 +94,7 @@ func newRedisStore(addr, password string, db int, prefix string) (*redisStore, e
 				acc_type = string.lower(tostring(acc.account_type))
 			end
 
-			if acc_type ~= "warp" and acc_type ~= "orchids" and acc_type ~= "grok" then
+			if acc_type ~= "warp" and acc_type ~= "grok" then
 				acc.usage_current = (acc.usage_current or 0) + usage
 			end
 			acc.usage_total = (acc.usage_total or 0) + usage
@@ -390,7 +390,7 @@ func (s *redisStore) IncrementAccountStats(ctx context.Context, id int64, usage 
 				acc_type = string.lower(tostring(acc.account_type))
 			end
 
-			if acc_type ~= "warp" and acc_type ~= "orchids" and acc_type ~= "grok" then
+			if acc_type ~= "warp" and acc_type ~= "grok" then
 				acc.usage_current = (acc.usage_current or 0) + usage
 			end
 			acc.usage_total = (acc.usage_total or 0) + usage
@@ -1111,7 +1111,7 @@ func (s *redisStore) modelsChannelModelIDMapKey() string {
 func normalizeModelChannelKey(channel string) string {
 	channel = strings.ToLower(strings.TrimSpace(channel))
 	if channel == "" {
-		return "orchids"
+		return "warp"
 	}
 	channel = strings.ReplaceAll(channel, "_", "-")
 	channel = strings.ReplaceAll(channel, " ", "-")

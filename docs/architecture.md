@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-`Orchids-2api` currently consists of two main processing chains:
+The API server currently consists of two main processing chains:
 
-- `internal/handler`: Processes `orchids`, `warp`, `puter`
+- `internal/handler`: Processes `warp`, `puter`
 - `internal/grok`: Processes `grok`
 
 Overall goals:
@@ -16,20 +16,17 @@ Overall goals:
 ## 2. Current Directory Structure
 
 ```text
-Orchids-2api/
 ├── cmd/server/                  # Program entry, routing, model refresh
 ├── internal/
 │   ├── api/                     # Admin REST API
 │   ├── auth/                    # Manage sessions
-│   ├── clerk/                   # Orchids account authentication assistance
 │   ├── config/                  # Configuration loading and default values
 │   ├── debug/                   # Debug logs
 │   ├── errors/                  # Error classification
 │   ├── grok/                    # Grok chat/images/files/admin
-│   ├── handler/                 # Orchids/Warp/Puter main processor
+│   ├── handler/                 # Warp/Puter main processor
 │   ├── loadbalancer/            # Account selection and status management
 │   ├── middleware/              # trace/log/session/concurrency
-│   ├── orchids/                 # Orchids upstream client
 │   ├── provider/                # Registry mapping channels to clients
 │   ├── prompt/                  # Shared message structure
 │   ├── puter/                   # Puter upstream client
@@ -58,7 +55,7 @@ Responsible for unified registration:
 
 ### 3.2 `internal/handler`
 
-Responsible for `orchids` / `warp` / `puter`:
+Responsible for `warp` / `puter`:
 
 - Parse Claude/OpenAI requests
 - Identify channel and target model
@@ -95,7 +92,7 @@ Unified storage:
 
 ## 4. Main Request Flow
 
-### 4.1 `orchids` / `warp` / `puter`
+### 4.1 `warp` / `puter`
 
 ```text
 HTTP Request
@@ -131,7 +128,6 @@ Model refresh entry: `POST /api/models/refresh`
 
 Sources by channel:
 
-- `orchids`: Upstream public model selection list
 - `warp`: Account GraphQL discovery results, fallback to built-in seeds on failure
 - `puter`: Puter public model list
 - `grok`: Built-in support table + existing models + public documentation probing

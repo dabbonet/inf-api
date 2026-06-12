@@ -9,8 +9,8 @@
       <input type="hidden" id="accountId" />
       <div class="form-group">
         <label class="form-label">Account Type</label>
-        <input type="hidden" id="accountType" value="orchids" />
-        <input class="form-input" id="accountTypeDisplay" value="Orchids" readonly />
+        <input type="hidden" id="accountType" value="warp" />
+        <input class="form-input" id="accountTypeDisplay" value="Warp" readonly />
       </div>
       <div class="form-group">
         <label class="form-label" id="tokenLabel">__session</label>
@@ -19,7 +19,7 @@
           <input type="file" id="warpUserFileInput" hidden />
         </div>
         <textarea class="form-input account-token-input" id="clientCookie" rows="8" wrap="off" spellcheck="false" required placeholder="One __session per line"></textarea>
-        <small id="tokenHint" class="helper-text">Orchids currently only supports __session. One per line when adding; only the first line is used when editing</small>
+        <small id="tokenHint" class="helper-text">Supports raw __client, full Cookie Header, or Cookie JSON. One per line when adding; only the first line is used when editing</small>
       </div>
       <div class="form-group">
         <label class="form-label">

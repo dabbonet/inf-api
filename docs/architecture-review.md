@@ -4,9 +4,9 @@ This document is the current implementation review as of 2026-03-21, no longer r
 
 ## 1. Current Architecture Conclusions
 
-Orchids-2api currently has a four-channel structure:
+The API server currently has a three-channel structure:
 
-- `internal/handler` uniformly processes `orchids`, `warp`, `puter`
+- `internal/handler` uniformly processes `warp`, `puter`
 - `internal/grok` processes `grok` separately
 - [routes.go](/D:/Code/Orchids-2api/cmd/server/routes.go) is responsible for uniformly registering public, admin, compatible aliases, and public/admin routes
 - Redis not only saves accounts and models, but also carries runtime states of sessions, deduplication, auditing, and cache

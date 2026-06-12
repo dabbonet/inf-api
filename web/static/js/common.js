@@ -12,7 +12,7 @@ function setSidebarAccountStats(total, normal, abnormal) {
 }
 
 function normalizeSidebarAccountType(acc) {
-  return String(acc?.account_type || "orchids").toLowerCase();
+  return String(acc?.account_type || "warp").toLowerCase();
 }
 
 function normalizeSidebarStatusCode(statusCode) {
@@ -25,9 +25,6 @@ function getSidebarAccountToken(acc) {
   const type = normalizeSidebarAccountType(acc);
   if (type === "warp") {
     return acc.refresh_token || acc.token || acc.client_cookie || "";
-  }
-  if (type === "orchids") {
-    return acc.client_cookie || acc.session_cookie || acc.token || "";
   }
   if (type === "puter") {
     return acc.client_cookie || acc.token || acc.session_cookie || "";
@@ -106,8 +103,6 @@ function isSidebarAccountAbnormal(acc) {
     if (!getSidebarAccountToken(acc)) return true;
   } else if (type === "puter") {
     if (!getSidebarAccountToken(acc)) return true;
-  } else if (!acc.session_id && !acc.session_cookie) {
-    return true;
   }
 
   const quota = getSidebarQuotaStats(acc);
