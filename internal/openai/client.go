@@ -145,6 +145,12 @@ func (c *Client) SendRequestWithPayload(
 		return fmt.Errorf("%s API error: status=%d, body=%s", c.channel, resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 
+	// Non-stream responses return a plain JSON ChatCompletion object.
+	// Stream responses return SSE text/event-stream.
+	if !req.Stream {
+		return c.consumeJSON(ctx, modelID, resp.Body, onMessage)
+	}
+
 	stream := NewStreamParser(resp.Body)
 	return c.consumeStream(ctx, modelID, stream, onMessage)
 }
@@ -175,6 +181,105 @@ func (c *Client) applyHeaders(r *http.Request, stream bool) {
 	r.Header.Set("User-Agent", c.userAgent)
 	r.Header.Set("Cache-Control", "no-cache")
 	r.Header.Set("Connection", "keep-alive")
+}
+
+// consumeJSON handles a non-stream JSON ChatCompletion response from the
+// upstream. It parses the JSON, extracts the message content, and emits
+// the appropriate SSE events so the proxy can forward them correctly.
+func (c *Client) consumeJSON(
+	ctx context.Context,
+	modelID string,
+	body io.Reader,
+	onMessage func(upstream.SSEMessage),
+) error {
+	raw, err := io.ReadAll(io.LimitReader(body, 10<<20))
+	if err != nil {
+		return fmt.Errorf("failed to read upstream response body: %w", err)
+	}
+
+	// Some providers return an error envelope even on 200.
+	var errEnv ErrorEnvelope
+	if json.Unmarshal(raw, &errEnv) == nil && errEnv.Error.Message != "" {
+		return fmt.Errorf("%s upstream error: %s", c.channel, errEnv.Error.Message)
+	}
+
+	var resp ChatResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("failed to parse upstream JSON response: %w (body: %s)", err, strings.TrimSpace(string(raw))[:min(200, len(raw))])
+	}
+
+	if onMessage == nil {
+		return nil
+	}
+
+	// Emit model.conversation_id if upstream provided an ID.
+	if resp.ID != "" {
+		onMessage(upstream.SSEMessage{
+			Type:  "model.conversation_id",
+			Event: map[string]interface{}{"id": resp.ID},
+		})
+	}
+
+	content := ""
+	if len(resp.Choices) > 0 {
+		rawContent := resp.Choices[0].Message.Content
+		if len(rawContent) > 0 {
+			// Content can be a JSON string or a structured array.
+			// Try string first.
+			var s string
+			if json.Unmarshal(rawContent, &s) == nil {
+				content = s
+			} else {
+				// Try []TextPart (multimodal).
+				var parts []TextPart
+				if json.Unmarshal(rawContent, &parts) == nil {
+					for _, p := range parts {
+						if p.Type == "text" && p.Text != "" {
+							content += p.Text
+						}
+					}
+				}
+			}
+		}
+		if resp.Choices[0].FinishReason != nil {
+			if reason := *resp.Choices[0].FinishReason; reason == "stop" {
+				// "stop" maps to "end_turn" internally.
+			}
+		}
+	}
+
+	if content != "" {
+		onMessage(upstream.SSEMessage{
+			Type:  "model.text-start",
+			Event: map[string]interface{}{},
+		})
+		onMessage(upstream.SSEMessage{
+			Type:  "model.text-delta",
+			Event: map[string]interface{}{"delta": content},
+		})
+		onMessage(upstream.SSEMessage{
+			Type:  "model.text-end",
+			Event: map[string]interface{}{},
+		})
+	}
+
+	// Emit finish with usage.
+	usage := map[string]int{}
+	if resp.Usage != nil {
+		usage["inputTokens"] = resp.Usage.PromptTokens
+		usage["outputTokens"] = resp.Usage.CompletionTokens
+		usage["input_tokens"] = resp.Usage.PromptTokens
+		usage["output_tokens"] = resp.Usage.CompletionTokens
+	}
+	onMessage(upstream.SSEMessage{
+		Type: "model.finish",
+		Event: map[string]interface{}{
+			"finishReason": "end_turn",
+			"usage":        usage,
+		},
+	})
+
+	return nil
 }
 
 func (c *Client) consumeStream(
