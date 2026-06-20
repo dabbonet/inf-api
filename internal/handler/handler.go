@@ -59,6 +59,10 @@ type FinalSSELifecycleOwner interface {
 	OwnsFinalSSELifecycle() bool
 }
 
+type ChunkRewriterInstaller interface {
+	BuildChunkRewriter() func([]byte) []byte
+}
+
 type ClaudeRequest struct {
 	Model          string                 `json:"model"`
 	Messages       []prompt.Message       `json:"messages"`
@@ -885,14 +889,14 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	} else if isPuterRequest {
 		mappedModel = strings.TrimSpace(req.Model)
 	} else if currentAccount != nil {
-		// aihubmix/zenmux (and any future static-key provider) must pass the
+		// aihubmix/zenmux/codebuff (and any future static-key provider) must pass the
 		// requested model ID through verbatim — the upstream's model list is
 		// the source of truth. Without this guard, an unknown model would be
 		// silently remapped to claude-sonnet-4-6 by the Warp/Grok mapModel
 		// fallback and the upstream would reject it as a "model not in
 		// allowed list" 403.
 		at := strings.ToLower(strings.TrimSpace(currentAccount.AccountType))
-		if at == "aihubmix" || at == "zenmux" {
+		if at == "aihubmix" || at == "zenmux" || at == "codebuff" {
 			mappedModel = strings.TrimSpace(req.Model)
 		}
 	}
@@ -1064,6 +1068,9 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	sh.seedSideEffectDedupFromMessages(upstreamMessages)
 	sh.setUsageTokens(inputTokens, -1) // Correctly initialize input tokens
 	sh.setCacheTokens(cacheReadTokens, cacheCreationTokens)
+	if cr, ok := apiClient.(ChunkRewriterInstaller); ok {
+		sh.SetChunkRewriter(cr.BuildChunkRewriter())
+	}
 	// Capture the conversationID returned by the upstream and store the persistence in the session for reuse in subsequent requests.
 	sh.onConversationID = func(id string) {
 		if conversationKey == "" {
@@ -1077,6 +1084,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	defer sh.release()
 
+	sh.setModelHint(req.Model)
 	sh.writeSSEMessageStart(req.Model, inputTokens, 0)
 
 	if verboseDiagnostics {

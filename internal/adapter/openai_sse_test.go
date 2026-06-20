@@ -384,3 +384,106 @@ func BenchmarkAppendOpenAIChunk_MessageDelta_ReusedBuffer(b *testing.B) {
 		buf = raw[:0]
 	}
 }
+
+func TestAppendOpenAIChunkWithHint_PropagatesModelOnEveryChunk(t *testing.T) {
+	const model = "claude-3-7-sonnet"
+	quotedModel := []byte(`"` + model + `"`)
+
+	cases := []struct {
+		name  string
+		event string
+		data  []byte
+	}{
+		{
+			name:  "text_delta",
+			event: "content_block_delta",
+			data:  []byte(`{"delta":{"type":"text_delta","text":"hi"}}`),
+		},
+		{
+			name:  "thinking_delta",
+			event: "content_block_delta",
+			data:  []byte(`{"delta":{"type":"thinking_delta","thinking":"x"}}`),
+		},
+		{
+			name:  "tool_args_delta",
+			event: "content_block_delta",
+			data:  []byte(`{"delta":{"type":"input_json_delta","partial_json":"{}"}}`),
+		},
+		{
+			name:  "message_delta_stop",
+			event: "message_delta",
+			data:  []byte(`{"delta":{"stop_reason":"end_turn"}}`),
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			raw, ok := AppendOpenAIChunkWithHint(nil, "msg_1", 123, c.event, c.data, quotedModel, 0)
+			if !ok {
+				t.Fatalf("ok=false")
+			}
+			var got openAIChunk
+			if err := json.Unmarshal(raw, &got); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if got.Model != model {
+				t.Fatalf("Model=%q want %q", got.Model, model)
+			}
+		})
+	}
+}
+
+func TestAppendOpenAIChunkWithHint_ToolStartUsesIndex(t *testing.T) {
+	quotedModel := []byte(`"claude"`)
+	data := []byte(`{"content_block":{"type":"tool_use","id":"tool_42","name":"Write"}}`)
+	raw, ok := AppendOpenAIChunkWithHint(nil, "msg_1", 123, "content_block_start", data, quotedModel, 7)
+	if !ok {
+		t.Fatal("ok=false")
+	}
+	var got openAIChunk
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(got.Choices) != 1 || len(got.Choices[0].Delta.ToolCalls) != 1 {
+		t.Fatal("missing tool call")
+	}
+	if got.Choices[0].Delta.ToolCalls[0].Index != 7 {
+		t.Fatalf("Index=%d want 7", got.Choices[0].Delta.ToolCalls[0].Index)
+	}
+	if got.Model != "claude" {
+		t.Fatalf("Model=%q want claude", got.Model)
+	}
+}
+
+func TestAppendOpenAIChunkWithHint_ToolArgsDeltaUsesIndex(t *testing.T) {
+	quotedModel := []byte(`"claude"`)
+	data := []byte(`{"delta":{"type":"input_json_delta","partial_json":"{\"a\":1}"}}`)
+	raw, ok := AppendOpenAIChunkWithHint(nil, "msg_1", 123, "content_block_delta", data, quotedModel, 3)
+	if !ok {
+		t.Fatal("ok=false")
+	}
+	var got openAIChunk
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(got.Choices) != 1 || len(got.Choices[0].Delta.ToolCalls) != 1 {
+		t.Fatal("missing tool call")
+	}
+	if got.Choices[0].Delta.ToolCalls[0].Index != 3 {
+		t.Fatalf("Index=%d want 3", got.Choices[0].Delta.ToolCalls[0].Index)
+	}
+}
+
+func TestAppendOpenAIChunk_LegacyEmptyModelUnchanged(t *testing.T) {
+	raw, ok := AppendOpenAIChunk(nil, "msg_1", 123, "content_block_delta", []byte(`{"delta":{"type":"text_delta","text":"hi"}}`))
+	if !ok {
+		t.Fatal("ok=false")
+	}
+	var got openAIChunk
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Model != "" {
+		t.Fatalf("Legacy AppendOpenAIChunk must still emit empty Model, got %q", got.Model)
+	}
+}

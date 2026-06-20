@@ -5,16 +5,19 @@ import (
 	"flag"
 	"fmt"
 	"github.com/goccy/go-json"
+	"github.com/redis/go-redis/v9"
 	"log/slog"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"orchids-api/internal/api"
 	"orchids-api/internal/audit"
+	"orchids-api/internal/codebuff"
 	"orchids-api/internal/config"
 	"orchids-api/internal/debug"
 	"orchids-api/internal/grok"
@@ -128,10 +131,41 @@ func main() {
 	registry.Register("puter", provider.NewPuterProvider())
 	registry.Register("aihubmix", provider.NewAihubmixProvider())
 	registry.Register("zenmux", provider.NewZenmuxProvider())
+	if cfg.CodebuffEnabled {
+		registry.Register("codebuff", provider.NewCodebuffProvider())
+	}
+
+	var redisClientForCodebuff *redis.Client
+	var codebuffQuotaStore *codebuff.QuotaStore
+	var codebuffTelemetryStore *codebuff.TelemetryStore
+	if cfg.CodebuffEnabled {
+		if rc := s.RedisClient(); rc != nil {
+			redisClientForCodebuff = rc
+			prefix := "codebuff"
+			if cfg.RedisPrefix != "" {
+				prefix = strings.TrimSuffix(cfg.RedisPrefix, ":") + ":codebuff"
+			}
+			codebuffQuotaStore = codebuff.NewQuotaStore(rc, prefix)
+			codebuffTelemetryStore = codebuff.NewTelemetryStore(rc, prefix)
+			apiHandler.SetCodebuffQuotaStore(codebuffQuotaStore)
+			apiHandler.SetCodebuffTelemetryStore(codebuffTelemetryStore)
+		}
+	}
+
 	h.SetClientFactory(func(acc *store.Account, c *config.Config) handler.UpstreamClient {
 		if p := registry.Get(acc.AccountType); p != nil {
-			if client, ok := p.NewClient(acc, c).(handler.UpstreamClient); ok {
-				return client
+			client := p.NewClient(acc, c)
+			if cb, ok := client.(*codebuff.Provider); ok && redisClientForCodebuff != nil {
+				cb.SetRedisClient(redisClientForCodebuff)
+				if codebuffQuotaStore != nil {
+					cb.SetQuotaStore(codebuffQuotaStore)
+				}
+				if codebuffTelemetryStore != nil {
+					cb.SetTelemetryStore(codebuffTelemetryStore)
+				}
+			}
+			if upstreamClient, ok := client.(handler.UpstreamClient); ok {
+				return upstreamClient
 			}
 		}
 		return nil
@@ -169,6 +203,7 @@ func main() {
 
 	startTokenRefreshLoop(ctx, cfg, s, lb)
 	startAuthCleanupLoop(ctx)
+	startCodebuffQuotaResetLoop(ctx, codebuffQuotaStore)
 
 	// Graceful shutdown
 	idleConnsClosed := make(chan struct{})

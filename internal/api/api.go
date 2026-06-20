@@ -21,6 +21,7 @@ import (
 
 	"orchids-api/internal/aihubmix"
 	"orchids-api/internal/auth"
+	"orchids-api/internal/codebuff"
 	"orchids-api/internal/config"
 	apperrors "orchids-api/internal/errors"
 	"orchids-api/internal/grok"
@@ -34,13 +35,15 @@ import (
 )
 
 type API struct {
-	store        *store.Store
-	tokenCache   tokencache.Cache
-	promptCache  tokencache.PromptCache
-	adminUser    string
-	adminPass    string
-	loginLimiter *middleware.RateLimiter
-	config       atomic.Pointer[config.Config]
+	store               *store.Store
+	tokenCache          tokencache.Cache
+	promptCache         tokencache.PromptCache
+	adminUser           string
+	adminPass           string
+	loginLimiter        *middleware.RateLimiter
+	config              atomic.Pointer[config.Config]
+	codebuffQuotaStore       *codebuff.QuotaStore
+	codebuffTelemetryStore   *codebuff.TelemetryStore
 
 	// Account check backoff / storm control
 	checkMu          sync.Mutex
@@ -1020,9 +1023,15 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 	isVerify := len(parts) > 1 && parts[1] == "verify"
 	isCheck := len(parts) > 1 && parts[1] == "check"
 	isUsage := len(parts) > 1 && parts[1] == "usage"
+	isCodebuffStatus := len(parts) > 1 && parts[1] == "codebuff-status"
+	isCodebuffSync := len(parts) > 1 && parts[1] == "codebuff-sync"
 
 	switch r.Method {
 	case http.MethodGet:
+		if isCodebuffStatus {
+			a.handleCodebuffStatus(w, r, id)
+			return
+		}
 		if isRefresh || isVerify {
 			http.Error(w, "Deprecated endpoint. Use /api/accounts/{id}/check instead.", http.StatusGone)
 			return
@@ -1146,6 +1155,13 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		encodeAccountWithQuota(w, acc)
+
+	case http.MethodPost:
+		if isCodebuffSync {
+			a.handleCodebuffSync(w, r, id)
+			return
+		}
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 
 	case http.MethodPut:
 		existing, err := a.store.GetAccount(r.Context(), id)

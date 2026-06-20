@@ -49,6 +49,9 @@ func registerRoutes(
 
 	// --- Model routes (channel prefixes → same handlers) ---
 	modelPrefixes := []string{"/warp/v1", "/puter/v1", "/grok/v1", "/aihubmix/v1", "/zenmux/v1", "/v1"}
+	if cfg.CodebuffEnabled {
+		modelPrefixes = append(modelPrefixes, "/codebuff/v1")
+	}
 	registerWithPrefixes(mux, modelPrefixes, "/models", h.HandleModels)
 	registerWithPrefixes(mux, modelPrefixes, "/models/", h.HandleModelByID)
 
@@ -57,6 +60,11 @@ func registerRoutes(
 	mux.HandleFunc("/puter/v1/chat/completions", limiter.Limit(h.HandleMessages))
 	mux.HandleFunc("/aihubmix/v1/chat/completions", limiter.Limit(h.HandleMessages))
 	mux.HandleFunc("/zenmux/v1/chat/completions", limiter.Limit(h.HandleMessages))
+	if cfg.CodebuffEnabled {
+		mux.HandleFunc("/codebuff/v1/messages", limiter.Limit(h.HandleMessages))
+		mux.HandleFunc("/codebuff/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
+		mux.HandleFunc("/codebuff/v1/chat/completions", limiter.Limit(h.HandleMessages))
+	}
 
 	// Aihubmix-specific image generation endpoint. aihubmix supports OpenAI-style
 	// /v1/images/generations; zenmux does not expose an image endpoint.
@@ -105,6 +113,8 @@ func registerRoutes(
 	mux.HandleFunc("/api/config/cache/clear", sessionAuth(apiHandler.HandleCacheClear))
 	mux.HandleFunc("/api/token-cache/stats", sessionAuth(apiHandler.HandleTokenCacheStats))
 	mux.HandleFunc("/api/token-cache/clear", sessionAuth(apiHandler.HandleTokenCacheClear))
+	mux.HandleFunc("/api/codebuff/pool-status", sessionAuth(apiHandler.HandleCodebuffPoolStatus))
+	mux.HandleFunc("/api/codebuff/metrics", sessionAuth(apiHandler.HandleCodebuffMetrics))
 
 	// Admin routes with dual prefix: /api/v1/admin/* and /v1/admin/*
 	adminPrefixes := []string{"/api/v1/admin", "/v1/admin"}
@@ -290,7 +300,7 @@ func registerAdminUI(mux *http.ServeMux, cfg *config.Config, s *store.Store, sta
 		staticHandler.ServeHTTP(w, rr)
 	})
 
-	for _, page := range []string{"/config", "/cache", "/token"} {
+	for _, page := range []string{"/config", "/cache", "/token", "/codebuff"} {
 		p := page
 		mux.HandleFunc(cfg.AdminPath+p, func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {

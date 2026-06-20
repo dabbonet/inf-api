@@ -10,6 +10,7 @@ import (
 
 	"orchids-api/internal/auth"
 	"orchids-api/internal/clerk"
+	"orchids-api/internal/codebuff"
 	"orchids-api/internal/config"
 	apperrors "orchids-api/internal/errors"
 	"orchids-api/internal/grok"
@@ -241,6 +242,36 @@ func startAuthCleanupLoop(ctx context.Context) {
 				return
 			case <-ticker.C:
 				auth.CleanupExpiredSessions()
+			}
+		}
+	}()
+}
+
+func startCodebuffQuotaResetLoop(ctx context.Context, qs *codebuff.QuotaStore) {
+	if qs == nil {
+		return
+	}
+	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				slog.Error("Panic in codebuff quota reset loop", "error", err)
+			}
+		}()
+		for {
+			now := time.Now().UTC()
+			next := time.Date(now.Year(), now.Month(), now.Day(), 7, 5, 0, 0, time.UTC)
+			if !now.Before(next) {
+				next = next.Add(24 * time.Hour)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(next.Sub(now)):
+				if err := qs.ClearAllBlocks(ctx); err != nil {
+					slog.Error("Failed to clear codebuff quota blocks", "error", err)
+				} else {
+					slog.Info("Cleared codebuff quota blocks for new day")
+				}
 			}
 		}
 	}()

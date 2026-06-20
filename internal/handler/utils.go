@@ -125,6 +125,9 @@ func channelFromPath(path string) string {
 	if strings.HasPrefix(path, "/zenmux/") {
 		return "zenmux"
 	}
+	if strings.HasPrefix(path, "/codebuff/") {
+		return "codebuff"
+	}
 	return ""
 }
 
