@@ -40,42 +40,42 @@ var upstreamChatKeys = map[string]struct{}{
 
 const defaultSystemMessage = "You are Buffy, a strategic assistant."
 
-// BuildPayload constructs the upstream codebuff chat payload from an inf-api
-// UpstreamRequest, injecting the Buffy system prompt and embedding session
-// metadata.
+// BuildPayload constructs the upstream codebuff chat payload by taking the
+// entire original request body and adding codebuff-specific fields.
+// This matches freebuff2api's build_upstream_payload approach exactly:
+// passthrough the original body, only modify what's needed.
 func BuildPayload(req upstream.UpstreamRequest, sess *Session, run *Run, clientID string) map[string]any {
-	body := make(map[string]any)
+	// Start from the entire original request body if available (pure passthrough).
+	var body map[string]any
+	if len(req.RawBody) > 0 {
+		if err := json.Unmarshal(req.RawBody, &body); err != nil {
+			body = make(map[string]any)
+		}
+	} else {
+		body = make(map[string]any)
+	}
 
+	// Override model with upstream model ID.
 	modelConfig, _ := ResolveModel(req.Model)
 	upstreamModel := req.Model
 	if modelConfig != nil {
 		upstreamModel = modelConfig.UpstreamID()
 	}
 	body["model"] = upstreamModel
-	body["stream"] = req.Stream
-	body["stop"] = []string{`"cb_easp"`}
-	body["provider"] = map[string]string{"data_collection": "deny"}
 
-	// Prefer raw OpenAI messages passthrough (matches freebuff2api approach).
+	// Normalize messages: inject Buffy system prompt into raw messages.
 	if len(req.RawOpenAIMessages) > 0 {
 		body["messages"] = injectBuffyIntoRawMessages(req.RawOpenAIMessages, req.RawOpenAISystem)
 	} else {
 		body["messages"] = normalizeMessages(req.System, req.Messages)
 	}
 
-	if len(req.Tools) > 0 {
-		clean := make([]any, 0, len(req.Tools))
-		for _, t := range req.Tools {
-			if m, ok := t.(map[string]any); ok {
-				delete(m, "cache_control")
-			}
-			clean = append(clean, t)
-		}
-		body["tools"] = clean
-	}
-	if req.ToolChoice != nil {
-		body["tool_choice"] = req.ToolChoice
-	}
+	// Force stream=true (freebuff2api always does this).
+	body["stream"] = true
+
+	// Set codebuff-specific fields.
+	body["stop"] = []string{`"cb_easp"`}
+	body["provider"] = map[string]string{"data_collection": "deny"}
 	body["codebuff_metadata"] = map[string]any{
 		"freebuff_instance_id": sess.InstanceID,
 		"trace_session_id":     uuid.New().String(),
@@ -83,6 +83,16 @@ func BuildPayload(req upstream.UpstreamRequest, sess *Session, run *Run, clientI
 		"client_id":            clientID,
 		"cost_mode":            "free",
 	}
+
+	// Strip cache_control from tools if present (codebuff doesn't understand it).
+	if tools, ok := body["tools"].([]any); ok {
+		for _, t := range tools {
+			if m, ok := t.(map[string]any); ok {
+				delete(m, "cache_control")
+			}
+		}
+	}
+
 	return body
 }
 

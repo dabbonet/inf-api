@@ -1165,6 +1165,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			DirectSSE:            nil,
 			RawOpenAIMessages:    rawBody.Messages,
 			RawOpenAISystem:      rawBody.System,
+			RawBody:              bodyBytes,
 		}
 		primaryHandler := upstreamMessageHandler(sh)
 		var attempt int

@@ -45,6 +45,11 @@ type UpstreamRequest struct {
 	// reconstructing from the converted prompt.Message ContentBlocks.
 	RawOpenAIMessages stdjson.RawMessage `json:"-"`
 	RawOpenAISystem   stdjson.RawMessage `json:"-"`
+
+	// RawBody is the entire original request body for pure passthrough mode.
+	// Used by codebuff path to forward the request upstream with minimal
+	// modification, matching freebuff2api's approach exactly.
+	RawBody stdjson.RawMessage `json:"-"`
 }
 
 // SSEMessage unifies the upstream SSE message structure (Warp/Orchids reuse)
