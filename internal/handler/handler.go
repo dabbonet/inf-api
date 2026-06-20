@@ -68,6 +68,7 @@ type ClaudeRequest struct {
 	Messages       []prompt.Message       `json:"messages"`
 	System         SystemItems            `json:"system"`
 	Tools          []interface{}          `json:"tools"`
+	ToolChoice     interface{}            `json:"tool_choice"`
 	Stream         bool                   `json:"stream"`
 	ConversationID string                 `json:"conversation_id"`
 	Metadata       map[string]interface{} `json:"metadata"`
@@ -1144,6 +1145,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			Messages:             payloadMessages,
 			System:               payloadSystem,
 			Tools:                effectiveTools,
+			ToolChoice:           req.ToolChoice,
 			NoTools:              gateNoTools,
 			NoThinking:           noThinking,
 			TraceID:              traceID,

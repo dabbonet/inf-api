@@ -60,6 +60,19 @@ func BuildPayload(req upstream.UpstreamRequest, sess *Session, run *Run, clientI
 	body["stream"] = req.Stream
 	body["stop"] = []string{`"cb_easp"`}
 	body["provider"] = map[string]string{"data_collection": "deny"}
+	if len(req.Tools) > 0 {
+		clean := make([]any, 0, len(req.Tools))
+		for _, t := range req.Tools {
+			if m, ok := t.(map[string]any); ok {
+				delete(m, "cache_control")
+			}
+			clean = append(clean, t)
+		}
+		body["tools"] = clean
+	}
+	if req.ToolChoice != nil {
+		body["tool_choice"] = req.ToolChoice
+	}
 	body["codebuff_metadata"] = map[string]any{
 		"freebuff_instance_id": sess.InstanceID,
 		"trace_session_id":     uuid.New().String(),
@@ -313,18 +326,20 @@ func messageContentToString(c prompt.MessageContent) string {
 // StreamParser reads Server-Sent Events from codebuff and converts them to
 // the inf-api upstream.SSEMessage format.
 type StreamParser struct {
-	reader       *bufio.Reader
-	body         io.ReadCloser
-	openToolIDs  map[string]bool
-	currentIDSeq []string
+	reader         *bufio.Reader
+	body           io.ReadCloser
+	openToolIDs    map[string]bool
+	currentIDSeq   []string
+	toolIndexToID  map[int]string
 }
 
 // NewStreamParser wraps an io.ReadCloser (the response body from ChatCompletions).
 func NewStreamParser(body io.ReadCloser) *StreamParser {
 	return &StreamParser{
-		reader:      bufio.NewReader(body),
-		body:        body,
-		openToolIDs: map[string]bool{},
+		reader:        bufio.NewReader(body),
+		body:          body,
+		openToolIDs:   map[string]bool{},
+		toolIndexToID: map[int]string{},
 	}
 }
 
@@ -405,9 +420,16 @@ func decodeChunk(chunk map[string]any, sp *StreamParser) []upstream.SSEMessage {
 				continue
 			}
 			id, _ := toolCall["id"].(string)
+			indexVal, _ := toolCall["index"].(float64)
+			idx := int(indexVal)
 			fn, _ := toolCall["function"].(map[string]any)
 			name, _ := fn["name"].(string)
 			args, _ := fn["arguments"].(string)
+			if id != "" {
+				sp.toolIndexToID[idx] = id
+			} else if resolved, ok := sp.toolIndexToID[idx]; ok {
+				id = resolved
+			}
 			if id != "" {
 				thisChunkIDs[id] = true
 				if !sp.openToolIDs[id] {

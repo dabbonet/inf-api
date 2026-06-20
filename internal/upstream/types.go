@@ -25,6 +25,7 @@ type UpstreamRequest struct {
 	Messages             []prompt.Message
 	System               []prompt.SystemItem
 	Tools                []interface{}
+	ToolChoice           interface{}
 	NoTools              bool
 	NoThinking           bool
 	TraceID              string
