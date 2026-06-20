@@ -1,6 +1,7 @@
 package codebuff
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -126,6 +127,9 @@ func (p *Provider) SendRequestWithPayload(
 
 	// Execute chat.
 	if req.Stream {
+		if req.RawSSEWriter != nil {
+			return p.streamChatRaw(ctx, payload, run, req.RawSSEWriter, logger, req.Model)
+		}
 		return p.streamChat(ctx, payload, run, onMessage, logger, req.Model)
 	}
 	return p.completeChat(ctx, payload, run, onMessage, logger, req.Model)
@@ -217,7 +221,6 @@ func (p *Provider) streamChat(
 	requestedModel string,
 ) error {
 	start := time.Now()
-	streamErr := false
 	body, err := p.client.ChatCompletions(ctx, payload)
 	if err != nil {
 		p.recordBlockIf429(err, requestedModel)
@@ -226,6 +229,7 @@ func (p *Provider) streamChat(
 	}
 	defer body.Close()
 
+	// Raw SSE passthrough: forward upstream lines directly to client.
 	parser := NewStreamParser(body)
 	defer parser.Close()
 
@@ -237,7 +241,7 @@ func (p *Provider) streamChat(
 				break
 			}
 			go FinalizeRun(context.Background(), p.client, run, messageID)
-			streamErr = true
+			p.recordTelemetry(requestedModel, true, 0, time.Since(start).Milliseconds())
 			return fmt.Errorf("codebuff stream error: %w", err)
 		}
 		for _, msg := range msgs {
@@ -252,9 +256,62 @@ func (p *Provider) streamChat(
 		}
 	}
 	go FinalizeRun(context.Background(), p.client, run, messageID)
-	if !streamErr {
-		p.recordTelemetry(requestedModel, false, 0, time.Since(start).Milliseconds())
+	p.recordTelemetry(requestedModel, false, 0, time.Since(start).Milliseconds())
+	return nil
+}
+
+// streamChatRaw forwards raw SSE lines from codebuff upstream directly to the
+// client, matching freebuff2api's passthrough behavior exactly. No parsing,
+// no format conversion, no tool name normalization.
+func (p *Provider) streamChatRaw(
+	ctx context.Context,
+	payload map[string]any,
+	run *Run,
+	writeSSE func(event string, data []byte),
+	logger *debug.Logger,
+	requestedModel string,
+) error {
+	start := time.Now()
+	body, err := p.client.ChatCompletions(ctx, payload)
+	if err != nil {
+		p.recordBlockIf429(err, requestedModel)
+		p.recordTelemetry(requestedModel, true, 0, time.Since(start).Milliseconds())
+		return err
 	}
+	defer body.Close()
+
+	messageID := ""
+	scanner := bufio.NewScanner(body)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		if strings.HasPrefix(string(line), "data: ") {
+			data := line[6:]
+			if string(data) == "[DONE]" {
+				writeSSE("", []byte("[DONE]"))
+				break
+			}
+			writeSSE("", data)
+			// Try to extract messageID from chunk for run finalization.
+			if messageID == "" {
+				var chunk struct {
+					ID string `json:"id"`
+				}
+				if json.Unmarshal(data, &chunk) == nil && chunk.ID != "" {
+					messageID = chunk.ID
+				}
+			}
+		} else if strings.HasPrefix(string(line), "event: ") {
+			// Some SSE streams use event: lines.
+			event := string(line[7:])
+			writeSSE(event, nil)
+		}
+	}
+
+	go FinalizeRun(context.Background(), p.client, run, messageID)
+	p.recordTelemetry(requestedModel, false, 0, time.Since(start).Milliseconds())
 	return nil
 }
 

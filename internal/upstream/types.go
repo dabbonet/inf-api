@@ -50,6 +50,12 @@ type UpstreamRequest struct {
 	// Used by codebuff path to forward the request upstream with minimal
 	// modification, matching freebuff2api's approach exactly.
 	RawBody stdjson.RawMessage `json:"-"`
+
+	// RawSSEWriter allows codebuff to forward raw SSE directly to the client,
+	// bypassing the StreamParser → stream_handler pipeline entirely.
+	// When set, codebuff streamChat writes raw SSE lines here instead of
+	// converting through internal Anthropic events.
+	RawSSEWriter func(event string, data []byte) `json:"-"`
 }
 
 // SSEMessage unifies the upstream SSE message structure (Warp/Orchids reuse)

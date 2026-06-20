@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
@@ -91,6 +92,15 @@ func BuildPayload(req upstream.UpstreamRequest, sess *Session, run *Run, clientI
 				delete(m, "cache_control")
 			}
 		}
+	}
+
+	// Debug: log the payload being sent upstream.
+	if debugData, err := json.MarshalIndent(body, "", "  "); err == nil {
+		s := string(debugData)
+		if len(s) > 4000 {
+			s = s[:4000] + "...[truncated]"
+		}
+		slog.Info("CODEBUFF_UPSTREAM_PAYLOAD", "model", body["model"], "has_tools", body["tools"] != nil, "payload_preview", s)
 	}
 
 	return body

@@ -1144,6 +1144,26 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		payloadSystem := req.System
 
 		warpFeatureConfig := h.resolveWarpFeatureConfig(r.Context(), currentAccount, mappedModel)
+
+		// For codebuff passthrough: forward raw SSE directly to client.
+		var rawSSEWriter func(event string, data []byte)
+		if targetChannel == "codebuff" && isStream {
+			rawFlusher, _ := w.(http.Flusher)
+			rawSSEWriter = func(event string, data []byte) {
+				if string(data) == "[DONE]" {
+					fmt.Fprintf(w, "data: [DONE]\n\n")
+					if rawFlusher != nil {
+						rawFlusher.Flush()
+					}
+					return
+				}
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				if rawFlusher != nil {
+					rawFlusher.Flush()
+				}
+			}
+		}
+
 		upstreamReq := upstream.UpstreamRequest{
 			Prompt:               builtPrompt,
 			ChatHistory:          chatHistory,
@@ -1166,6 +1186,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			RawOpenAIMessages:    rawBody.Messages,
 			RawOpenAISystem:      rawBody.System,
 			RawBody:              bodyBytes,
+			RawSSEWriter:         rawSSEWriter,
 		}
 		primaryHandler := upstreamMessageHandler(sh)
 		var attempt int
