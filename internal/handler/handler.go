@@ -1094,7 +1094,16 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	defer sh.release()
 
 	sh.setModelHint(req.Model)
-	sh.writeSSEMessageStart(req.Model, inputTokens, 0)
+	// For codebuff raw SSE passthrough, skip Anthropic-format lifecycle events.
+	// The raw passthrough writes OpenAI-format SSE directly; writing Anthropic
+	// message_start/message_stop would corrupt the stream.
+	if targetChannel == "codebuff" && isStream {
+		sh.mu.Lock()
+		sh.hasReturn = true
+		sh.mu.Unlock()
+	} else {
+		sh.writeSSEMessageStart(req.Model, inputTokens, 0)
+	}
 
 	if verboseDiagnostics {
 		slog.Debug("New request received")
