@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	stdjson "encoding/json"
 
 	"orchids-api/internal/adapter"
 	"orchids-api/internal/audit"
@@ -564,6 +565,13 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		apperrors.New("invalid_request_error", "Invalid request body", http.StatusBadRequest).WriteResponse(w)
 		return
 	}
+
+	// Extract raw OpenAI messages/system for codebuff passthrough.
+	var rawBody struct {
+		Messages stdjson.RawMessage `json:"messages"`
+		System   stdjson.RawMessage `json:"system"`
+	}
+	_ = stdjson.Unmarshal(bodyBytes, &rawBody)
 	responseFormat := adapter.DetectResponseFormat(r.URL.Path)
 
 	// Initialize debug log
@@ -1155,6 +1163,8 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			WarpCliAgentModel:    warpFeatureConfig.CliAgentModel,
 			WarpComputerUseModel: warpFeatureConfig.ComputerUseAgentModel,
 			DirectSSE:            nil,
+			RawOpenAIMessages:    rawBody.Messages,
+			RawOpenAISystem:      rawBody.System,
 		}
 		primaryHandler := upstreamMessageHandler(sh)
 		var attempt int
