@@ -146,6 +146,13 @@ func TestClassifyUpstreamError(t *testing.T) {
 			wantRetry:    false,
 			wantSwitch:   false,
 		},
+		{
+			name:         "codebuff daily limit is quota_exhausted",
+			errStr:       `codebuff session acquisition failed: Codebuff request failed: status=429 body={"model":"deepseek/deepseek-v4-pro","limit":5,"period":"pacific_day","resetAt":"...","recentCount":5.1,"status":"rate_limited"}`,
+			wantCategory: "quota_exhausted",
+			wantRetry:    true,
+			wantSwitch:   true,
+		},
 	}
 
 	for _, tt := range tests {

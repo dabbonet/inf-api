@@ -1648,23 +1648,19 @@ func (h *Handler) handleCodebuffDirect(w http.ResponseWriter, r *http.Request, b
 		mappedModel = validatedModel.ModelID
 	}
 
-	// Select account
+	// Select first account
+	var apiClient UpstreamClient
+	var currentAccount *store.Account
 	var failedAccountIDs []int64
-	apiClient, currentAccount, err := h.selectAccountWithOptions(r.Context(), targetChannel, true, failedAccountIDs, accountSelectionOptions{
+	failedAccountSet := make(map[int64]struct{})
+
+	apiClient, currentAccount, err = h.selectAccountWithOptions(r.Context(), targetChannel, true, failedAccountIDs, accountSelectionOptions{
 		ModelID: mappedModel,
 	})
 	if err != nil {
 		apperrors.New("server_error", fmt.Sprintf("No available accounts: %v", err), http.StatusServiceUnavailable).WriteResponse(w)
 		return
 	}
-
-	slog.Debug("codebuff direct passthrough",
-		"channel", targetChannel,
-		"requested_model", rawBody.Model,
-		"mapped_model", mappedModel,
-		"account_id", currentAccount.ID,
-		"stream", rawBody.Stream,
-	)
 
 	// Set SSE headers
 	if rawBody.Stream {
@@ -1712,13 +1708,77 @@ func (h *Handler) handleCodebuffDirect(w http.ResponseWriter, r *http.Request, b
 		TraceID:           fmt.Sprintf("codebuff-%x", time.Now().UnixNano()),
 	}
 
-	// Call provider — SSE passthrough only
-	if err := apiClient.SendRequestWithPayload(r.Context(), upstreamReq, nil, logger); err != nil {
-		slog.Error("codebuff direct passthrough failed", "error", err)
+	const codebuffMaxRetries = 3
+	var lastErr error
+	for attempt := 0; attempt < codebuffMaxRetries; attempt++ {
+		slog.Debug("codebuff direct passthrough",
+			"channel", targetChannel,
+			"requested_model", rawBody.Model,
+			"mapped_model", mappedModel,
+			"account_id", currentAccount.ID,
+			"stream", rawBody.Stream,
+			"attempt", attempt+1,
+		)
+
+		lastErr = apiClient.SendRequestWithPayload(r.Context(), upstreamReq, nil, logger)
+		if lastErr == nil {
+			lastErr = nil
+			break
+		}
+
+		errStr := lastErr.Error()
+		errClass := classifyUpstreamError(errStr)
+
+		slog.Error("codebuff request failed",
+			"error", lastErr,
+			"category", errClass.Category,
+			"account_id", currentAccount.ID,
+			"attempt", attempt+1,
+		)
+
+		if !errClass.Retryable {
+			break
+		}
+		if r.Context().Err() != nil {
+			break
+		}
+		if attempt >= codebuffMaxRetries-1 {
+			break
+		}
+
+		if errClass.SwitchAccount && currentAccount != nil && h.loadBalancer != nil {
+			if status := classifyAccountStatus(errStr); status != "" {
+				h.loadBalancer.MarkAccountStatus(r.Context(), currentAccount, status)
+			}
+			if errClass.Category == "quota_exhausted" && mappedModel != "" {
+				h.loadBalancer.MarkModelStatus(r.Context(), currentAccount, mappedModel, "402")
+			}
+
+			failedAccountSet[currentAccount.ID] = struct{}{}
+			failedAccountIDs = append(failedAccountIDs, currentAccount.ID)
+
+			nextClient, nextAccount, retryErr := h.selectAccountWithOptions(r.Context(), targetChannel, true, failedAccountIDs, accountSelectionOptions{
+				ModelID: mappedModel,
+			})
+			if retryErr != nil {
+				slog.Error("No more accounts available for codebuff", "error", retryErr)
+				break
+			}
+			apiClient = nextClient
+			currentAccount = nextAccount
+		}
+
+		delay := computeRetryDelay(1*time.Second, attempt+1, errClass.Category)
+		if delay > 0 && !util.SleepWithContext(r.Context(), delay) {
+			break
+		}
 	}
 
 	// Log audit event
 	auditStatus := "success"
+	if lastErr != nil {
+		auditStatus = "error"
+	}
 	h.auditLogger.Log(r.Context(), audit.Event{
 		Action:    "chat_request",
 		AccountID: currentAccount.ID,

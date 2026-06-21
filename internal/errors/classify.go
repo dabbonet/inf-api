@@ -100,6 +100,9 @@ type UpstreamErrorClass struct {
 // class that drives retry and account-switching decisions.
 func ClassifyUpstreamError(errStr string) UpstreamErrorClass {
 	lower := strings.ToLower(errStr)
+	if strings.Contains(lower, `"status":"rate_limited"`) && strings.Contains(lower, `recentcount`) {
+		return UpstreamErrorClass{Category: "quota_exhausted", Retryable: true, SwitchAccount: true}
+	}
 	switch {
 	case strings.Contains(lower, "context canceled") || strings.Contains(lower, "canceled"):
 		return UpstreamErrorClass{Category: "canceled", Retryable: false, SwitchAccount: false}
