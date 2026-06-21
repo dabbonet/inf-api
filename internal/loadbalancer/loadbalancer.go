@@ -333,11 +333,15 @@ func (lb *LoadBalancer) clearAccountStatus(ctx context.Context, acc *store.Accou
 	acc.StatusCode = ""
 	acc.LastAttempt = time.Time{}
 	acc.QuotaResetAt = time.Time{}
+	acc.ModelStatuses = nil
+	acc.ModelStatusAt = nil
 	for _, cached := range lb.cachedAccounts {
 		if cached.ID == acc.ID {
 			cached.StatusCode = ""
 			cached.LastAttempt = time.Time{}
 			cached.QuotaResetAt = time.Time{}
+			cached.ModelStatuses = nil
+			cached.ModelStatusAt = nil
 			break
 		}
 	}
@@ -376,4 +380,74 @@ func (lb *LoadBalancer) persistAccountStatus(ctx context.Context, acc *store.Acc
 		return
 	}
 	slog.Debug("Account status has been updated", "account_id", acc.ID, "status", acc.StatusCode, "reason", reason)
+}
+
+func (lb *LoadBalancer) IsModelAvailable(acc *store.Account, modelID string) bool {
+	if acc == nil || modelID == "" {
+		return true
+	}
+	modelID = strings.TrimSpace(modelID)
+	if acc.ModelStatuses == nil || acc.ModelStatusAt == nil {
+		return true
+	}
+	status, exists := acc.ModelStatuses[modelID]
+	if !exists || status == "" {
+		return true
+	}
+	blockedAt, ok := acc.ModelStatusAt[modelID]
+	if !ok || blockedAt.IsZero() {
+		return true
+	}
+	now := time.Now()
+	switch status {
+	case "429":
+		if now.Sub(blockedAt) >= retry429Default {
+			return true
+		}
+	case "402":
+		cooldown := retry402Default
+		if at := strings.ToLower(strings.TrimSpace(acc.AccountType)); at == "aihubmix" || at == "zenmux" {
+			cooldown = 5 * time.Minute
+		}
+		if now.Sub(blockedAt) >= cooldown {
+			return true
+		}
+	default:
+		if now.Sub(blockedAt) >= retry401Default {
+			return true
+		}
+	}
+	return false
+}
+
+func (lb *LoadBalancer) MarkModelStatus(ctx context.Context, acc *store.Account, modelID string, status string) {
+	if acc == nil || lb.Store == nil || modelID == "" || status == "" {
+		return
+	}
+	lb.mu.Lock()
+	if acc.ModelStatuses == nil {
+		acc.ModelStatuses = make(map[string]string)
+	}
+	if acc.ModelStatusAt == nil {
+		acc.ModelStatusAt = make(map[string]time.Time)
+	}
+	now := time.Now()
+	acc.ModelStatuses[modelID] = status
+	acc.ModelStatusAt[modelID] = now
+
+	for _, cached := range lb.cachedAccounts {
+		if cached.ID == acc.ID {
+			if cached.ModelStatuses == nil {
+				cached.ModelStatuses = make(map[string]string)
+			}
+			if cached.ModelStatusAt == nil {
+				cached.ModelStatusAt = make(map[string]time.Time)
+			}
+			cached.ModelStatuses[modelID] = status
+			cached.ModelStatusAt[modelID] = now
+			break
+		}
+	}
+	lb.mu.Unlock()
+	lb.persistAccountStatus(ctx, acc, "Model blocked: "+modelID+" status="+status)
 }

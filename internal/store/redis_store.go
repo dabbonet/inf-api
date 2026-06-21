@@ -229,6 +229,8 @@ func (s *redisStore) UpdateAccount(ctx context.Context, acc *Account) error {
 	updated.StatusCode = acc.StatusCode
 	updated.LastAttempt = acc.LastAttempt
 	updated.QuotaResetAt = acc.QuotaResetAt
+	updated.ModelStatuses = acc.ModelStatuses
+	updated.ModelStatusAt = acc.ModelStatusAt
 	updated.UpdatedAt = time.Now()
 
 	data, err := json.Marshal(&updated)
