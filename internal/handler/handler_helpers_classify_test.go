@@ -6,8 +6,8 @@ func TestClassifyUpstreamErrorCreditsExhausted(t *testing.T) {
 	t.Parallel()
 
 	errClass := classifyUpstreamError("upstream error: no remaining quota: You have run out of credits.")
-	if errClass.Category != "rate_limit" {
-		t.Fatalf("expected rate_limit category, got %q", errClass.Category)
+	if errClass.Category != "quota_exhausted" {
+		t.Fatalf("expected quota_exhausted category, got %q", errClass.Category)
 	}
 	if !errClass.Retryable {
 		t.Fatal("expected credits exhausted to be retryable")
@@ -22,6 +22,14 @@ func TestShouldRetryCurrentAccountWhenNoAlternative_RateLimit(t *testing.T) {
 
 	if shouldRetryCurrentAccountWhenNoAlternative("rate_limit") {
 		t.Fatal("expected rate_limit to stop retrying the same account when no alternative exists")
+	}
+}
+
+func TestShouldRetryCurrentAccountWhenNoAlternative_QuotaExhausted(t *testing.T) {
+	t.Parallel()
+
+	if shouldRetryCurrentAccountWhenNoAlternative("quota_exhausted") {
+		t.Fatal("expected quota_exhausted to stop retrying the same account when no alternative exists")
 	}
 }
 

@@ -37,9 +37,11 @@ type Account struct {
 	WarpMonthlyLimit     float64   `json:"warp_monthly_limit,omitempty"`
 	WarpMonthlyRemaining float64   `json:"warp_monthly_remaining,omitempty"`
 	WarpBonusRemaining   float64   `json:"warp_bonus_remaining,omitempty"`
-	StatusCode           string    `json:"status_code"`
-	LastAttempt          time.Time `json:"last_attempt"`
-	QuotaResetAt         time.Time `json:"quota_reset_at"`
+	StatusCode           string              `json:"status_code"`
+	LastAttempt          time.Time           `json:"last_attempt"`
+	QuotaResetAt         time.Time           `json:"quota_reset_at"`
+	ModelStatuses        map[string]string   `json:"model_statuses,omitempty"`
+	ModelStatusAt        map[string]time.Time `json:"model_status_at,omitempty"`
 	RequestCount         int64     `json:"request_count"`
 	LastUsedAt           time.Time `json:"last_used_at"`
 	CreatedAt            time.Time `json:"created_at"`

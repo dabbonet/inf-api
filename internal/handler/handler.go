@@ -1366,7 +1366,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 							slog.Debug("Mark account status", "account_id", currentAccount.ID, "status", status, "category", errClass.Category)
 						}
 						if !skipAccountStatusMark {
-							if isWarpRequest && errClass.Category == "rate_limit" && isWarpQuotaExhaustedError(errStr) {
+							if isWarpRequest && errClass.Category == "quota_exhausted" {
 								markWarpQuotaExhausted(r.Context(), h.loadBalancer.Store, currentAccount)
 							} else {
 								h.loadBalancer.MarkAccountStatus(r.Context(), currentAccount, status)
@@ -1374,6 +1374,9 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 				}
+			}
+			if currentAccount != nil && h.loadBalancer != nil && errClass.Category == "quota_exhausted" && upstreamReq.Model != "" {
+				h.loadBalancer.MarkModelStatus(r.Context(), currentAccount, upstreamReq.Model, "402")
 			}
 
 			if !errClass.Retryable {

@@ -156,8 +156,18 @@ func (h *Handler) selectAccountRecordWithOptions(ctx context.Context, targetChan
 	if h == nil || h.loadBalancer == nil {
 		return nil, errors.New("load balancer not configured")
 	}
+
+	buildModelFilter := func(modelID string) func(*store.Account) bool {
+		if modelID == "" {
+			return nil
+		}
+		return func(acc *store.Account) bool {
+			return h.loadBalancer.IsModelAvailable(acc, modelID)
+		}
+	}
+
 	if !strings.EqualFold(strings.TrimSpace(targetChannel), "warp") {
-		return h.loadBalancer.GetNextAccountExcludingByChannelWithTracker(ctx, failedAccountIDs, targetChannel, h.connTracker)
+		return h.loadBalancer.GetNextAccountExcludingByChannelWithTrackerFilter(ctx, failedAccountIDs, targetChannel, h.connTracker, buildModelFilter(opts.ModelID))
 	}
 
 	requestedModel := normalizeRequestedModelID(opts.ModelID)
@@ -428,6 +438,9 @@ func computeRetryDelay(base time.Duration, attempt int, category string) time.Du
 	}
 	delay := base * time.Duration(1<<(attempt-1))
 	if category == "rate_limit" && delay < 2*time.Second {
+		delay = 2 * time.Second
+	}
+	if category == "quota_exhausted" && delay < 2*time.Second {
 		delay = 2 * time.Second
 	}
 	if delay > 30*time.Second {

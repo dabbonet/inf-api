@@ -123,18 +123,20 @@ func ClassifyUpstreamError(errStr string) UpstreamErrorClass {
 	case strings.Contains(lower, "input is too long") || HasExplicitHTTPStatus(lower, "400"):
 		return UpstreamErrorClass{Category: "client", Retryable: false, SwitchAccount: false}
 	case HasExplicitHTTPStatus(lower, "429") ||
-		HasExplicitHTTPStatus(lower, "402") ||
 		strings.Contains(lower, "too many requests") ||
 		strings.Contains(lower, "rate limit") ||
-		strings.Contains(lower, "rate_limit") ||
+		strings.Contains(lower, "rate_limit"):
+		return UpstreamErrorClass{Category: "rate_limit", Retryable: true, SwitchAccount: true}
+	case HasExplicitHTTPStatus(lower, "402") ||
 		strings.Contains(lower, "insufficient_funds") ||
 		strings.Contains(lower, "insufficient funding") ||
+		strings.Contains(lower, "available funding is insufficient") ||
 		strings.Contains(lower, "no remaining quota") ||
 		strings.Contains(lower, "quota_limit") ||
 		strings.Contains(lower, "out of credits") ||
 		strings.Contains(lower, "credits exhausted") ||
 		strings.Contains(lower, "run out of credits"):
-		return UpstreamErrorClass{Category: "rate_limit", Retryable: true, SwitchAccount: true}
+		return UpstreamErrorClass{Category: "quota_exhausted", Retryable: true, SwitchAccount: true}
 	case strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline exceeded") || strings.Contains(lower, "context deadline"):
 		return UpstreamErrorClass{Category: "timeout", Retryable: true, SwitchAccount: true}
 	case strings.Contains(lower, "connection reset") || strings.Contains(lower, "connection refused") ||
