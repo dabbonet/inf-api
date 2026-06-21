@@ -1,0 +1,376 @@
+{{define "page-codebuff"}}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="{{.AdminPath}}/css/main.css?v=20260328-3">
+  <style>
+    :root {
+      --ok: #059669;
+      --ok-soft: #d1fae5;
+      --warn: #d97706;
+      --warn-soft: #fef3c7;
+      --danger: #dc2626;
+      --danger-soft: #fee2e2;
+      --idle: #6b7280;
+      --idle-soft: #f3f4f6;
+      --ink: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --card-bg: #ffffff;
+      --page-bg: #f7f8fa;
+      --accent: #2563eb;
+    }
+
+    .cb-page { background: var(--page-bg); padding: 28px 28px 80px; min-height: 100vh; box-sizing: border-box; }
+
+    .cb-hero {
+      display: flex; justify-content: space-between; align-items: center; gap: 18px;
+      margin: 0 0 22px; padding: 20px 24px;
+      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+      color: #f9fafb; border-radius: 14px;
+    }
+    .cb-hero h1 { margin: 0; font-size: 22px; letter-spacing: -0.4px; font-weight: 700; }
+    .cb-hero .lede { color: #9ca3af; font-size: 13px; margin-top: 4px; max-width: 580px; }
+    .cb-hero .toolbar { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+    .cb-btn {
+      padding: 8px 14px; font-size: 13px; font-weight: 500; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #f9fafb; cursor: pointer;
+      transition: background 120ms;
+    }
+    .cb-btn:hover { background: rgba(255,255,255,0.14); }
+    .cb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .cb-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .cb-btn.primary:hover { background: #1d4ed8; }
+
+    .refresh-time { font-size: 12px; color: #9ca3af; margin-right: 6px; }
+
+    /* Summary Banner */
+    .cb-banner {
+      background: #fff;
+      border: 1px solid var(--line); border-radius: 14px;
+      padding: 0;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .cb-banner .banner-meta {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 22px;
+      background: linear-gradient(90deg, #eff6ff 0%, #ffffff 100%);
+      border-bottom: 1px solid var(--line);
+    }
+    .banner-meta .meta-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .banner-meta .meta-eyebrow { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+    .banner-meta .meta-strong {
+      font-size: 18px; font-weight: 700; color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+    .banner-meta .meta-faint { font-size: 12px; color: var(--muted); }
+    .banner-meta .meta-countdown {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #fff; border: 1px solid var(--line); border-radius: 8px;
+      padding: 6px 12px; font-variant-numeric: tabular-nums;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .banner-meta .countdown-cell {
+      display: inline-flex; align-items: baseline; gap: 2px;
+      font-size: 18px; font-weight: 700; color: var(--ink); min-width: 38px; justify-content: flex-end;
+    }
+    .banner-meta .countdown-cell small { font-size: 10px; color: var(--muted); font-weight: 500; }
+    .banner-meta .countdown-divider { color: #cbd5e1; font-size: 16px; }
+
+    .cb-banner .banner-stats {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    }
+    .cb-banner .banner-stat {
+      padding: 16px 22px; border-right: 1px solid var(--line);
+    }
+    .cb-banner .banner-stat:last-child { border-right: none; }
+    .cb-banner .banner-stat .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+    .cb-banner .banner-stat .stat-value { font-size: 26px; font-weight: 700; line-height: 1.15; margin-top: 4px; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .cb-banner .banner-stat .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .cb-banner .banner-stat .stat-value.warn { color: var(--danger); }
+
+    .cb-banner .banner-legend {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 12px 22px; background: #fafbfc;
+      border-top: 1px solid var(--line);
+    }
+    .banner-legend .legend-label {
+      font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px;
+      margin-right: 6px;
+    }
+    .banner-legend .legend-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      position: relative; cursor: help;
+    }
+    .banner-legend .legend-chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .banner-legend .legend-chip .chip-hint {
+      position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      background: #111827; color: #f9fafb; padding: 6px 10px; border-radius: 6px;
+      font-size: 11px; font-weight: 400; line-height: 1.3; white-space: nowrap;
+      opacity: 0; pointer-events: none; transition: opacity 120ms;
+      z-index: 30;
+    }
+    .banner-legend .legend-chip:hover .chip-hint { opacity: 1; }
+    .banner-legend .chip-ok { background: var(--ok-soft); color: var(--ok); }
+    .banner-legend .chip-warn { background: var(--warn-soft); color: var(--warn); }
+    .banner-legend .chip-danger { background: var(--danger-soft); color: var(--danger); }
+    .banner-legend .chip-idle { background: var(--idle-soft); color: var(--idle); }
+    .banner-legend .chip-ok .dot { background: var(--ok); }
+    .banner-legend .chip-warn .dot { background: var(--warn); }
+    .banner-legend .chip-danger .dot { background: var(--danger); }
+    .banner-legend .chip-idle .dot { background: var(--idle); }
+
+    /* Filter bar */
+    .cb-filter-bar {
+      display: flex; align-items: center; gap: 10px;
+      background: #fff; border: 1px solid var(--line); border-radius: 10px;
+      padding: 10px 14px; margin-bottom: 18px;
+    }
+    .cb-filter-bar .filter-label { font-size: 12px; color: var(--muted); font-weight: 500; }
+    .cb-filter-bar select {
+      padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px;
+      font-size: 13px; background: #fff; color: var(--ink);
+    }
+    .cb-filter-bar #expandAllBtn {
+      margin-left: auto;
+      padding: 6px 12px; font-size: 12px; border-radius: 6px;
+      border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+    }
+    .cb-filter-bar #expandAllBtn:hover { background: #f9fafb; }
+
+    /* Cards grid: two columns */
+    .cb-card-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    /* Card */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      transition: box-shadow 120ms;
+      display: flex; flex-direction: column;
+    }
+    .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+    .card.expanded { border-color: #cbd5e1; grid-column: 1 / -1; }
+
+    .card-head {
+      display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px;
+      padding-bottom: 14px; border-bottom: 1px solid var(--line);
+    }
+    .card-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .acc-id {
+      background: #f3f4f6; border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--muted);
+      padding: 2px 6px; font-weight: 600;
+    }
+    .acc-name {
+      font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: -0.2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .card-status { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .card-status .muted { color: var(--muted); font-size: 12px; }
+
+    .expand-btn {
+      padding: 7px 12px; border-radius: 8px;
+      border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+      font-size: 12px; font-weight: 500;
+    }
+    .expand-btn:hover { background: #f9fafb; }
+
+    .pill {
+      display: inline-block; padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+    }
+    .pill-ok { background: var(--ok-soft); color: var(--ok); }
+    .pill-warn { background: var(--warn-soft); color: var(--warn); }
+    .pill-danger { background: var(--danger-soft); color: var(--danger); }
+    .pill-idle { background: var(--idle-soft); color: var(--idle); }
+
+    .card-body {
+      display: grid;
+      grid-template-columns: 1fr 1.4fr;
+      gap: 18px;
+      padding: 16px 0 0;
+    }
+
+    /* Quota block */
+    .quota-block {
+      background: #f9fafb; border-radius: 10px; padding: 14px 16px;
+    }
+    .quota-meta { display: flex; justify-content: space-between; align-items: flex-end; }
+    .meta-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+    .meta-value { font-size: 28px; font-weight: 800; color: var(--ink); line-height: 1.05; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .meta-pct { font-size: 13px; font-weight: 600; color: var(--muted); }
+
+    .quota-bar {
+      height: 8px; background: #e5e7eb; border-radius: 999px;
+      margin: 12px 0 8px; overflow: hidden;
+    }
+    .quota-fill {
+      height: 100%; border-radius: 999px;
+      background: var(--ok);
+      transition: width 240ms ease;
+    }
+    .quota-fill.fill-warn { background: var(--warn); }
+    .quota-fill.fill-danger { background: var(--danger); }
+
+    .quota-foot {
+      display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);
+    }
+
+    /* Stat grid */
+    .stat-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 14px;
+    }
+    .stat { padding: 4px 0; }
+    .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-num { font-size: 20px; font-weight: 700; color: var(--ink); margin-top: 3px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .stat-num .unit { font-size: 11px; color: var(--muted); font-weight: 500; margin-left: 2px; }
+    .stat-num.num-warn { color: var(--danger); }
+    .stat-foot { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* Model detail */
+    .model-detail { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); grid-column: 1 / -1; }
+    .model-table-head {
+      display: grid; grid-template-columns: 1.4fr 1.4fr repeat(4, 0.7fr);
+      gap: 12px; padding: 6px 10px;
+      font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .model-row {
+      display: grid; grid-template-columns: 1.4fr 1.4fr repeat(4, 0.7fr); gap: 12px;
+      padding: 10px 10px; border-radius: 8px;
+      border: 1px solid transparent;
+      transition: background 120ms;
+    }
+    .model-row:hover { background: #f9fafb; }
+    .m-cell { display: flex; flex-direction: column; justify-content: center; }
+    .m-cell.m-num { text-align: right; align-items: flex-end; }
+    .m-warn { color: var(--danger); font-weight: 600; }
+
+    .m-name .m-short { font-weight: 700; color: var(--ink); font-size: 13px; }
+    .m-name .m-full { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; margin-top: 2px; white-space: normal; word-break: break-all; }
+
+    .m-quota-line { display: flex; align-items: center; gap: 6px; }
+    .m-quota-count { font-size: 13px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .m-quota-state { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+    .m-quota-state.state-ok { background: var(--ok-soft); color: var(--ok); }
+    .m-quota-state.state-warn { background: var(--warn-soft); color: var(--warn); }
+    .m-quota-state.state-danger { background: var(--danger-soft); color: var(--danger); }
+    .m-quota-state.state-idle { background: var(--idle-soft); color: var(--idle); }
+    .m-quota-bar { height: 5px; background: #e5e7eb; border-radius: 999px; margin-top: 6px; overflow: hidden; }
+    .m-fill { height: 100%; background: var(--ok); border-radius: 999px; transition: width 240ms ease; }
+    .m-fill.fill-warn { background: var(--warn); }
+    .m-fill.fill-danger { background: var(--danger); }
+    .m-quota-foot { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+    .empty { color: var(--muted); padding: 40px; text-align: center; grid-column: 1 / -1; }
+    .empty-models { color: var(--muted); padding: 14px; text-align: center; font-size: 13px; }
+
+    @media (max-width: 1100px) {
+      .cb-card-grid { grid-template-columns: 1fr; }
+      .card-body { grid-template-columns: 1fr; }
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+      .cb-banner .banner-stats { grid-template-columns: repeat(2, 1fr); }
+      .cb-banner .banner-stat { border-bottom: 1px solid var(--line); }
+    }
+    @media (max-width: 700px) {
+      .cb-page { padding: 16px 12px; }
+      .cb-hero { flex-direction: column; align-items: flex-start; padding: 16px; }
+      .cb-hero h1 { font-size: 18px; }
+      .cb-banner .banner-meta { flex-direction: column; align-items: flex-start; gap: 10px; }
+      .cb-banner .banner-stats { grid-template-columns: 1fr; }
+      .stat-grid { grid-template-columns: 1fr 1fr; }
+      .model-table-head, .model-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+    }
+  </style>
+</head>
+
+<body>
+  {{template "sidebar.html" .}}
+
+  <main class="main-content cb-page">
+    <section class="cb-hero">
+      <div>
+        <h1>Codebuff Telemetry</h1>
+        <div class="lede">Live per-account overview of quota, requests, 429s, and throughput across every registered Codebuff model. Refreshes every 30s.</div>
+      </div>
+      <div class="toolbar">
+        <span class="refresh-time" id="lastUpdate">—</span>
+        <button class="cb-btn" id="syncBtn" onclick="syncQuota()">Sync quota</button>
+        <button class="cb-btn primary" onclick="loadCodebuffData()">Refresh</button>
+      </div>
+    </section>
+
+    <div class="cb-banner">
+      <div class="banner-meta">
+        <div class="meta-line">
+          <span class="meta-eyebrow">Next quota reset</span>
+          <span class="meta-strong" id="resetIn">—</span>
+          <span class="meta-faint">until Codebuff's daily 07:00 UTC rollover</span>
+        </div>
+        <div class="meta-countdown" aria-label="time until reset">
+          <span class="countdown-cell"><span id="cdH">--</span><small>h</small></span>
+          <span class="countdown-divider">:</span>
+          <span class="countdown-cell"><span id="cdM">--</span><small>m</small></span>
+          <span class="countdown-divider">:</span>
+          <span class="countdown-cell"><span id="cdS">--</span><small>s</small></span>
+        </div>
+      </div>
+
+      <div class="banner-stats">
+        <div class="banner-stat">
+          <div class="stat-label">Total Requests</div>
+          <div class="stat-value" id="statReqs">0</div>
+          <div class="stat-sub">across all accounts</div>
+        </div>
+        <div class="banner-stat">
+          <div class="stat-label">429 Responses</div>
+          <div class="stat-value warn" id="stat429s">0</div>
+          <div class="stat-sub">rate-limit rejections</div>
+        </div>
+        <div class="banner-stat">
+          <div class="stat-label">Tokens Used</div>
+          <div class="stat-value" id="statTokens">0</div>
+          <div class="stat-sub">prompt + completion</div>
+        </div>
+        <div class="banner-stat">
+          <div class="stat-label">Per Minute</div>
+          <div class="stat-value" id="statRPM">0</div>
+          <div class="stat-sub">aggregate request rate</div>
+        </div>
+      </div>
+
+      <div class="banner-legend">
+        <span class="legend-label">Card & model states</span>
+        <span class="legend-chip chip-ok"><span class="dot"></span>Healthy<div class="chip-hint">quota&nbsp;>&nbsp;0, no 429s</div></span>
+        <span class="legend-chip chip-warn"><span class="dot"></span>Exhausted<div class="chip-hint">all calls used, waiting reset</div></span>
+        <span class="legend-chip chip-danger"><span class="dot"></span>Blocked<div class="chip-hint">actively 429-spammed</div></span>
+        <span class="legend-chip chip-idle"><span class="dot"></span>Idle<div class="chip-hint">no traffic yet today</div></span>
+      </div>
+    </div>
+
+    <div class="cb-filter-bar" id="filterBar"></div>
+
+    <div class="cb-card-grid" id="cardContainer"></div>
+
+    <div class="toast-container" id="toastContainer"></div>
+  </main>
+
+  <script src="{{.AdminPath}}/js/common.js?v=20260605-2"></script>
+  <script src="{{.AdminPath}}/js/codebuff.js?v=20260621-7"></script>
+</body>
+
+</html>
+{{end}}

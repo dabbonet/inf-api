@@ -45,20 +45,6 @@ func applyCacheStrategy(req *ClaudeRequest, strategy string) {
 		}
 	}
 
-	// 2. Tools
-	// Cache the last tool definition if tools are present
-	if len(req.Tools) > 0 && breakpoints < maxBreakpoints {
-		lastToolIdx := len(req.Tools) - 1
-		if toolMap, ok := req.Tools[lastToolIdx].(map[string]interface{}); ok {
-			// Check if already has cache control
-			if _, hasCache := toolMap["cache_control"]; !hasCache {
-				toolMap["cache_control"] = map[string]string{"type": "ephemeral"}
-				req.Tools[lastToolIdx] = toolMap // Update in place
-				breakpoints++
-			}
-		}
-	}
-
 	// 2. Messages
 	// Iterate backwards to find suitable breakpoints
 

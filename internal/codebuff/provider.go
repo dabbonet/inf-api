@@ -2,6 +2,7 @@ package codebuff
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -281,6 +282,7 @@ func (p *Provider) streamChatRaw(
 	defer body.Close()
 
 	messageID := ""
+	sawToolCallsFinish := false
 	scanner := bufio.NewScanner(body)
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -293,7 +295,16 @@ func (p *Provider) streamChatRaw(
 				writeSSE("", []byte("[DONE]"))
 				break
 			}
+			// Codebuff sends finish_reason: "tool_calls" then finish_reason: "stop".
+			// The trailing "stop" makes opencode end the turn. Suppress it.
+			if sawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"stop"`)) {
+				continue
+			}
 			writeSSE("", data)
+			// Track if we already sent tool_calls finish.
+			if !sawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"tool_calls"`)) {
+				sawToolCallsFinish = true
+			}
 			// Try to extract messageID from chunk for run finalization.
 			if messageID == "" {
 				var chunk struct {

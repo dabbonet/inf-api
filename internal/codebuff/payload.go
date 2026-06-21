@@ -85,15 +85,6 @@ func BuildPayload(req upstream.UpstreamRequest, sess *Session, run *Run, clientI
 		"cost_mode":            "free",
 	}
 
-	// Strip cache_control from tools if present (codebuff doesn't understand it).
-	if tools, ok := body["tools"].([]any); ok {
-		for _, t := range tools {
-			if m, ok := t.(map[string]any); ok {
-				delete(m, "cache_control")
-			}
-		}
-	}
-
 	// Debug: log the payload being sent upstream.
 	if debugData, err := json.MarshalIndent(body, "", "  "); err == nil {
 		s := string(debugData)
