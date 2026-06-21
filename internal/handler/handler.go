@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	stdjson "encoding/json"
 
 	"orchids-api/internal/adapter"
 	"orchids-api/internal/audit"
@@ -59,11 +61,16 @@ type FinalSSELifecycleOwner interface {
 	OwnsFinalSSELifecycle() bool
 }
 
+type ChunkRewriterInstaller interface {
+	BuildChunkRewriter() func([]byte) []byte
+}
+
 type ClaudeRequest struct {
 	Model          string                 `json:"model"`
 	Messages       []prompt.Message       `json:"messages"`
 	System         SystemItems            `json:"system"`
 	Tools          []interface{}          `json:"tools"`
+	ToolChoice     interface{}            `json:"tool_choice"`
 	Stream         bool                   `json:"stream"`
 	ConversationID string                 `json:"conversation_id"`
 	Metadata       map[string]interface{} `json:"metadata"`
@@ -555,10 +562,25 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		apperrors.New("invalid_request_error", "Invalid request body", http.StatusBadRequest).WriteResponse(w)
 		return
 	}
+
+	// Fast path for codebuff: bypass all type conversions, match freebuff2api
+	// exactly — parse only model name, stream raw body + raw messages upstream.
+	if channelFromPath(r.URL.Path) == "codebuff" {
+		h.handleCodebuffDirect(w, r, bodyBytes, startTime)
+		return
+	}
+
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		apperrors.New("invalid_request_error", "Invalid request body", http.StatusBadRequest).WriteResponse(w)
 		return
 	}
+
+	// Extract raw OpenAI messages/system for codebuff passthrough.
+	var rawBody struct {
+		Messages stdjson.RawMessage `json:"messages"`
+		System   stdjson.RawMessage `json:"system"`
+	}
+	_ = stdjson.Unmarshal(bodyBytes, &rawBody)
 	responseFormat := adapter.DetectResponseFormat(r.URL.Path)
 
 	// Initialize debug log
@@ -885,14 +907,14 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	} else if isPuterRequest {
 		mappedModel = strings.TrimSpace(req.Model)
 	} else if currentAccount != nil {
-		// aihubmix/zenmux (and any future static-key provider) must pass the
+		// aihubmix/zenmux/codebuff (and any future static-key provider) must pass the
 		// requested model ID through verbatim — the upstream's model list is
 		// the source of truth. Without this guard, an unknown model would be
 		// silently remapped to claude-sonnet-4-6 by the Warp/Grok mapModel
 		// fallback and the upstream would reject it as a "model not in
 		// allowed list" 403.
 		at := strings.ToLower(strings.TrimSpace(currentAccount.AccountType))
-		if at == "aihubmix" || at == "zenmux" {
+		if at == "aihubmix" || at == "zenmux" || at == "codebuff" {
 			mappedModel = strings.TrimSpace(req.Model)
 		}
 	}
@@ -1064,6 +1086,9 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	sh.seedSideEffectDedupFromMessages(upstreamMessages)
 	sh.setUsageTokens(inputTokens, -1) // Correctly initialize input tokens
 	sh.setCacheTokens(cacheReadTokens, cacheCreationTokens)
+	if cr, ok := apiClient.(ChunkRewriterInstaller); ok {
+		sh.SetChunkRewriter(cr.BuildChunkRewriter())
+	}
 	// Capture the conversationID returned by the upstream and store the persistence in the session for reuse in subsequent requests.
 	sh.onConversationID = func(id string) {
 		if conversationKey == "" {
@@ -1077,7 +1102,17 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	defer sh.release()
 
-	sh.writeSSEMessageStart(req.Model, inputTokens, 0)
+	sh.setModelHint(req.Model)
+	// For codebuff raw SSE passthrough, skip Anthropic-format lifecycle events.
+	// The raw passthrough writes OpenAI-format SSE directly; writing Anthropic
+	// message_start/message_stop would corrupt the stream.
+	if targetChannel == "codebuff" && isStream {
+		sh.mu.Lock()
+		sh.hasReturn = true
+		sh.mu.Unlock()
+	} else {
+		sh.writeSSEMessageStart(req.Model, inputTokens, 0)
+	}
 
 	if verboseDiagnostics {
 		slog.Debug("New request received")
@@ -1127,6 +1162,41 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		payloadSystem := req.System
 
 		warpFeatureConfig := h.resolveWarpFeatureConfig(r.Context(), currentAccount, mappedModel)
+
+		// For codebuff passthrough: forward raw SSE directly to client.
+		var rawSSEWriter func(event string, data []byte)
+		if targetChannel == "codebuff" && isStream {
+			rawFlusher, _ := w.(http.Flusher)
+			var rawSawToolCallsFinish bool
+			rawSSEWriter = func(event string, data []byte) {
+				if string(data) == "[DONE]" {
+					fmt.Fprintf(w, "data: [DONE]\n\n")
+					if rawFlusher != nil {
+						rawFlusher.Flush()
+					}
+					return
+				}
+				// Codebuff sends finish_reason: "tool_calls" then finish_reason: "stop".
+				// The trailing "stop" makes opencode end the turn. Suppress it.
+				if rawSawToolCallsFinish {
+					hasStop := bytes.Contains(data, []byte(`"finish_reason":"stop"`))
+					slog.Debug("rawSSE stop check", "has_stop", hasStop, "len", len(data), "snip", string(data[0:min(len(data),80)]))
+					if hasStop {
+						slog.Debug("suppressing stop chunk in rawSSEWriter")
+						return
+					}
+				}
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				if rawFlusher != nil {
+					rawFlusher.Flush()
+				}
+				if !rawSawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"tool_calls"`)) {
+					slog.Debug("detected tool_calls in rawSSEWriter")
+					rawSawToolCallsFinish = true
+				}
+			}
+		}
+
 		upstreamReq := upstream.UpstreamRequest{
 			Prompt:               builtPrompt,
 			ChatHistory:          chatHistory,
@@ -1136,6 +1206,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			Messages:             payloadMessages,
 			System:               payloadSystem,
 			Tools:                effectiveTools,
+			ToolChoice:           req.ToolChoice,
 			NoTools:              gateNoTools,
 			NoThinking:           noThinking,
 			TraceID:              traceID,
@@ -1145,6 +1216,10 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			WarpCliAgentModel:    warpFeatureConfig.CliAgentModel,
 			WarpComputerUseModel: warpFeatureConfig.ComputerUseAgentModel,
 			DirectSSE:            nil,
+			RawOpenAIMessages:    rawBody.Messages,
+			RawOpenAISystem:      rawBody.System,
+			RawBody:              bodyBytes,
+			RawSSEWriter:         rawSSEWriter,
 		}
 		primaryHandler := upstreamMessageHandler(sh)
 		var attempt int
@@ -1527,4 +1602,128 @@ func randomSessionID() string {
 		return fmt.Sprintf("%x", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(b)
+}
+
+// handleCodebuffDirect is a pure passthrough handler for codebuff that matches
+// freebuff2api's approach exactly. It parses only the model name from the
+// request body, then forwards the raw body + raw messages upstream with minimal
+// modification — no ClaudeRequest, no prompt.Message, no ContentBlock, no
+// SystemItems, no cache_control. This eliminates all intermediate type
+// conversions that freebuff2api does not perform.
+func (h *Handler) handleCodebuffDirect(w http.ResponseWriter, r *http.Request, bodyBytes []byte, startTime time.Time) {
+	// Extract minimal fields from raw body — just model, stream, messages, system.
+	var rawBody struct {
+		Model    string             `json:"model"`
+		Stream   bool               `json:"stream"`
+		Messages stdjson.RawMessage `json:"messages"`
+		System   stdjson.RawMessage `json:"system"`
+	}
+	if err := stdjson.Unmarshal(bodyBytes, &rawBody); err != nil {
+		apperrors.New("invalid_request_error", "Invalid request body", http.StatusBadRequest).WriteResponse(w)
+		return
+	}
+
+	// Debug logger
+	logger := debug.New(h.config.DebugEnabled, h.config.DebugLogSSE)
+	defer logger.Close()
+
+	// Determine channel from URL path
+	forcedChannel := channelFromPath(r.URL.Path)
+	targetChannel := strings.TrimSpace(forcedChannel)
+	if targetChannel == "" {
+		targetChannel = "codebuff"
+	}
+
+	// Validate model availability
+	validatedModel, err := h.validateModelAvailability(r.Context(), rawBody.Model, forcedChannel)
+	if err != nil {
+		apperrors.New("invalid_request_error", err.Error(), http.StatusBadRequest).WriteResponse(w)
+		return
+	}
+	mappedModel := rawBody.Model
+	if validatedModel != nil && validatedModel.ModelID != "" {
+		mappedModel = validatedModel.ModelID
+	}
+
+	// Select account
+	var failedAccountIDs []int64
+	apiClient, currentAccount, err := h.selectAccountWithOptions(r.Context(), targetChannel, true, failedAccountIDs, accountSelectionOptions{
+		ModelID: mappedModel,
+	})
+	if err != nil {
+		apperrors.New("server_error", fmt.Sprintf("No available accounts: %v", err), http.StatusServiceUnavailable).WriteResponse(w)
+		return
+	}
+
+	slog.Debug("codebuff direct passthrough",
+		"channel", targetChannel,
+		"requested_model", rawBody.Model,
+		"mapped_model", mappedModel,
+		"account_id", currentAccount.ID,
+		"stream", rawBody.Stream,
+	)
+
+	// Set SSE headers
+	if rawBody.Stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+	}
+
+	// Raw SSE writer — forwards upstream SSE directly to client, suppressing
+	// trailing finish_reason:"stop" after finish_reason:"tool_calls".
+	var rawSSEWriter func(event string, data []byte)
+	if rawBody.Stream {
+		rawFlusher, _ := w.(http.Flusher)
+		var rawSawToolCallsFinish bool
+		rawSSEWriter = func(event string, data []byte) {
+			if string(data) == "[DONE]" {
+				fmt.Fprintf(w, "data: [DONE]\n\n")
+				if rawFlusher != nil {
+					rawFlusher.Flush()
+				}
+				return
+			}
+			if rawSawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"stop"`)) {
+				slog.Debug("suppressing stop chunk in codebuff direct passthrough", "len", len(data))
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			if rawFlusher != nil {
+				rawFlusher.Flush()
+			}
+			if !rawSawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"tool_calls"`)) {
+				rawSawToolCallsFinish = true
+			}
+		}
+	}
+
+	// Build minimal upstream request with raw body — no type conversions.
+	upstreamReq := upstream.UpstreamRequest{
+		Model:             mappedModel,
+		Stream:            rawBody.Stream,
+		RawBody:           bodyBytes,
+		RawOpenAIMessages: rawBody.Messages,
+		RawOpenAISystem:   rawBody.System,
+		RawSSEWriter:      rawSSEWriter,
+		TraceID:           fmt.Sprintf("codebuff-%x", time.Now().UnixNano()),
+	}
+
+	// Call provider — SSE passthrough only
+	if err := apiClient.SendRequestWithPayload(r.Context(), upstreamReq, nil, logger); err != nil {
+		slog.Error("codebuff direct passthrough failed", "error", err)
+	}
+
+	// Log audit event
+	auditStatus := "success"
+	h.auditLogger.Log(r.Context(), audit.Event{
+		Action:    "chat_request",
+		AccountID: currentAccount.ID,
+		Model:     mappedModel,
+		Channel:   targetChannel,
+		ClientIP:  r.RemoteAddr,
+		UserAgent: r.UserAgent(),
+		Duration:  time.Since(startTime).Milliseconds(),
+		Status:    auditStatus,
+	})
 }

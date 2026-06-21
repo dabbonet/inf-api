@@ -125,6 +125,9 @@ func channelFromPath(path string) string {
 	if strings.HasPrefix(path, "/zenmux/") {
 		return "zenmux"
 	}
+	if strings.HasPrefix(path, "/codebuff/") {
+		return "codebuff"
+	}
 	return ""
 }
 
@@ -1366,7 +1369,7 @@ func looksLikeReleaseRiskRequest(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"publish risk", "go online risk", "delivery risk", "publish hidden dangers", "publish problem",
+		"publish risk", "publishing risk", "go online risk", "delivery risk", "publish hidden dangers", "publish problem",
 		"release risk", "rollout risk", "deployment risk", "shipping risk", "release issue",
 	} {
 		if strings.Contains(lower, marker) {
@@ -1401,7 +1404,7 @@ func explicitlyRequestsDeepAnalysis(text string) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"in-depth analysis", "detailed analysis", "deep analysis", "comprehensive analysis", "deep analysis", "detailed analysis", "in-depth analysis",
+		"in-depth", "detailed analysis", "deep analysis", "comprehensive analysis",
 	} {
 		if strings.Contains(lower, marker) {
 			return true

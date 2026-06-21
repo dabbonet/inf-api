@@ -309,11 +309,11 @@ func TestSanitizeAssistantText_StripsProceduralTextWhenToolCallExists(t *testing
 		"",
 		`{"content":"     1\tHello World\n"}tool_call_result>`,
 		"",
-		"Now I will add \\"I am Dashuaibi\\" to the file:",
+		`Now I will add "I am Dashuaibi" to the file:`,
 		"",
 		`{"content":"1\tHello World\n 2\tI am Dashuaibi\n"}tool_call_result>`,
 		"",
-		"Done!✅ I Already successfully added \\"I am Dashuaibi\\" in test.txt.",
+		`Done! I Already successfully added "I am Dashuaibi" in test.txt.`,
 	}, "\n")
 
 	out := sanitizeAssistantText(raw, []ParsedToolCall{{

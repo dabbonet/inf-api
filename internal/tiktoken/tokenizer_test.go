@@ -20,13 +20,13 @@ func TestEstimateTextTokens(t *testing.T) {
 		},
 		{
 			name: "Pure Chinese",
-			text: "This is a test sentence.",
+			text: "这是一个中文测试句子",
 			min:  10,
 			max:  15,
 		},
 		{
 			name: "Mixed",
-			text: "This is a test This is a test",
+			text: "这是一个 mixed test 句子中文",
 			min:  10,
 			max:  16,
 		},

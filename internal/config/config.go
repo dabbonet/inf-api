@@ -37,6 +37,17 @@ type Config struct {
 	TokenCacheTTL      int    `json:"token_cache_ttl"`
 	TokenCacheStrategy string `json:"token_cache_strategy"`
 
+	// ── Codebuff (freebuff2api migration) ──
+	CodebuffEnabled     bool     `json:"codebuff_enabled"`
+	CodebuffBaseURL     string   `json:"codebuff_base_url"`
+	CodebuffAdProviders []string `json:"codebuff_ad_providers"`
+	CodebuffSessionID   string   `json:"codebuff_session_id"`
+	CodebuffClientID    string   `json:"codebuff_client_id"`
+	CodebuffTimezone    string   `json:"codebuff_timezone"`
+	CodebuffLocale      string   `json:"codebuff_locale"`
+	CodebuffOS          string   `json:"codebuff_os"`
+	ZeroclickBaseURL    string   `json:"zeroclick_base_url"`
+
 	// ── Per-client state (used by warp client, not configurable) ──
 	SessionID     string `json:"-"`
 	ClientCookie  string `json:"-"`

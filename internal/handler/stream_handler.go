@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -274,6 +275,9 @@ type streamHandler struct {
 	deferredFlushBytes    int
 	openAIChunkScratch    []byte
 	ssePayloadScratch     []byte
+	modelHint             atomic.Value // []byte — populated at init; never mutated after first set
+	chunkRewriter         atomic.Value // func([]byte) []byte — set via SetChunkRewriter before any write
+	toolIndexHint         int32        // atomic via store/load; -1 means legacy default
 
 	// Tool Handling (proxy mode only)
 	toolBlocks                map[string]int
@@ -372,6 +376,25 @@ func (h *streamHandler) setDisallowToolCalls(disallow bool) {
 	h.mu.Lock()
 	h.disallowToolCalls = disallow
 	h.mu.Unlock()
+}
+
+func (h *streamHandler) setModelHint(model string) {
+	if model == "" {
+		h.modelHint.Store(([]byte)(nil))
+		return
+	}
+	h.modelHint.Store([]byte(`"` + model + `"`))
+}
+
+func (h *streamHandler) SetChunkRewriter(fn func([]byte) []byte) {
+	h.chunkRewriter.Store(fn)
+}
+
+func (h *streamHandler) setToolIndexHint(idx int) {
+	if idx < 0 {
+		idx = 0
+	}
+	atomic.StoreInt32(&h.toolIndexHint, int32(idx))
 }
 
 func (h *streamHandler) setAllowedToolNames(names []string) {
@@ -513,11 +536,27 @@ func (h *streamHandler) writeOpenAISSE(event, data string) (bool, error) {
 	return h.writeOpenAISSEBytes(event, []byte(data))
 }
 func (h *streamHandler) writeOpenAISSEBytes(event string, data []byte) (bool, error) {
-	raw, ok := adapter.AppendOpenAIChunk(h.openAIChunkScratch[:0], h.msgID, h.startTime.Unix(), event, data)
+	var quotedModel []byte
+	if v, ok := h.modelHint.Load().([]byte); ok {
+		quotedModel = v
+	}
+	toolIndex := int(atomic.LoadInt32(&h.toolIndexHint))
+	var rewriter func([]byte) []byte
+	if v, ok := h.chunkRewriter.Load().(func([]byte) []byte); ok {
+		rewriter = v
+	}
+
+	raw, ok := adapter.AppendOpenAIChunkWithHint(h.openAIChunkScratch[:0], h.msgID, h.startTime.Unix(), event, data, quotedModel, toolIndex)
 	if !ok {
 		return false, nil
 	}
 	h.openAIChunkScratch = raw[:0]
+	if rewriter != nil {
+		rewritten := rewriter(raw)
+		if len(rewritten) > 0 {
+			raw = rewritten
+		}
+	}
 	if err := writeOpenAIFrame(h.w, raw); err != nil {
 		return false, err
 	}

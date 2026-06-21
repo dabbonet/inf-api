@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"orchids-api/internal/codebuff"
 	"orchids-api/internal/config"
 	"orchids-api/internal/puter"
 	"orchids-api/internal/store"
@@ -91,6 +92,9 @@ func (h *Handler) buildAccountClient(acc *store.Account) UpstreamClient {
 	}
 	if strings.EqualFold(acc.AccountType, "puter") {
 		return puter.NewFromAccount(acc, cfg)
+	}
+	if strings.EqualFold(acc.AccountType, "codebuff") {
+		return codebuff.NewFromAccount(acc, cfg)
 	}
 	return nil
 }

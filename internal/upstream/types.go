@@ -1,6 +1,8 @@
 package upstream
 
 import (
+	stdjson "encoding/json"
+
 	"github.com/goccy/go-json"
 
 	"orchids-api/internal/prompt"
@@ -25,6 +27,7 @@ type UpstreamRequest struct {
 	Messages             []prompt.Message
 	System               []prompt.SystemItem
 	Tools                []interface{}
+	ToolChoice           interface{}
 	NoTools              bool
 	NoThinking           bool
 	TraceID              string
@@ -36,6 +39,23 @@ type UpstreamRequest struct {
 	WarpCliAgentModel    string
 	WarpComputerUseModel string
 	DirectSSE            DirectSSEEmitter
+
+	// RawOpenAI preserves the original OpenAI-format messages/system JSON.
+	// When set, codebuff BuildPayload uses these directly instead of
+	// reconstructing from the converted prompt.Message ContentBlocks.
+	RawOpenAIMessages stdjson.RawMessage `json:"-"`
+	RawOpenAISystem   stdjson.RawMessage `json:"-"`
+
+	// RawBody is the entire original request body for pure passthrough mode.
+	// Used by codebuff path to forward the request upstream with minimal
+	// modification, matching freebuff2api's approach exactly.
+	RawBody stdjson.RawMessage `json:"-"`
+
+	// RawSSEWriter allows codebuff to forward raw SSE directly to the client,
+	// bypassing the StreamParser → stream_handler pipeline entirely.
+	// When set, codebuff streamChat writes raw SSE lines here instead of
+	// converting through internal Anthropic events.
+	RawSSEWriter func(event string, data []byte) `json:"-"`
 }
 
 // SSEMessage unifies the upstream SSE message structure (Warp/Orchids reuse)

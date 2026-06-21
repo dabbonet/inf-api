@@ -9,5 +9,8 @@
   "redis_addr": "127.0.0.1:6379",
   "redis_password": "",
   "redis_db": 0,
-  "redis_prefix": "orchids:"
+  "redis_prefix": "orchids:",
+  "proxy_url": "http://brd-customer-hl_a408d1c3-zone-isp_proxy2:r18rvqn5wzpl@brd.superproxy.io:33335",
+  "codebuff_enabled": true,
+  "codebuff_ad_providers": ["gravity", "zeroclick"]
 }

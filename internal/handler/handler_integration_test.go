@@ -197,7 +197,7 @@ func TestHandleMessages_DoesNotFilterToolCallsByDeclaredTools(t *testing.T) {
 			{
 				"type": "function",
 				"function": map[string]any{
-					"name": "Read",
+					"name": "Edit",
 					"parameters": map[string]any{
 						"type": "object",
 					},
@@ -778,7 +778,7 @@ func TestHandleMessages_SuggestionMode_LocalResponse(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), "\"type\":\"message\"") {
 			t.Fatalf("expected message json, got: %s", rec.Body.String())
 		}
-		if !strings.Contains(rec.Body.String(), "Okay") {
+		if !strings.Contains(rec.Body.String(), "go ahead") {
 			t.Fatalf("expected local suggestion in response, got: %s", rec.Body.String())
 		}
 	}
@@ -794,7 +794,7 @@ func TestHandleMessages_SuggestionMode_LocalResponse(t *testing.T) {
 		if !strings.Contains(out, "event: message_start") || !strings.Contains(out, "event: message_stop") {
 			t.Fatalf("expected sse message start/stop, got: %s", out)
 		}
-		if !strings.Contains(out, "Okay") {
+		if !strings.Contains(out, "go ahead") {
 			t.Fatalf("expected local suggestion in sse output, got: %s", out)
 		}
 	}
