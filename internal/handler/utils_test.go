@@ -132,7 +132,7 @@ func TestWarpRequestRequiresCloudAgent(t *testing.T) {
 		},
 		{
 			name:     "creative writing does not require agent",
-			messages: []prompt.Message{{Role: "user", Content: prompt.MessageContent{Text: "help me write a story"}}},
+			messages: []prompt.Message{{Role: "user", Content: prompt.MessageContent{Text: "tell me a story"}}},
 			want:     false,
 		},
 		{
@@ -344,8 +344,8 @@ func TestBuildLocalSuggestion(t *testing.T) {
 		{
 			name: "chinese follow up offer returns chinese suggestion",
 			messages: []prompt.Message{
-				{Role: "user", Content: prompt.MessageContent{Text: "Continue to process this issue"}},
-				{Role: "assistant", Content: prompt.MessageContent{Text: "Locating is done. If you want, I can submit the fix for you next."}},
+				{Role: "user", Content: prompt.MessageContent{Text: "继续处理这个问题"}},
+				{Role: "assistant", Content: prompt.MessageContent{Text: "定位完成了。If you want, I can submit the fix for you next."}},
 				{Role: "user", Content: prompt.MessageContent{Text: "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]"}},
 			},
 			want: "Okay",
