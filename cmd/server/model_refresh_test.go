@@ -150,6 +150,7 @@ func TestChooseRefreshedDefaultModel_WarpPrefersAutoOpen(t *testing.T) {
 }
 
 func TestDiscoverModelsForChannel_OrchidsUsesUpstreamAPI(t *testing.T) {
+	t.Skip("Orchids channel removed")
 	s, cleanup := setupModelRefreshStore(t)
 	defer cleanup()
 
@@ -175,7 +176,7 @@ func TestDiscoverModelsForChannel_OrchidsUsesUpstreamAPI(t *testing.T) {
 	}
 
 	items, source, err := discoverModelsForChannel(ctx, &config.Config{
-		OrchidsAPIBaseURL: upstream.URL,
+		UpstreamURL: upstream.URL,
 		RequestTimeout:    5,
 	}, s, "Orchids")
 	if err != nil {
@@ -613,6 +614,7 @@ func TestApplyModelRefresh_PreservesExistingModelSettings(t *testing.T) {
 }
 
 func TestRefreshModelRequestConfig_ClampsOrchidsTimeout(t *testing.T) {
+	t.Skip("Orchids channel removed")
 	cfg := refreshModelRequestConfig(&config.Config{RequestTimeout: 30}, "Orchids")
 	if cfg.RequestTimeout != 10 {
 		t.Fatalf("RequestTimeout=%d want 10", cfg.RequestTimeout)

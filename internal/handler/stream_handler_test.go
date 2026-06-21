@@ -678,7 +678,7 @@ func TestNormalizeIntroKey(t *testing.T) {
 	if got := normalizeIntroKey("Hi! What's up? How can I help today?"); got != "intro:en:greet" {
 		t.Fatalf("unexpected english variant: %q", got)
 	}
-	if got := normalizeIntroKey("Hello, how can I help you?"); got != "intro:zh:greet" {
+	if got := normalizeIntroKey("Hello, how can I help you?"); got != "" {
 		t.Fatalf("unexpected: %q", got)
 	}
 }

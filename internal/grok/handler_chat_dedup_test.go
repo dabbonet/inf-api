@@ -20,8 +20,8 @@ func TestStreamMessageDelta(t *testing.T) {
 		want     string
 	}{
 		{name: "initial", previous: "", current: "hello", want: "hello"},
-		{name: "append", previous: "you", current: "hello！", want: "Good!"},
-		{name: "rewrite prefix", previous: "you！rok，", current: "hello! I'm Grok, the xAI AI assistant.", want: "Good! I'm Grok, xAI AI assistant."},
+		{name: "append", previous: "hello", current: "hello!", want: "!"},
+		{name: "rewrite prefix", previous: "hello!", current: "hello! I'm Grok, the xAI AI assistant.", want: " I'm Grok, the xAI AI assistant."},
 		{name: "shrink", previous: "hello world", current: "hello", want: ""},
 	}
 
