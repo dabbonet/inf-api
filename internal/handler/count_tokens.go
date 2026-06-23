@@ -28,19 +28,12 @@ func (h *Handler) HandleCountTokens(w http.ResponseWriter, r *http.Request) {
 	breakdown := inputTokenBreakdown{}
 	profile := ""
 	channel := channelFromPath(r.URL.Path)
-	if channel == "warp" {
-		if warpBD, warpProfile, err := estimateWarpInputTokenBreakdown("", req.Model, req.Messages, req.System, req.Tools, len(req.Tools) == 0, ""); err == nil {
-			breakdown = warpBD
-			profile = warpProfile
-		}
-	}
-	if breakdown.Total == 0 && channel == "puter" {
-		breakdown = estimateInputTokenBreakdown(extractUserText(req.Messages), nil, req.Tools)
-		profile = "puter"
-	}
+	profile = channel
 	if breakdown.Total == 0 {
 		breakdown = estimateInputTokenBreakdown(extractUserText(req.Messages), nil, req.Tools)
-		profile = "default"
+		if profile == "" {
+			profile = "default"
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

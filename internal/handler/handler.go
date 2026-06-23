@@ -31,7 +31,6 @@ import (
 	"orchids-api/internal/tokencache"
 	"orchids-api/internal/upstream"
 	"orchids-api/internal/util"
-	"orchids-api/internal/warp"
 )
 
 // ClientFactory creates an upstream client for a given account.
@@ -529,8 +528,6 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			stack := string(rtdebug.Stack())
 			slog.Error("Panic in HandleMessages", "error", err, "stack", stack)
 			if streamingStarted {
-				// Headers already sent — write an SSE error event instead of HTTP error
-				// Pre-compiled zero-allocation string
 				fmt.Fprintf(w, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"server_error\",\"message\":\"Internal Server Error\"}}\n\n")
 				if f, ok := w.(http.Flusher); ok {
 					f.Flush()
@@ -735,7 +732,6 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	if workdirChanged {
 		slog.Warn("A change in the work directory has been detected and the history has been cleared.", "prev", prevWorkdir, "next", effectiveWorkdir, "session", conversationKey)
 		req.Messages = resetMessagesForNewWorkdir(req.Messages)
-		// Clear the upstream session ID when the work directory changes and force a new session to open.
 		if conversationKey != "" {
 			h.sessionStore.DeleteSession(r.Context(), conversationKey)
 		}
@@ -762,65 +758,43 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	preSelectWarpRequest := strings.EqualFold(targetChannel, "warp")
-	preSelectPuterRequest := strings.EqualFold(targetChannel, "puter")
-	preSelectPassthroughRequest := preSelectWarpRequest || preSelectPuterRequest
-	warpChatMode := preSelectWarpRequest && isWarpChatModel(req.Model)
-	warpAgentMode := preSelectWarpRequest && isWarpAgentModel(req.Model)
+	isPuterRequest := strings.EqualFold(targetChannel, "puter")
 	suggestionMode := isSuggestionMode(req.Messages)
 	noThinking := suggestionMode || h.config.SuppressThinking
 	gateNoTools := false
-	toolGateReasons := make([]string, 0, 2)
 	toolGateMessage := ""
 	suppressThinking := noThinking
 	if suggestionMode {
 		gateNoTools = true
-		toolGateReasons = append(toolGateReasons, "suggestion_mode")
 		toolGateMessage = buildToolGateMessage(req.Messages, true)
 	}
 	if lastUserIsToolResultFollowup(req.Messages) {
-		if preSelectPassthroughRequest {
+		if isPuterRequest {
 			if verboseDiagnostics {
-				slog.Debug("tool_gate: keeping tools for passthrough tool_result follow-up", "warp", preSelectWarpRequest, "puter", preSelectPuterRequest)
-			}
-		} else if shouldKeepToolsForWarpToolResultFollowup(req.Messages) {
-			if verboseDiagnostics {
-				slog.Debug("tool_gate: keeping tools for exploratory tool_result follow-up", "warp", preSelectWarpRequest)
+				slog.Debug("tool_gate: keeping tools for puter tool_result follow-up")
 			}
 		} else {
 			gateNoTools = true
-			toolGateReasons = append(toolGateReasons, "tool_result_followup")
 			toolGateMessage = buildToolGateMessage(req.Messages, suggestionMode)
 			if verboseDiagnostics {
-				slog.Debug("tool_gate: disabled tools for tool_result-only follow-up", "warp", preSelectWarpRequest)
+				slog.Debug("tool_gate: disabled tools for tool_result-only follow-up")
 			}
 		}
 	}
 	effectiveTools := req.Tools
-	if h.config.WarpDisableTools != nil && *h.config.WarpDisableTools {
-		effectiveTools = nil
-	}
-	if warpChatMode {
-		gateNoTools = true
-		effectiveTools = nil
-		toolGateReasons = append(toolGateReasons, "warp_chat_mode")
-		toolGateMessage = warpChatToolGateMessage()
-	}
 	if gateNoTools {
 		effectiveTools = nil
 		if verboseDiagnostics {
-			slog.Debug("tool_gate: disabled tools", "warp", preSelectWarpRequest, "reasons", toolGateReasons)
+			slog.Debug("tool_gate: disabled tools")
 		}
 	}
-	requireWarpCloudAgent := preSelectWarpRequest && !warpChatMode && (warpAgentMode || warpRequestRequiresCloudAgent(req.Messages, effectiveTools))
 
 	// Initial Selection
 	failedAccountIDs := []int64{}
 	failedAccountSet := make(map[int64]struct{})
 
 	apiClient, currentAccount, err := h.selectAccountWithOptions(r.Context(), targetChannel, forcedChannel != "", failedAccountIDs, accountSelectionOptions{
-		ModelID:               upstreamWarpModelID(req.Model),
-		RequireWarpCloudAgent: requireWarpCloudAgent,
+		ModelID: strings.TrimSpace(req.Model),
 	})
 	if err != nil {
 		slog.Error("selectAccount failed", "error", err, "channel", targetChannel)
@@ -836,30 +810,20 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("Checkpoint: selectAccount success")
 	}
 
-	// Capture an account snapshot to check whether forceRefreshToken has updated the account information after the request is completed.
+	// Capture an account snapshot
 	var accountSnapshot *store.Account
 	if currentAccount != nil {
 		snap := *currentAccount
 		accountSnapshot = &snap
 	}
 
-	isWarpRequest := preSelectWarpRequest
-	if currentAccount != nil && strings.EqualFold(currentAccount.AccountType, "warp") {
-		isWarpRequest = true
-	}
-	isPuterRequest := preSelectPuterRequest
-	if currentAccount != nil && strings.EqualFold(currentAccount.AccountType, "puter") {
+	if isPuterRequest || (currentAccount != nil && strings.EqualFold(currentAccount.AccountType, "puter")) {
 		isPuterRequest = true
 	}
-	isPassthroughRequest := isWarpRequest || isPuterRequest
+	isPassthroughRequest := isPuterRequest
 	if isPassthroughRequest {
-		channel := "warp"
-		if isPuterRequest {
-			channel = "puter"
-		}
-		// Passthrough channels do not trim history/tool results.
 		if verboseDiagnostics {
-			slog.Debug("Checkpoint: passthrough, skip context trimming", "channel", channel)
+			slog.Debug("Checkpoint: passthrough, skip context trimming", "channel", "puter")
 		}
 	} else {
 		if verboseDiagnostics {
@@ -889,32 +853,18 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		h.releaseTrackedAccount(trackedAccountID)
 	}()
 
-	chatSessionID := ""
-	if isWarpRequest && conversationKey != "" {
-		chatSessionID, _ = h.sessionStore.GetConvID(r.Context(), conversationKey)
-		h.sessionStore.Touch(r.Context(), conversationKey)
-	}
-
 	// build prompt (V2 Markdown format)
 	startBuild := time.Now()
 	if verboseDiagnostics {
 		slog.Debug("Starting prompt build...", "conversation_id", conversationKey)
 	}
-	// Mapping model (for upstream requests consistent with hints)
+	// Mapping model
 	mappedModel := mapModel(req.Model)
-	if currentAccount != nil && strings.EqualFold(currentAccount.AccountType, "warp") {
-		mappedModel = upstreamWarpModelID(req.Model)
-	} else if isPuterRequest {
+	if isPuterRequest {
 		mappedModel = strings.TrimSpace(req.Model)
 	} else if currentAccount != nil {
-		// aihubmix/zenmux/codebuff (and any future static-key provider) must pass the
-		// requested model ID through verbatim — the upstream's model list is
-		// the source of truth. Without this guard, an unknown model would be
-		// silently remapped to claude-sonnet-4-6 by the Warp/Grok mapModel
-		// fallback and the upstream would reject it as a "model not in
-		// allowed list" 403.
 		at := strings.ToLower(strings.TrimSpace(currentAccount.AccountType))
-		if at == "aihubmix" || at == "zenmux" || at == "codebuff" {
+		if at == "codebuff" {
 			mappedModel = strings.TrimSpace(req.Model)
 		}
 	}
@@ -936,13 +886,13 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			NoThinking: noThinking,
 		}
 	} else {
-		builtPrompt = warp.PreviewUserQuery("", req.Messages, req.System, chatSessionID)
-		promptMeta = promptMetaType{
-			Profile:    "warp-official-proto",
-			NoThinking: noThinking,
+		builtPrompt = strings.TrimSpace(extractUserText(req.Messages))
+		if builtPrompt == "" {
+			builtPrompt = "request"
 		}
-		if strings.TrimSpace(builtPrompt) == "" {
-			builtPrompt = "warp request"
+		promptMeta = promptMetaType{
+			Profile:    "generic",
+			NoThinking: noThinking,
 		}
 	}
 	noThinking = promptMeta.NoThinking
@@ -950,9 +900,6 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	buildDuration := time.Since(startBuild)
 	if verboseDiagnostics {
 		slog.Debug("Prompt build completed", "duration", buildDuration)
-		buildLabel := "BuildPromptAndHistory"
-		buildLabel = "BuildWarpPromptAndHistory"
-		slog.Debug("[Performance] "+buildLabel, "duration", buildDuration)
 	}
 
 	if verboseDiagnostics {
@@ -998,21 +945,8 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	logger.LogConvertedPrompt(builtPrompt)
 
-	breakdown := inputTokenBreakdown{}
+	breakdown := estimateInputTokenBreakdown(builtPrompt, promptHistory, effectiveTools)
 	breakdownProfile := promptMeta.Profile
-	if isWarpRequest {
-		if warpBD, profile, err := estimateWarpInputTokenBreakdown(builtPrompt, mappedModel, upstreamMessages, req.System, effectiveTools, gateNoTools, chatSessionID); err == nil {
-			breakdown = warpBD
-			breakdownProfile = profile
-		} else {
-			slog.Warn("Warp token estimation fallback to generic breakdown", "error", err)
-			breakdown = estimateInputTokenBreakdown(builtPrompt, promptHistory, effectiveTools)
-		}
-	} else if isPuterRequest {
-		breakdown = estimateInputTokenBreakdown(builtPrompt, promptHistory, effectiveTools)
-	} else {
-		breakdown = estimateInputTokenBreakdown(builtPrompt, promptHistory, effectiveTools)
-	}
 	if verboseDiagnostics {
 		slog.Debug(
 			"Input token breakdown (estimated)",
@@ -1084,12 +1018,11 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	sh.setDisallowToolCalls(gateNoTools)
 	sh.seedSideEffectDedupFromMessages(upstreamMessages)
-	sh.setUsageTokens(inputTokens, -1) // Correctly initialize input tokens
+	sh.setUsageTokens(inputTokens, -1)
 	sh.setCacheTokens(cacheReadTokens, cacheCreationTokens)
 	if cr, ok := apiClient.(ChunkRewriterInstaller); ok {
 		sh.SetChunkRewriter(cr.BuildChunkRewriter())
 	}
-	// Capture the conversationID returned by the upstream and store the persistence in the session for reuse in subsequent requests.
 	sh.onConversationID = func(id string) {
 		if conversationKey == "" {
 			return
@@ -1097,15 +1030,13 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		h.sessionStore.SetConvID(r.Context(), conversationKey, id)
 		h.sessionStore.Touch(r.Context(), conversationKey)
 		if verboseDiagnostics {
-			slog.Debug("Warp conversationID captured", "key", conversationKey, "id", id)
+			slog.Debug("ConversationID captured", "key", conversationKey, "id", id)
 		}
 	}
 	defer sh.release()
 
 	sh.setModelHint(req.Model)
 	// For codebuff raw SSE passthrough, skip Anthropic-format lifecycle events.
-	// The raw passthrough writes OpenAI-format SSE directly; writing Anthropic
-	// message_start/message_stop would corrupt the stream.
 	if targetChannel == "codebuff" && isStream {
 		sh.mu.Lock()
 		sh.hasReturn = true
@@ -1147,10 +1078,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 
 	// Main execution
 	run := func() {
-		// Reuse the conversationID returned by the upstream to maintain session continuity
-		if chatSessionID == "" {
-			chatSessionID = "chat_" + randomSessionID()
-		}
+		chatSessionID := "chat_" + randomSessionID()
 		maxRetries := h.config.MaxRetries
 		if maxRetries < 0 {
 			maxRetries = 0
@@ -1160,8 +1088,6 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 
 		payloadMessages := upstreamMessages
 		payloadSystem := req.System
-
-		warpFeatureConfig := h.resolveWarpFeatureConfig(r.Context(), currentAccount, mappedModel)
 
 		// For codebuff passthrough: forward raw SSE directly to client.
 		var rawSSEWriter func(event string, data []byte)
@@ -1176,8 +1102,6 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 					}
 					return
 				}
-				// Codebuff sends finish_reason: "tool_calls" then finish_reason: "stop".
-				// The trailing "stop" makes opencode end the turn. Suppress it.
 				if rawSawToolCallsFinish {
 					hasStop := bytes.Contains(data, []byte(`"finish_reason":"stop"`))
 					slog.Debug("rawSSE stop check", "has_stop", hasStop, "len", len(data), "snip", string(data[0:min(len(data),80)]))
@@ -1198,28 +1122,26 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 
 		upstreamReq := upstream.UpstreamRequest{
-			Prompt:               builtPrompt,
-			ChatHistory:          chatHistory,
-			Workdir:              effectiveWorkdir,
-			Model:                mappedModel,
-			Stream:               req.Stream,
-			Messages:             payloadMessages,
-			System:               payloadSystem,
-			Tools:                effectiveTools,
-			ToolChoice:           req.ToolChoice,
-			NoTools:              gateNoTools,
-			NoThinking:           noThinking,
-			TraceID:              traceID,
-			ChatSessionID:        chatSessionID,
-			ProjectID:            "",
-			IsFirstPrompt:        false,
-			WarpCliAgentModel:    warpFeatureConfig.CliAgentModel,
-			WarpComputerUseModel: warpFeatureConfig.ComputerUseAgentModel,
-			DirectSSE:            nil,
-			RawOpenAIMessages:    rawBody.Messages,
-			RawOpenAISystem:      rawBody.System,
-			RawBody:              bodyBytes,
-			RawSSEWriter:         rawSSEWriter,
+			Prompt:            builtPrompt,
+			ChatHistory:       chatHistory,
+			Workdir:           effectiveWorkdir,
+			Model:             mappedModel,
+			Stream:            req.Stream,
+			Messages:          payloadMessages,
+			System:            payloadSystem,
+			Tools:             effectiveTools,
+			ToolChoice:        req.ToolChoice,
+			NoTools:           gateNoTools,
+			NoThinking:        noThinking,
+			TraceID:           traceID,
+			ChatSessionID:     chatSessionID,
+			ProjectID:         "",
+			IsFirstPrompt:     false,
+			DirectSSE:         nil,
+			RawOpenAIMessages: rawBody.Messages,
+			RawOpenAISystem:   rawBody.System,
+			RawBody:           bodyBytes,
+			RawSSEWriter:      rawSSEWriter,
 		}
 		primaryHandler := upstreamMessageHandler(sh)
 		var attempt int
@@ -1254,79 +1176,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			if verboseDiagnostics {
 				slog.Debug("Using SendRequestWithPayload")
 			}
-			warpBatches := []warpToolResultBatch{{Messages: upstreamMessages}}
-			if isWarpRequest {
-				if h.config.WarpSplitToolResults || lastUserIsToolResultFollowup(upstreamMessages) {
-					batches, total := splitWarpToolResults(upstreamMessages, 1)
-					if verboseDiagnostics && len(batches) > 1 {
-						slog.Debug("Warp tool results split", "total_tool_results", total, "batches", len(batches))
-					}
-					warpBatches = batches
-				}
-			}
-			latestChatSessionID := upstreamReq.ChatSessionID
-			for i, batch := range warpBatches {
-				batchReq := upstreamReq
-				batchReq.Messages = batch.Messages
-				batchReq.ChatSessionID = latestChatSessionID
-				isLast := i == len(warpBatches)-1
-				if isLast {
-					err = apiClient.SendRequestWithPayload(r.Context(), batchReq, primaryHandler, logger)
-				} else {
-					intermediateConversationID := ""
-					intermediateTextDeltas := 0
-					intermediateToolCalls := 0
-					bufferedIntermediate := make([]upstream.SSEMessage, 0, 8)
-					noopHandler := func(msg upstream.SSEMessage) {
-						switch msg.Type {
-						case "model.conversation_id":
-							if id, ok := msg.Event["id"].(string); ok && strings.TrimSpace(id) != "" {
-								intermediateConversationID = id
-								latestChatSessionID = id
-								if conversationKey != "" {
-									h.sessionStore.SetConvID(r.Context(), conversationKey, id)
-									h.sessionStore.Touch(r.Context(), conversationKey)
-								}
-								if verboseDiagnostics {
-									slog.Debug("Warp intermediate conversationID captured", "key", conversationKey, "id", id)
-								}
-							}
-							bufferedIntermediate = append(bufferedIntermediate, cloneSSEMessage(msg))
-						case "model.text-delta", "coding_agent.output_text.delta":
-							intermediateTextDeltas++
-							bufferedIntermediate = append(bufferedIntermediate, cloneSSEMessage(msg))
-						case "model.tool-call":
-							intermediateToolCalls++
-							bufferedIntermediate = append(bufferedIntermediate, cloneSSEMessage(msg))
-						case "model.finish", "model.tokens-used":
-							bufferedIntermediate = append(bufferedIntermediate, cloneSSEMessage(msg))
-						case "error":
-							slog.Warn("Warp intermediate batch error", "event", msg.Event)
-						}
-					}
-					err = apiClient.SendRequestWithPayload(r.Context(), batchReq, noopHandler, logger)
-					if verboseDiagnostics && err == nil && intermediateConversationID == "" {
-						slog.Debug("Warp intermediate batch completed without conversationID update", "batch", i+1)
-					}
-					if err == nil && (intermediateTextDeltas > 0 || intermediateToolCalls > 0) {
-						if verboseDiagnostics {
-							slog.Debug(
-								"Warp intermediate batch produced visible output",
-								"batch", i+1,
-								"text_deltas", intermediateTextDeltas,
-								"tool_calls", intermediateToolCalls,
-							)
-						}
-						for _, buffered := range bufferedIntermediate {
-							sh.handleMessage(buffered)
-						}
-						break
-					}
-				}
-				if err != nil {
-					break
-				}
-			}
+			err = apiClient.SendRequestWithPayload(r.Context(), upstreamReq, primaryHandler, logger)
 			if verboseDiagnostics {
 				slog.Debug("Upstream client returned", "trace_id", traceID, "attempt", upstreamReq.Attempt, "error", err)
 			}
@@ -1340,10 +1190,6 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			}
 			errStr := err.Error()
 			errClass := classifyUpstreamError(errStr)
-			warpCloudAgentForbidden := isWarpCloudAgentForbiddenError(errStr)
-			if isWarpRequest {
-				h.refundWarpCredits(apiClient, errClass.Category)
-			}
 			if sh.hasAnyOutput() {
 				slog.Warn("Upstream failed after partial output, skip retry to avoid duplicated token billing", "trace_id", traceID, "attempt", upstreamReq.Attempt, "error", err)
 				sh.finishResponse("end_turn")
@@ -1352,26 +1198,14 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 
 			// Check for non-retriable errors
 			slog.Error("Request error", "trace_id", traceID, "attempt", upstreamReq.Attempt, "error", err, "category", errClass.Category, "retryable", errClass.Retryable)
-			// Mark account status (auth errors are always marked, regardless of whether they can be retried)
+			// Mark account status
 			if currentAccount != nil && h.loadBalancer != nil && h.loadBalancer.Store != nil {
 				if status := classifyAccountStatus(errStr); status != "" {
-					// Mark status if it's auth-related OR a quota/rate-limit style cooldown.
 					if !errClass.Retryable || errClass.Category == "auth" || errClass.Category == "auth_blocked" || status == "403" || status == "429" || status == "402" {
-						skipAccountStatusMark := isWarpRequest && status == "403" && warpCloudAgentForbidden
-						if skipAccountStatusMark {
-							if verboseDiagnostics {
-								slog.Debug("Skip account global 403 tag: Warp cloud agent has insufficient capabilities", "account_id", currentAccount.ID, "category", errClass.Category)
-							}
-						} else if verboseDiagnostics {
+						if verboseDiagnostics {
 							slog.Debug("Mark account status", "account_id", currentAccount.ID, "status", status, "category", errClass.Category)
 						}
-						if !skipAccountStatusMark {
-							if isWarpRequest && errClass.Category == "rate_limit" && isWarpQuotaExhaustedError(errStr) {
-								markWarpQuotaExhausted(r.Context(), h.loadBalancer.Store, currentAccount)
-							} else {
-								h.loadBalancer.MarkAccountStatus(r.Context(), currentAccount, status)
-							}
-						}
+						h.loadBalancer.MarkAccountStatus(r.Context(), currentAccount, status)
 					}
 				}
 			}
@@ -1417,9 +1251,6 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 				"retries_remaining", retriesRemaining,
 			)
 			if errClass.SwitchAccount && currentAccount != nil && h.loadBalancer != nil {
-				if isWarpRequest && warpCloudAgentForbidden {
-					requireWarpCloudAgent = true
-				}
 				prevClient := apiClient
 				prevAccount := currentAccount
 				if _, ok := failedAccountSet[currentAccount.ID]; !ok {
@@ -1435,24 +1266,17 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 				}
 
 				nextClient, nextAccount, retryErr := h.selectAccountWithOptions(r.Context(), targetChannel, forcedChannel != "", failedAccountIDs, accountSelectionOptions{
-					ModelID:               upstreamReq.Model,
-					RequireWarpCloudAgent: requireWarpCloudAgent,
+					ModelID: upstreamReq.Model,
 				})
 				if retryErr == nil {
 					apiClient = nextClient
 					currentAccount = nextAccount
 					if currentAccount != nil {
 						trackedAccountID = h.acquireTrackedAccount(currentAccount)
-						warpFeatureConfig = h.resolveWarpFeatureConfig(r.Context(), currentAccount, upstreamReq.Model)
-						upstreamReq.WarpCliAgentModel = warpFeatureConfig.CliAgentModel
-						upstreamReq.WarpComputerUseModel = warpFeatureConfig.ComputerUseAgentModel
 						if verboseDiagnostics {
 							slog.Debug("Switched to account", "account", currentAccount.Name)
 						}
 					} else {
-						warpFeatureConfig = warp.AccountFeatureConfig{}
-						upstreamReq.WarpCliAgentModel = ""
-						upstreamReq.WarpComputerUseModel = ""
 						if verboseDiagnostics {
 							slog.Debug("Switched to default upstream config")
 						}
@@ -1462,9 +1286,6 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 						apiClient = prevClient
 						currentAccount = prevAccount
 						trackedAccountID = h.acquireTrackedAccount(currentAccount)
-						warpFeatureConfig = h.resolveWarpFeatureConfig(r.Context(), currentAccount, upstreamReq.Model)
-						upstreamReq.WarpCliAgentModel = warpFeatureConfig.CliAgentModel
-						upstreamReq.WarpComputerUseModel = warpFeatureConfig.ComputerUseAgentModel
 						slog.Warn(
 							"No alternate accounts available; retrying current account",
 							"trace_id", traceID,
@@ -1598,7 +1419,6 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 func randomSessionID() string {
 	b := make([]byte, 6)
 	if _, err := rand.Read(b); err != nil {
-		// Fallback to time-based if crypto/rand fails (unlikely)
 		return fmt.Sprintf("%x", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(b)

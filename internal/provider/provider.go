@@ -1,4 +1,4 @@
-// Package provider defines a minimal registry for upstream providers (orchids, warp, grok).
+// Package provider defines a minimal registry for upstream providers (puter, codebuff).
 // It replaces hardcoded type-switch logic with a table-driven dispatch.
 package provider
 
@@ -9,7 +9,7 @@ import (
 
 // Provider abstracts the creation of upstream clients for a given account type.
 type Provider interface {
-	// Name returns the provider identifier (e.g. "orchids", "warp", "grok").
+	// Name returns the provider identifier (e.g. "puter", "codebuff").
 	Name() string
 	// NewClient creates an upstream client for the given account and config.
 	// The returned value must satisfy the handler.UpstreamClient interface.

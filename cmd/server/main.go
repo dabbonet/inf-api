@@ -20,7 +20,6 @@ import (
 	"orchids-api/internal/codebuff"
 	"orchids-api/internal/config"
 	"orchids-api/internal/debug"
-	"orchids-api/internal/grok"
 	"orchids-api/internal/handler"
 	"orchids-api/internal/loadbalancer"
 	"orchids-api/internal/logutil"
@@ -89,7 +88,6 @@ func main() {
 	apiHandler := api.New(s, cfg.AdminUser, cfg.AdminPass, cfg)
 	h := handler.NewWithLoadBalancer(cfg, lb)
 	defer h.Close()
-	grokHandler := grok.NewHandler(cfg, lb)
 
 	// Token cache: use Redis when available, fall back to memory
 	var tokenCache tokencache.Cache
@@ -127,10 +125,7 @@ func main() {
 
 	// Provider registry for decoupled client creation
 	registry := provider.NewRegistry()
-	registry.Register("warp", provider.NewWarpProvider())
 	registry.Register("puter", provider.NewPuterProvider())
-	registry.Register("aihubmix", provider.NewAihubmixProvider())
-	registry.Register("zenmux", provider.NewZenmuxProvider())
 	if cfg.CodebuffEnabled {
 		registry.Register("codebuff", provider.NewCodebuffProvider())
 	}
@@ -182,7 +177,7 @@ func main() {
 	// Register routes
 	mux := http.NewServeMux()
 	limiter := middleware.NewConcurrencyLimiter(cfg.ConcurrencyLimit, time.Duration(cfg.ConcurrencyTimeout)*time.Second, cfg.AdaptiveTimeout)
-	registerRoutes(mux, cfg, s, h, grokHandler, apiHandler, limiter, tmplRenderer, lb)
+	registerRoutes(mux, cfg, s, h, apiHandler, limiter, tmplRenderer)
 
 	// Build server
 	server := &http.Server{

@@ -12,7 +12,6 @@ import (
 	"orchids-api/internal/config"
 	"orchids-api/internal/puter"
 	"orchids-api/internal/store"
-	"orchids-api/internal/warp"
 )
 
 type cachedAccountClient struct {
@@ -86,9 +85,6 @@ func (h *Handler) buildAccountClient(acc *store.Account) UpstreamClient {
 	}
 	if h != nil && h.clientFactory != nil {
 		return h.clientFactory(acc, cfg)
-	}
-	if strings.EqualFold(acc.AccountType, "warp") {
-		return warp.NewFromAccount(acc, cfg)
 	}
 	if strings.EqualFold(acc.AccountType, "puter") {
 		return puter.NewFromAccount(acc, cfg)
@@ -200,8 +196,6 @@ func accountClientFingerprint(acc *store.Account, cfg *config.Config) string {
 		writeInt(cfg.MaxRetries)
 		writeInt(cfg.RetryDelay)
 		writeInt(cfg.RequestTimeout)
-		writeInt(cfg.WarpMaxToolResults)
-		writeInt(cfg.WarpMaxHistoryMessages)
 		for _, value := range cfg.ProxyBypass {
 			writeString(value)
 		}

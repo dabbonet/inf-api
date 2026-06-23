@@ -13,10 +13,7 @@ import (
 	"github.com/goccy/go-json"
 
 	"orchids-api/internal/config"
-	"orchids-api/internal/grok"
-	"orchids-api/internal/modelpolicy"
 	"orchids-api/internal/store"
-	"orchids-api/internal/warp"
 )
 
 func TestMakeModelRefreshHandler_UsesBodyChannel(t *testing.T) {
@@ -91,38 +88,6 @@ func TestParseModelRefreshConcurrency(t *testing.T) {
 	}
 }
 
-func TestSyncModelsForChannel_WarpRequiresAccountDiscovery(t *testing.T) {
-	s, cleanup := setupModelRefreshStore(t)
-	defer cleanup()
-
-	ctx := context.Background()
-	clearModelsForChannel(t, ctx, s, "Warp")
-
-	result, err := syncModelsForChannel(ctx, &config.Config{}, s, "Warp")
-	if err == nil {
-		t.Fatalf("syncModelsForChannel() result=%+v want error", result)
-	}
-	if !strings.Contains(err.Error(), "warp model discovery returned no account choices") {
-		t.Fatalf("error=%v want warp discovery failure", err)
-	}
-}
-
-func TestSyncModelsForChannelConcurrent_WarpRequiresAccountDiscovery(t *testing.T) {
-	s, cleanup := setupModelRefreshStore(t)
-	defer cleanup()
-
-	ctx := context.Background()
-	clearModelsForChannel(t, ctx, s, "Warp")
-
-	result, err := syncModelsForChannelConcurrent(ctx, &config.Config{}, s, "Warp", 8)
-	if err == nil {
-		t.Fatalf("syncModelsForChannelConcurrent() result=%+v want error", result)
-	}
-	if !strings.Contains(err.Error(), "warp model discovery returned no account choices") {
-		t.Fatalf("error=%v want warp discovery failure", err)
-	}
-}
-
 func TestChooseRefreshedDefaultModel_PrefersExistingDefault(t *testing.T) {
 	existing := map[string]*store.Model{
 		"a": {ModelID: "a", IsDefault: true},
@@ -133,19 +98,6 @@ func TestChooseRefreshedDefaultModel_PrefersExistingDefault(t *testing.T) {
 	got := chooseRefreshedDefaultModel("Puter", existing, ordered)
 	if got != "a" {
 		t.Fatalf("default=%q want %q", got, "a")
-	}
-}
-
-func TestChooseRefreshedDefaultModel_WarpPrefersAutoOpen(t *testing.T) {
-	existing := map[string]*store.Model{
-		"claude-4-5-opus": {ModelID: "claude-4-5-opus", IsDefault: true},
-		"auto-open":       {ModelID: "auto-open", IsDefault: false},
-	}
-	ordered := []discoveredModel{{ID: "claude-4-5-opus"}, {ID: "auto-open"}}
-
-	got := chooseRefreshedDefaultModel("Warp", existing, ordered)
-	if got != "auto-open" {
-		t.Fatalf("default=%q want auto-open", got)
 	}
 }
 
@@ -290,94 +242,12 @@ func TestVerifyPuterDiscoveredModelsSerial_RequiresAcceptedProbe(t *testing.T) {
 	}
 }
 
-func TestGrokCanonicalAcceptanceRejectsFallbackModels(t *testing.T) {
-	tests := []struct {
-		requested string
-		canonical string
-		want      bool
-	}{
-		{requested: "grok-4.20-0309", canonical: "grok-4.20-0309", want: true},
-		{requested: "grok-4.3", canonical: "grok-4.3", want: true},
-		{requested: "grok-4.3-latest", canonical: "grok-4.3", want: false},
-		{requested: "grok-latest", canonical: "grok-4.3", want: false},
-		{requested: "grok-3-mini", canonical: "grok-4.20-0309", want: false},
-		{requested: "grok-420", canonical: "grok-4.20-0309", want: false},
-	}
-	for _, tt := range tests {
-		if got := isAcceptedGrokCanonical(tt.requested, tt.canonical); got != tt.want {
-			t.Fatalf("isAcceptedGrokCanonical(%q,%q)=%v want %v", tt.requested, tt.canonical, got, tt.want)
-		}
-	}
-}
-
-func TestGrokProbeCandidatesIncludesPolicyAndExistingModels(t *testing.T) {
-	s, cleanup := setupModelRefreshStore(t)
-	defer cleanup()
-
-	ctx := context.Background()
-	if err := s.CreateModel(ctx, &store.Model{
-		Channel:   "Grok",
-		ModelID:   "grok-future-6",
-		Name:      "grok-future-6",
-		Status:    store.ModelStatusAvailable,
-		Verified:  true,
-		IsDefault: false,
-		SortOrder: 99,
-	}); err != nil {
-		t.Fatalf("CreateModel() error = %v", err)
-	}
-
-	items := grokProbeCandidateModels(context.Background(), s)
-	gotSet := make(map[string]struct{}, len(items))
-	for _, item := range items {
-		gotSet[item.ID] = struct{}{}
-	}
-	for _, publicID := range modelpolicy.PublicGrokModelIDs() {
-		if _, ok := gotSet[publicID]; !ok {
-			t.Fatalf("expected candidates to include public model %q, got %+v", publicID, items)
-		}
-	}
-	if _, ok := gotSet["grok-future-6"]; !ok {
-		t.Fatalf("expected candidates to include existing model grok-future-6, got %+v", items)
-	}
-}
-
-func TestCanonicalizeDiscoveredModels_NormalizesLegacyGrok43(t *testing.T) {
-	got := canonicalizeDiscoveredModels([]discoveredModel{
-		{ID: "grok-4.3", Name: "Grok 4.3"},
-		{ID: "grok-4.3", Name: "Grok 4.3"},
-	}, canonicalGrokRefreshModelID)
-	if len(got) != 1 {
-		t.Fatalf("len(got)=%d want 1: %+v", len(got), got)
-	}
-	if got[0].ID != "grok-4.3" {
-		t.Fatalf("ID=%q want grok-4.3", got[0].ID)
-	}
-	if got[0].Name != "Grok 4.3" {
-		t.Fatalf("Name=%q want Grok 4.3", got[0].Name)
-	}
-}
-
-func TestGrokConsoleModelsRemainAcceptedAfterProbeFallback(t *testing.T) {
-	candidates := []discoveredModel{{ID: "grok-4.3", Name: "Grok 4.3"}}
-	accepted := make([]bool, len(candidates))
-	for idx, candidate := range candidates {
-		if spec, ok := grok.ResolveModel(candidate.ID); ok && strings.TrimSpace(spec.ConsoleModel) != "" {
-			accepted[idx] = true
-		}
-	}
-	if !accepted[0] {
-		t.Fatal("expected grok-4.3 to remain accepted as a console model")
-	}
-}
-
 func TestApplyModelRefresh_PreservesModelsMissingFromUnreliableDiscoveredList(t *testing.T) {
 	testCases := []struct {
 		channel string
 		modelID string
 	}{
 		{channel: "Puter", modelID: "puter-unavailable-model"},
-		{channel: "Orchids", modelID: "orchids-unavailable-model"},
 	}
 
 	for _, tc := range testCases {
@@ -431,133 +301,6 @@ func TestApplyModelRefresh_PreservesModelsMissingFromUnreliableDiscoveredList(t 
 				t.Fatal("IsDefault=false want true")
 			}
 		})
-	}
-}
-
-func TestApplyModelRefresh_DeletesMissingWarpGraphQLModels(t *testing.T) {
-	s, cleanup := setupModelRefreshStore(t)
-	defer cleanup()
-
-	ctx := context.Background()
-	clearModelsForChannel(t, ctx, s, "Warp")
-	for _, record := range []*store.Model{
-		{Channel: "Warp", ModelID: "claude-4-5-opus", Name: "Old Opus", Status: store.ModelStatusAvailable, Verified: true, IsDefault: true, SortOrder: 0},
-		{Channel: "Warp", ModelID: "auto-open", Name: "Auto Open", Status: store.ModelStatusAvailable, Verified: true, SortOrder: 1},
-	} {
-		if err := s.CreateModel(ctx, record); err != nil {
-			t.Fatalf("CreateModel() error = %v", err)
-		}
-	}
-
-	result, err := applyModelRefresh(ctx, s, "Warp", "warp_graphql_feature_model_choice_agent_mode", []discoveredModel{
-		{ID: "auto-open", Name: "Auto Open", SortOrder: 0},
-		{ID: "gpt-5-2-low", Name: "GPT-5.2 Low", SortOrder: 1},
-	})
-	if err != nil {
-		t.Fatalf("applyModelRefresh() error = %v", err)
-	}
-	if result.Deleted != 1 {
-		t.Fatalf("Deleted=%d want 1", result.Deleted)
-	}
-	if _, err := s.GetModelByChannelAndModelID(ctx, "Warp", "claude-4-5-opus"); err == nil {
-		t.Fatal("expected old model to be deleted")
-	}
-	model, err := s.GetModelByChannelAndModelID(ctx, "Warp", "auto-open")
-	if err != nil {
-		t.Fatalf("GetModelByChannelAndModelID(auto-open) error = %v", err)
-	}
-	if !model.IsDefault {
-		t.Fatal("auto-open IsDefault=false want true")
-	}
-}
-
-func TestSaveWarpAccountModelChoices(t *testing.T) {
-	s, cleanup := setupModelRefreshStore(t)
-	defer cleanup()
-
-	ctx := context.Background()
-	saveWarpAccountModelChoices(ctx, s, []warpAccountDiscovery{
-		{
-			id: 1,
-			ok: true,
-			choices: []warp.ModelChoice{
-				{ID: "gpt-5.2-medium"},
-				{ID: "claude-opus-4-6"},
-			},
-			featureConfig: warp.AccountFeatureConfig{
-				CliAgentModel:         "cli-agent-team-auto",
-				ComputerUseAgentModel: "computer-use-agent-team-auto",
-			},
-		},
-		{
-			id: 2,
-			ok: false,
-			choices: []warp.ModelChoice{
-				{ID: "gemini-3-pro"},
-			},
-		},
-	})
-
-	choices, err := warp.LoadAccountModelChoices(ctx, s)
-	if err != nil {
-		t.Fatalf("LoadAccountModelChoices() error = %v", err)
-	}
-	if choices == nil {
-		t.Fatal("expected cached choices")
-	}
-	acc := &store.Account{ID: 1, AccountType: "warp", WarpMonthlyLimit: 1500, WarpMonthlyRemaining: 100}
-	if !warp.AccountSupportsModelForAccount(choices, acc, "claude-opus-4-6") {
-		t.Fatal("expected account 1 to support exact Claude model")
-	}
-	if warp.AccountSupportsModelForAccount(choices, acc, "gemini-3-pro") {
-		t.Fatal("expected account 1 not to support uncached Gemini model")
-	}
-	if choices.Sources["1"] != "" {
-		t.Fatalf("source=%q want empty", choices.Sources["1"])
-	}
-	cfg := warp.EffectiveAccountFeatureConfig(acc, choices, "gpt-5.2-medium")
-	if cfg.CliAgentModel != "cli-agent-team-auto" {
-		t.Fatalf("cli agent=%q want cli-agent-team-auto", cfg.CliAgentModel)
-	}
-	if cfg.ComputerUseAgentModel != "computer-use-agent-team-auto" {
-		t.Fatalf("computer use agent=%q want computer-use-agent-team-auto", cfg.ComputerUseAgentModel)
-	}
-}
-
-func TestProbeWarpFreeOnlyModelChoices_UsesSmallPreferredSet(t *testing.T) {
-	prevProbe := probeWarpModelForRefresh
-	t.Cleanup(func() { probeWarpModelForRefresh = prevProbe })
-
-	var seen []string
-	probeWarpModelForRefresh = func(ctx context.Context, cfg *config.Config, acc *store.Account, modelID string) error {
-		seen = append(seen, modelID)
-		if modelID == "auto-open" || modelID == "claude-4-5-sonnet" || modelID == "gpt-5-2-low" {
-			return nil
-		}
-		return errors.New("model not allowed")
-	}
-
-	choices, source := probeWarpFreeOnlyModelChoices(context.Background(), &config.Config{}, &store.Account{ID: 1, AccountType: "warp"}, []warp.ModelChoice{
-		{ID: "auto-open"},
-		{ID: "gpt-5-2-low"},
-		{ID: "gpt-5-2-medium"},
-	})
-
-	if source != "free_probe" {
-		t.Fatalf("source=%q want free_probe", source)
-	}
-	got := make([]string, 0, len(choices))
-	for _, choice := range choices {
-		got = append(got, choice.ID)
-	}
-	if strings.Join(got, ",") != "auto-open,claude-4-5-sonnet,gpt-5-2-low" {
-		t.Fatalf("choices=%v want auto-open,claude-4-5-sonnet,gpt-5-2-low", got)
-	}
-	if !strings.Contains(strings.Join(seen, ","), "claude-4-5-opus") {
-		t.Fatalf("expected forced probe for opus even when absent from GraphQL choices, seen=%v", seen)
-	}
-	if strings.Contains(strings.Join(seen, ","), "gpt-5-2-medium") {
-		t.Fatalf("probe set should skip medium paid candidate, seen=%v", seen)
 	}
 }
 

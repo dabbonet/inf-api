@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -12,12 +11,9 @@ import (
 	"orchids-api/internal/clerk"
 	"orchids-api/internal/codebuff"
 	"orchids-api/internal/config"
-	apperrors "orchids-api/internal/errors"
-	"orchids-api/internal/grok"
 	"orchids-api/internal/loadbalancer"
 	"orchids-api/internal/store"
 	"orchids-api/internal/util"
-	"orchids-api/internal/warp"
 )
 
 func preserveLatestAccountStatus(ctx context.Context, s *store.Store, acc *store.Account) {
@@ -61,100 +57,6 @@ func startTokenRefreshLoop(ctx context.Context, cfg *config.Config, s *store.Sto
 		}
 		for _, acc := range accounts {
 			if strings.TrimSpace(acc.Name) == "" {
-				continue
-			}
-			// aihubmix and zenmux use static Bearer API keys — there is no
-			// Clerk / Grok / Warp session to refresh, so skip them here.
-			// Without this skip the Clerk probe below would call the session
-			// endpoint with a Bearer token, get 403, and poison the account
-			// status every TokenRefreshInterval.
-			at := strings.ToLower(strings.TrimSpace(acc.AccountType))
-			if at == "aihubmix" || at == "zenmux" {
-				continue
-			}
-			if strings.EqualFold(acc.AccountType, "warp") {
-				if !acc.QuotaResetAt.IsZero() && time.Now().Before(acc.QuotaResetAt) {
-					continue
-				}
-				if strings.TrimSpace(acc.RefreshToken) == "" && strings.TrimSpace(acc.ClientCookie) == "" {
-					continue
-				}
-				warpClient := warp.NewFromAccount(acc, cfg)
-				jwt, err := warpClient.RefreshAccount(context.Background())
-				if err != nil {
-					retryAfter := warp.RetryAfter(err)
-					httpStatus := warp.HTTPStatusCode(err)
-					if httpStatus == 401 || httpStatus == 403 {
-						lb.MarkAccountStatus(context.Background(), acc, fmt.Sprintf("%d", httpStatus))
-					} else if retryAfter > 0 {
-						acc.QuotaResetAt = time.Now().Add(retryAfter)
-						if updateErr := s.UpdateAccount(context.Background(), acc); updateErr != nil {
-							slog.Warn("Auto refresh token: record warp retry-after failed", "account", acc.Name, "type", "warp", "error", updateErr)
-						}
-					}
-					slog.Warn("Auto refresh token failed", "account", acc.Name, "type", "warp", "http_status", httpStatus, "error", err)
-					continue
-				}
-				if jwt != "" {
-					acc.Token = jwt
-				}
-				warpClient.SyncAccountState()
-
-				// Sync Warp usage quota via GraphQL
-				limitCtx, limitCancel := context.WithTimeout(context.Background(), 15*time.Second)
-				limitInfo, bonuses, limitErr := warpClient.GetRequestLimitInfo(limitCtx)
-				limitCancel()
-				if limitErr != nil {
-					slog.Warn("Warp usage sync failed", "account", acc.Name, "error", limitErr)
-				} else if limitInfo != nil {
-					warp.ApplyRequestLimitInfoToAccount(acc, limitInfo, bonuses)
-					slog.Debug("Warp usage synced", "account", acc.Name, "limit", acc.UsageLimit, "used", acc.UsageCurrent, "subscription", acc.Subscription)
-				}
-
-				preserveLatestAccountStatus(context.Background(), s, acc)
-
-				if err := s.UpdateAccount(context.Background(), acc); err != nil {
-					slog.Warn("Auto refresh token: update account failed", "account", acc.Name, "type", "warp", "error", err)
-				}
-				continue
-			}
-			// Grok accounts store SSO tokens in ClientCookie and are not Clerk-backed.
-			if strings.EqualFold(acc.AccountType, "grok") {
-				grokClient := grok.New(cfg)
-				token := grok.NormalizeSSOToken(acc.ClientCookie)
-				if token == "" {
-					token = grok.NormalizeSSOToken(acc.RefreshToken)
-				}
-				if token == "" {
-					slog.Warn("Auto refresh token skipped", "account", acc.Name, "type", "grok", "error", "empty token")
-					continue
-				}
-
-				verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 60*time.Second)
-				info, verifyErr := grokClient.VerifyToken(verifyCtx, token, strings.TrimSpace(acc.AgentMode))
-				verifyCancel()
-				if verifyErr != nil {
-					statusCode := apperrors.ClassifyAccountStatus(verifyErr.Error())
-					if statusCode == "" {
-						statusCode = "500"
-					}
-					acc.StatusCode = statusCode
-					acc.LastAttempt = time.Now()
-					if err := s.UpdateAccount(context.Background(), acc); err != nil {
-						slog.Warn("Auto refresh token: update account failed", "account", acc.Name, "type", "grok", "error", err)
-					}
-					slog.Warn("Auto refresh token failed", "account", acc.Name, "type", "grok", "status", statusCode, "error", verifyErr)
-					continue
-				}
-
-				if info != nil {
-					grok.ApplyQuotaInfo(acc, info)
-				}
-				acc.StatusCode = ""
-				acc.LastAttempt = time.Time{}
-				if err := s.UpdateAccount(context.Background(), acc); err != nil {
-					slog.Warn("Auto refresh token: update account failed", "account", acc.Name, "type", "grok", "error", err)
-				}
 				continue
 			}
 			proxyFunc := http.ProxyFromEnvironment

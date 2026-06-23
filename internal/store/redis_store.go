@@ -40,7 +40,7 @@ func newRedisStore(addr, password string, db int, prefix string) (*redisStore, e
 	}
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
-		prefix = "warp:"
+		prefix = "dabbo:"
 	}
 	if !strings.HasSuffix(prefix, ":") {
 		prefix += ":"
@@ -94,9 +94,7 @@ func newRedisStore(addr, password string, db int, prefix string) (*redisStore, e
 				acc_type = string.lower(tostring(acc.account_type))
 			end
 
-			if acc_type ~= "warp" and acc_type ~= "grok" then
 				acc.usage_current = (acc.usage_current or 0) + usage
-			end
 			acc.usage_total = (acc.usage_total or 0) + usage
 			acc.request_count = (acc.request_count or 0) + count
 			acc.last_used_at = now_str
@@ -185,27 +183,9 @@ func (s *redisStore) UpdateAccount(ctx context.Context, acc *Account) error {
 	updated.NSFWEnabled = acc.NSFWEnabled
 	updated.SessionID = acc.SessionID
 	updated.ClientCookie = acc.ClientCookie
-	if strings.EqualFold(updated.AccountType, "warp") {
-		if strings.TrimSpace(acc.RefreshToken) == "" {
-			updated.RefreshToken = existing.RefreshToken
-		} else {
-			updated.RefreshToken = acc.RefreshToken
-		}
-		if strings.TrimSpace(acc.DeviceID) == "" {
-			updated.DeviceID = existing.DeviceID
-		} else {
-			updated.DeviceID = acc.DeviceID
-		}
-		if strings.TrimSpace(acc.RequestID) == "" {
-			updated.RequestID = existing.RequestID
-		} else {
-			updated.RequestID = acc.RequestID
-		}
-	} else {
-		updated.RefreshToken = acc.RefreshToken
-		updated.DeviceID = acc.DeviceID
-		updated.RequestID = acc.RequestID
-	}
+	updated.RefreshToken = acc.RefreshToken
+	updated.DeviceID = acc.DeviceID
+	updated.RequestID = acc.RequestID
 	if acc.SessionCookie == "" {
 		updated.SessionCookie = existing.SessionCookie
 	} else {
@@ -390,9 +370,7 @@ func (s *redisStore) IncrementAccountStats(ctx context.Context, id int64, usage 
 				acc_type = string.lower(tostring(acc.account_type))
 			end
 
-			if acc_type ~= "warp" and acc_type ~= "grok" then
 				acc.usage_current = (acc.usage_current or 0) + usage
-			end
 			acc.usage_total = (acc.usage_total or 0) + usage
 			acc.request_count = (acc.request_count or 0) + count
 			acc.last_used_at = now_str
@@ -1111,7 +1089,7 @@ func (s *redisStore) modelsChannelModelIDMapKey() string {
 func normalizeModelChannelKey(channel string) string {
 	channel = strings.ToLower(strings.TrimSpace(channel))
 	if channel == "" {
-		return "warp"
+		return ""
 	}
 	channel = strings.ReplaceAll(channel, "_", "-")
 	channel = strings.ReplaceAll(channel, " ", "-")

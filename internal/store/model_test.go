@@ -76,57 +76,32 @@ func TestGetModelByChannelAndModelID_AllowsDuplicateModelIDsAcrossChannels(t *te
 
 	ctx := context.Background()
 
-	warpModel, err := s.GetModelByChannelAndModelID(ctx, "warp", "auto-open")
+	puterModel, err := s.GetModelByChannelAndModelID(ctx, "puter", "claude-opus-4-5")
 	if err != nil {
-		t.Fatalf("GetModelByChannelAndModelID(warp) error = %v", err)
+		t.Fatalf("GetModelByChannelAndModelID(puter) error = %v", err)
 	}
-	if warpModel.Channel != "Warp" {
-		t.Fatalf("warp model channel = %q, want Warp", warpModel.Channel)
+	if puterModel.Channel != "Puter" {
+		t.Fatalf("puter model channel = %q, want Puter", puterModel.Channel)
 	}
 
-	grokModel, err := s.GetModelByChannelAndModelID(ctx, "grok", "grok-4.3")
+	dupe := &Model{
+		Channel: "Codebuff",
+		ModelID: "claude-opus-4-5",
+		Name:    "claude-opus-4-5 (codebuff)",
+		Status:  ModelStatusAvailable,
+	}
+	if err := s.CreateModel(ctx, dupe); err != nil {
+		t.Fatalf("CreateModel(codebuff) error = %v", err)
+	}
+	codebuffModel, err := s.GetModelByChannelAndModelID(ctx, "codebuff", "claude-opus-4-5")
 	if err != nil {
-		t.Fatalf("GetModelByChannelAndModelID(grok) error = %v", err)
+		t.Fatalf("GetModelByChannelAndModelID(codebuff) error = %v", err)
 	}
-	if grokModel.Channel != "Grok" {
-		t.Fatalf("grok model channel = %q, want Grok", grokModel.Channel)
+	if codebuffModel.Channel != "Codebuff" {
+		t.Fatalf("codebuff model channel = %q, want Codebuff", codebuffModel.Channel)
 	}
-	if warpModel.ID == grokModel.ID {
-		t.Fatalf("expected different records across channels, got same id %q", warpModel.ID)
-	}
-}
-
-func TestStoreNew_SeedsGrokImagineModels(t *testing.T) {
-	t.Parallel()
-
-	mini := miniredis.RunT(t)
-	s, err := New(Options{
-		StoreMode:   "redis",
-		RedisAddr:   mini.Addr(),
-		RedisDB:     0,
-		RedisPrefix: "test:",
-	})
-	if err != nil {
-		t.Fatalf("store.New() error = %v", err)
-	}
-	t.Cleanup(func() {
-		_ = s.Close()
-		mini.Close()
-	})
-
-	ctx := context.Background()
-	model, err := s.GetModelByChannelAndModelID(ctx, "grok", "grok-imagine-image")
-	if err != nil {
-		t.Fatalf("GetModelByChannelAndModelID(grok, grok-imagine-image) error = %v", err)
-	}
-	if model == nil {
-		t.Fatal("expected grok imagine model to be seeded")
-	}
-	if model.Channel != "Grok" {
-		t.Fatalf("model.Channel=%q want %q", model.Channel, "Grok")
-	}
-	if model.Status != ModelStatusAvailable {
-		t.Fatalf("model.Status=%q want %q", model.Status, ModelStatusAvailable)
+	if puterModel.ID == codebuffModel.ID {
+		t.Fatalf("expected different records across channels, got same id %q", puterModel.ID)
 	}
 }
 
@@ -146,7 +121,7 @@ func TestStoreNew_PreservesExistingModelList(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	model, err := s.GetModelByChannelAndModelID(ctx, "grok", "grok-imagine-image")
+	model, err := s.GetModelByChannelAndModelID(ctx, "puter", "claude-opus-4-5")
 	if err != nil {
 		t.Fatalf("GetModelByChannelAndModelID() error = %v", err)
 	}
@@ -164,62 +139,7 @@ func TestStoreNew_PreservesExistingModelList(t *testing.T) {
 		mini.Close()
 	})
 
-	if _, err := s.GetModelByChannelAndModelID(ctx, "grok", "grok-imagine-image"); err == nil {
+	if _, err := s.GetModelByChannelAndModelID(ctx, "puter", "claude-opus-4-5"); err == nil {
 		t.Fatal("expected deleted model to stay deleted after store restart")
-	}
-}
-
-func TestStoreNew_EnsuresRequiredGrokChatModelsWithExistingModelList(t *testing.T) {
-	t.Parallel()
-
-	mini := miniredis.RunT(t)
-	opts := Options{
-		StoreMode:   "redis",
-		RedisAddr:   mini.Addr(),
-		RedisDB:     0,
-		RedisPrefix: "test:",
-	}
-	s, err := New(opts)
-	if err != nil {
-		t.Fatalf("store.New() error = %v", err)
-	}
-
-	ctx := context.Background()
-	for _, id := range []string{"grok-4.3", "grok-build-0.1"} {
-		model, err := s.GetModelByChannelAndModelID(ctx, "grok", id)
-		if err != nil {
-			t.Fatalf("GetModelByChannelAndModelID(%s) error = %v", id, err)
-		}
-		if err := s.DeleteModel(ctx, model.ID); err != nil {
-			t.Fatalf("DeleteModel(%s) error = %v", id, err)
-		}
-	}
-	if err := s.CreateModel(ctx, &Model{
-		Channel:  "Grok",
-		ModelID:  "grok-user-custom",
-		Name:     "User Custom",
-		Status:   ModelStatusAvailable,
-		Verified: true,
-	}); err != nil {
-		t.Fatalf("CreateModel() error = %v", err)
-	}
-	_ = s.Close()
-
-	s, err = New(opts)
-	if err != nil {
-		t.Fatalf("store.New() second error = %v", err)
-	}
-	t.Cleanup(func() {
-		_ = s.Close()
-		mini.Close()
-	})
-
-	for _, id := range []string{"grok-4.3", "grok-build-0.1"} {
-		if _, err := s.GetModelByChannelAndModelID(ctx, "grok", id); err != nil {
-			t.Fatalf("expected %s to be ensured after restart: %v", id, err)
-		}
-	}
-	if _, err := s.GetModelByChannelAndModelID(ctx, "grok", "grok-user-custom"); err != nil {
-		t.Fatalf("expected user custom model to remain: %v", err)
 	}
 }

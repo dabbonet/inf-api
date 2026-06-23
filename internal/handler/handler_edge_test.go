@@ -30,11 +30,6 @@ type errorUpstreamEdge struct {
 	calls int
 }
 
-type refundingErrorUpstreamEdge struct {
-	err           error
-	refundReasons []string
-}
-
 type blockingUpstreamEdge struct {
 	events    []upstream.SSEMessage
 	entered   chan struct{}
@@ -52,15 +47,6 @@ func (m *mockUpstreamEdge) SendRequestWithPayload(ctx context.Context, req upstr
 func (m *errorUpstreamEdge) SendRequestWithPayload(ctx context.Context, req upstream.UpstreamRequest, onMessage func(upstream.SSEMessage), logger *debug.Logger) error {
 	m.calls++
 	return m.err
-}
-
-func (m *refundingErrorUpstreamEdge) SendRequestWithPayload(ctx context.Context, req upstream.UpstreamRequest, onMessage func(upstream.SSEMessage), logger *debug.Logger) error {
-	return m.err
-}
-
-func (m *refundingErrorUpstreamEdge) RefundCredits(ctx context.Context, reason string) error {
-	m.refundReasons = append(m.refundReasons, reason)
-	return nil
 }
 
 func (m *blockingUpstreamEdge) SendRequestWithPayload(ctx context.Context, req upstream.UpstreamRequest, onMessage func(upstream.SSEMessage), logger *debug.Logger) error {
@@ -98,32 +84,6 @@ func TestHandleMessages_Stream_NoFinish_StillStops(t *testing.T) {
 	}
 	if !strings.Contains(out, "event: message_stop") {
 		t.Fatalf("expected forced message_stop when upstream missing finish, got: %s", out)
-	}
-}
-
-func TestHandleMessages_WarpErrorTriggersRefund(t *testing.T) {
-	cfg := &config.Config{DebugEnabled: false, RequestTimeout: 10, MaxRetries: 0, ContextMaxTokens: 1024, ContextSummaryMaxTokens: 256, ContextKeepTurns: 2}
-	h := NewWithLoadBalancer(cfg, nil)
-	upstreamClient := &refundingErrorUpstreamEdge{err: errors.New("dial tcp: connection reset by peer")}
-	h.client = upstreamClient
-
-	payload := map[string]any{
-		"model":    "claude-3-5-sonnet",
-		"messages": []map[string]any{{"role": "user", "content": "hi"}},
-		"system":   []any{},
-		"stream":   false,
-	}
-	b, _ := json.Marshal(payload)
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "http://x/warp/v1/messages", bytes.NewReader(b))
-	h.HandleMessages(rec, req)
-
-	if len(upstreamClient.refundReasons) != 1 {
-		t.Fatalf("expected exactly one refund call, got %#v", upstreamClient.refundReasons)
-	}
-	if upstreamClient.refundReasons[0] != "network_error" {
-		t.Fatalf("refund reason=%q want network_error", upstreamClient.refundReasons[0])
 	}
 }
 
