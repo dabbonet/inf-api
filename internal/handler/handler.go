@@ -27,6 +27,7 @@ import (
 	"orchids-api/internal/loadbalancer"
 	"orchids-api/internal/logutil"
 	"orchids-api/internal/prompt"
+	"orchids-api/internal/provider"
 	appreq "orchids-api/internal/req"
 	"orchids-api/internal/store"
 	"orchids-api/internal/tokencache"
@@ -48,6 +49,7 @@ type Handler struct {
 	tokenCache    tokencache.Cache
 	promptCache   tokencache.PromptCache
 	auditLogger   audit.Logger
+	specs         *provider.Registry
 
 	sessionStore SessionStore
 	dedupStore   DedupStore
@@ -133,6 +135,7 @@ func NewWithLoadBalancer(cfg *config.Config, lb *loadbalancer.LoadBalancer) *Han
 		loadBalancer: lb,
 		connTracker:  loadbalancer.NewMemoryConnTracker(),
 		clientCache:  newAccountClientCache(),
+		specs:        provider.NewRegistry(),
 		sessionStore: NewMemorySessionStore(30*time.Minute, 1024),
 		dedupStore:   NewMemoryDedupStore(duplicateWindow, duplicateCleanupWindow),
 		auditLogger:  audit.NewNopLogger(),
@@ -167,6 +170,44 @@ func (h *Handler) SetAuditLogger(al audit.Logger) {
 // SetClientFactory sets the factory used by selectAccount to create provider-specific clients.
 func (h *Handler) SetClientFactory(f ClientFactory) {
 	h.clientFactory = f
+}
+
+// SetSpecs replaces the provider registry. Existing entries are not retained.
+func (h *Handler) SetSpecs(specs *provider.Registry) {
+	h.specs = specs
+}
+
+// RegisterSpec adds a single provider spec to the handler's registry.
+func (h *Handler) RegisterSpec(s provider.Spec) {
+	if h.specs == nil {
+		h.specs = provider.NewRegistry()
+	}
+	h.specs.Register(s)
+}
+
+// ResolveSpec returns the provider spec for a request, looking up by URL path
+// prefix first, then by channel name. Returns false if no spec matches.
+func (h *Handler) ResolveSpec(r *http.Request, channel string) (provider.Spec, bool) {
+	if h.specs != nil {
+		if s, ok := h.specs.GetByPathPrefix(r.URL.Path); ok {
+			return s, true
+		}
+		if channel != "" {
+			if s, ok := h.specs.GetByName(channel); ok {
+				return s, true
+			}
+		}
+	}
+	return provider.Spec{}, false
+}
+
+// SpecByName returns the spec registered for the given channel name (case-insensitive).
+// This is the dispatch key used by selectAccount's ClientFactory callback.
+func (h *Handler) SpecByName(name string) (provider.Spec, bool) {
+	if h.specs == nil {
+		return provider.Spec{}, false
+	}
+	return h.specs.GetByName(name)
 }
 
 func (h *Handler) computeRequestHash(r *http.Request, body []byte) string {

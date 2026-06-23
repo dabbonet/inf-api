@@ -24,7 +24,8 @@ import (
 	"orchids-api/internal/loadbalancer"
 	"orchids-api/internal/logutil"
 	"orchids-api/internal/middleware"
-	"orchids-api/internal/provider"
+	cbprov "orchids-api/internal/provider/codebuff"
+	puterprov "orchids-api/internal/provider/puter"
 	"orchids-api/internal/store"
 	"orchids-api/internal/template"
 	"orchids-api/internal/tokencache"
@@ -124,11 +125,10 @@ func main() {
 		slog.Debug("Audit logger initialized", "backend", "redis")
 	}
 
-	// Provider registry for decoupled client creation
-	registry := provider.NewRegistry()
-	registry.Register("puter", provider.NewPuterProvider())
+	// Provider registry: register all provider Specs on the handler.
+	h.RegisterSpec(puterprov.Spec())
 	if cfg.CodebuffEnabled {
-		registry.Register("codebuff", provider.NewCodebuffProvider())
+		h.RegisterSpec(cbprov.Spec())
 	}
 
 	var redisClientForCodebuff *redis.Client
@@ -149,20 +149,22 @@ func main() {
 	}
 
 	h.SetClientFactory(func(acc *store.Account, c *config.Config) upstream.UpstreamClient {
-		if p := registry.Get(acc.AccountType); p != nil {
-			client := p.NewClient(acc, c)
-			if cb, ok := client.(*codebuff.Provider); ok && redisClientForCodebuff != nil {
-				cb.SetRedisClient(redisClientForCodebuff)
-				if codebuffQuotaStore != nil {
-					cb.SetQuotaStore(codebuffQuotaStore)
-				}
-				if codebuffTelemetryStore != nil {
-					cb.SetTelemetryStore(codebuffTelemetryStore)
-				}
+		spec, ok := h.SpecByName(acc.AccountType)
+		if !ok || spec.ClientFactory == nil {
+			return nil
+		}
+		client := spec.ClientFactory(acc, c)
+		if cb, ok := client.(*codebuff.Provider); ok && redisClientForCodebuff != nil {
+			cb.SetRedisClient(redisClientForCodebuff)
+			if codebuffQuotaStore != nil {
+				cb.SetQuotaStore(codebuffQuotaStore)
 			}
-			if upstreamClient, ok := client.(upstream.UpstreamClient); ok {
-				return upstreamClient
+			if codebuffTelemetryStore != nil {
+				cb.SetTelemetryStore(codebuffTelemetryStore)
 			}
+		}
+		if upstreamClient, ok := client.(upstream.UpstreamClient); ok {
+			return upstreamClient
 		}
 		return nil
 	})
