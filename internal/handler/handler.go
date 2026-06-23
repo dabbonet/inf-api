@@ -685,41 +685,9 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// ...
-	if ok, command := isCommandPrefixRequest(req); ok {
-		if verboseDiagnostics {
-			slog.Debug("Handling command prefix request", "command", command)
-		}
-		prefix := detectCommandPrefix(command)
-		logger.LogEarlyExit("command_prefix", map[string]interface{}{
-			"command": command,
-			"prefix":  prefix,
-		})
-		writeCommandPrefixResponse(w, req, responseFormat, prefix, startTime, logger)
-		return
-	}
-
-	if isTopicClassifierRequest(req) {
-		if verboseDiagnostics {
-			slog.Debug("Handling topic classifier request locally")
-		}
-		logger.LogEarlyExit("topic_classifier", map[string]interface{}{
-			"mode": "local",
-		})
-		writeTopicClassifierResponse(w, req, responseFormat, startTime, logger)
-		return
-	}
-
-	if isTitleGenerationRequest(req) {
-		title := generateTopicTitle(extractUserText(req.Messages))
-		if verboseDiagnostics {
-			slog.Debug("Handling title generation request locally", "title", title)
-		}
-		logger.LogEarlyExit("title_generation", map[string]interface{}{
-			"mode":  "local",
-			"title": title,
-		})
-		writeTitleGenerationResponse(w, req, responseFormat, startTime, logger)
+	// Local-only fast paths that don't need the working directory:
+	// command-prefix, topic-classifier, title-generation. Provider-agnostic.
+	if h.runPreWorkdirFastPaths(w, r, &req, responseFormat, startTime, logger, verboseDiagnostics) {
 		return
 	}
 
@@ -754,10 +722,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	// Resolve provider spec from URL path or channel name. Passthrough
 	// providers were dispatched above; this lookup finds the non-passthrough
 	// spec that drives per-provider mode (UseRawModel, KeepToolsOnFollowup, …).
-	var spec provider.Spec
-	if s, ok := h.ResolveSpec(r, targetChannel); ok {
-		spec = s
-	}
+	spec, mode := h.resolveSpecForRequest(r, targetChannel)
 	effectiveWorkdir, prevWorkdir, workdirChanged := h.resolveWorkdir(r, req, conversationKey)
 	if workdirChanged {
 		slog.Warn("A change in the work directory has been detected and the history has been cleared.", "prev", prevWorkdir, "next", effectiveWorkdir, "session", conversationKey)
@@ -766,25 +731,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			h.sessionStore.DeleteSession(r.Context(), conversationKey)
 		}
 	}
-	if isCurrentWorkdirRequest(req) {
-		logger.LogEarlyExit("current_workdir", map[string]interface{}{
-			"mode":    "local",
-			"workdir": effectiveWorkdir,
-			"path":    r.URL.Path,
-		})
-		writeCurrentWorkdirResponse(w, req, responseFormat, effectiveWorkdir, startTime, logger)
-		return
-	}
-	if isSuggestionMode(req.Messages) {
-		suggestion := buildLocalSuggestion(req.Messages)
-		if verboseDiagnostics {
-			slog.Debug("Handling suggestion mode request locally", "suggestion", suggestion)
-		}
-		logger.LogEarlyExit("suggestion_mode", map[string]interface{}{
-			"mode":       "local",
-			"suggestion": suggestion,
-		})
-		writeSuggestionModeResponse(w, req, responseFormat, startTime, logger)
+	if h.runPostWorkdirFastPaths(w, r, &req, responseFormat, effectiveWorkdir, startTime, logger, verboseDiagnostics) {
 		return
 	}
 
@@ -792,7 +739,6 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	// the old `isPuterRequest` boolean derived from hardcoded channel-name
 	// checks. Adding a new provider with passthrough-style behavior is
 	// now a Spec.Mode change, not a handler edit.
-	mode := spec.Mode
 	suggestionMode := isSuggestionMode(req.Messages)
 	noThinking := suggestionMode || h.config.SuppressThinking
 	gateNoTools := false
@@ -856,33 +802,14 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	// the account we actually ended up using. This handles the case where
 	// the URL prefix was "" (default) but the load balancer picked a puter
 	// account. No hardcoded "puter" string — pure spec registration lookup.
-	if currentAccount != nil && !strings.EqualFold(spec.Name, currentAccount.AccountType) {
-		if s, ok := h.SpecByName(currentAccount.AccountType); ok {
-			mode = s.Mode
-			spec = s
-		}
-	}
+	// If the selected account's AccountType names a registered spec that
+	// differs from the URL-derived spec, re-resolve so the mode flags match
+	// the account we actually ended up using. This handles the case where
+	// the URL prefix was "" (default) but the load balancer picked a puter
+	// account. No hardcoded "puter" string — pure spec registration lookup.
+	spec, mode = h.resolveSpecForAccount(currentAccount, spec)
 
-	if mode.SkipDefaultSanitize {
-		if verboseDiagnostics {
-			slog.Debug("Checkpoint: passthrough mode, skip default sanitize", "spec", spec.Name)
-		}
-	} else {
-		if verboseDiagnostics {
-			slog.Debug("Checkpoint: skip context trimming")
-		}
-		if err := appreq.SanitizeSystemItems(h.config)(&req); err != nil {
-			slog.Warn("Failed to sanitize system items", "error", err)
-		}
-	}
-	if mode.SkipDefaultSanitize {
-		if err := appreq.SanitizeSystemItemsPuter(h.config)(&req); err != nil {
-			slog.Warn("Failed to sanitize puter-mode system items", "error", err)
-		} else if verboseDiagnostics {
-			slog.Debug("puter-mode: sanitized forwarded system items", "spec", spec.Name)
-		}
-		req.Messages = SanitizePuterMessages(req.Messages)
-	}
+	h.applySpecSanitization(&req, spec, mode, verboseDiagnostics)
 	if verboseDiagnostics {
 		slog.Debug("Checkpoint: message processing done")
 	}
@@ -901,10 +828,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	// Mapping model — UseRawModel flag skips mapModel normalization
 	// regardless of provider name.
-	mappedModel := mapModel(req.Model)
-	if mode.UseRawModel {
-		mappedModel = strings.TrimSpace(req.Model)
-	}
+	mappedModel := mapModelForSpec(req.Model, mode)
 
 	var promptHistory []map[string]string
 	var builtPrompt string
@@ -913,10 +837,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		NoThinking bool
 	}
 	var promptMeta promptMetaType
-	profileName := mode.PromptProfile
-	if profileName == "" {
-		profileName = "generic"
-	}
+	profileName := buildPromptProfile(mode)
 	builtPrompt = strings.TrimSpace(extractUserText(req.Messages))
 	if builtPrompt == "" {
 		if mode.PromptProfile != "" {
