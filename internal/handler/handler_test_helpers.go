@@ -8,8 +8,19 @@ import (
 	"orchids-api/internal/audit"
 	"orchids-api/internal/config"
 	"orchids-api/internal/debug"
+	"orchids-api/internal/provider"
+	cbprov "orchids-api/internal/provider/codebuff"
+	puterprov "orchids-api/internal/provider/puter"
 	"orchids-api/internal/upstream"
 )
+
+// registerDefaultSpecs registers the canonical puter + codebuff specs on h.
+// Called automatically by newTestHandler so that tests with empty LB still
+// resolve correct per-provider Mode (UseRawModel, KeepToolsOnFollowup, …).
+func (h *Handler) registerDefaultSpecs() {
+	h.RegisterSpec(puterprov.Spec())
+	h.RegisterSpec(cbprov.Spec())
+}
 
 type fakePayloadClient struct {
 	mu                  sync.Mutex
@@ -51,13 +62,16 @@ func (f *fakePayloadClient) snapshotCalls() []upstream.UpstreamRequest {
 }
 
 func newTestHandler(client upstream.UpstreamClient) *Handler {
-	return &Handler{
+	h := &Handler{
 		config:       &config.Config{DebugEnabled: false},
 		client:       client,
+		specs:        provider.NewRegistry(),
 		sessionStore: NewMemorySessionStore(30*time.Minute, 1024),
 		dedupStore:   NewMemoryDedupStore(duplicateWindow, duplicateCleanupWindow),
 		auditLogger:  audit.NewNopLogger(),
 	}
+	h.registerDefaultSpecs()
+	return h
 }
 
 type spyConnTracker struct {

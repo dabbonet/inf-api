@@ -140,6 +140,7 @@ func NewWithLoadBalancer(cfg *config.Config, lb *loadbalancer.LoadBalancer) *Han
 		dedupStore:   NewMemoryDedupStore(duplicateWindow, duplicateCleanupWindow),
 		auditLogger:  audit.NewNopLogger(),
 	}
+	h.registerDefaultSpecs()
 
 	return h
 }
@@ -750,6 +751,13 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	if targetChannel == "" && validatedModel != nil {
 		targetChannel = strings.TrimSpace(validatedModel.Channel)
 	}
+	// Resolve provider spec from URL path or channel name. Passthrough
+	// providers were dispatched above; this lookup finds the non-passthrough
+	// spec that drives per-provider mode (UseRawModel, KeepToolsOnFollowup, …).
+	var spec provider.Spec
+	if s, ok := h.ResolveSpec(r, targetChannel); ok {
+		spec = s
+	}
 	effectiveWorkdir, prevWorkdir, workdirChanged := h.resolveWorkdir(r, req, conversationKey)
 	if workdirChanged {
 		slog.Warn("A change in the work directory has been detected and the history has been cleared.", "prev", prevWorkdir, "next", effectiveWorkdir, "session", conversationKey)
@@ -780,7 +788,11 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isPuterRequest := strings.EqualFold(targetChannel, "puter")
+	// Per-provider mode flags come from the resolved Spec. This replaces
+	// the old `isPuterRequest` boolean derived from hardcoded channel-name
+	// checks. Adding a new provider with passthrough-style behavior is
+	// now a Spec.Mode change, not a handler edit.
+	mode := spec.Mode
 	suggestionMode := isSuggestionMode(req.Messages)
 	noThinking := suggestionMode || h.config.SuppressThinking
 	gateNoTools := false
@@ -791,9 +803,9 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		toolGateMessage = buildToolGateMessage(req.Messages, true)
 	}
 	if lastUserIsToolResultFollowup(req.Messages) {
-		if isPuterRequest {
+		if mode.KeepToolsOnFollowup {
 			if verboseDiagnostics {
-				slog.Debug("tool_gate: keeping tools for puter tool_result follow-up")
+				slog.Debug("tool_gate: keeping tools for follow-up", "spec", spec.Name)
 			}
 		} else {
 			gateNoTools = true
@@ -839,13 +851,21 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		accountSnapshot = &snap
 	}
 
-	if isPuterRequest || (currentAccount != nil && strings.EqualFold(currentAccount.AccountType, "puter")) {
-		isPuterRequest = true
+	// If the selected account's AccountType names a registered spec that
+	// differs from the URL-derived spec, re-resolve so the mode flags match
+	// the account we actually ended up using. This handles the case where
+	// the URL prefix was "" (default) but the load balancer picked a puter
+	// account. No hardcoded "puter" string — pure spec registration lookup.
+	if currentAccount != nil && !strings.EqualFold(spec.Name, currentAccount.AccountType) {
+		if s, ok := h.SpecByName(currentAccount.AccountType); ok {
+			mode = s.Mode
+			spec = s
+		}
 	}
-	isPassthroughRequest := isPuterRequest
-	if isPassthroughRequest {
+
+	if mode.SkipDefaultSanitize {
 		if verboseDiagnostics {
-			slog.Debug("Checkpoint: passthrough, skip context trimming", "channel", "puter")
+			slog.Debug("Checkpoint: passthrough mode, skip default sanitize", "spec", spec.Name)
 		}
 	} else {
 		if verboseDiagnostics {
@@ -855,13 +875,13 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("Failed to sanitize system items", "error", err)
 		}
 	}
-	if isPuterRequest {
+	if mode.SkipDefaultSanitize {
 		if err := appreq.SanitizeSystemItemsPuter(h.config)(&req); err != nil {
-			slog.Warn("Failed to sanitize puter system items", "error", err)
+			slog.Warn("Failed to sanitize puter-mode system items", "error", err)
 		} else if verboseDiagnostics {
-			slog.Debug("puter: sanitized forwarded system items")
+			slog.Debug("puter-mode: sanitized forwarded system items", "spec", spec.Name)
 		}
-		req.Messages = sanitizePuterMessages(req.Messages)
+		req.Messages = SanitizePuterMessages(req.Messages)
 	}
 	if verboseDiagnostics {
 		slog.Debug("Checkpoint: message processing done")
@@ -879,15 +899,11 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	if verboseDiagnostics {
 		slog.Debug("Starting prompt build...", "conversation_id", conversationKey)
 	}
-	// Mapping model
+	// Mapping model — UseRawModel flag skips mapModel normalization
+	// regardless of provider name.
 	mappedModel := mapModel(req.Model)
-	if isPuterRequest {
+	if mode.UseRawModel {
 		mappedModel = strings.TrimSpace(req.Model)
-	} else if currentAccount != nil {
-		at := strings.ToLower(strings.TrimSpace(currentAccount.AccountType))
-		if at == "codebuff" {
-			mappedModel = strings.TrimSpace(req.Model)
-		}
 	}
 
 	var promptHistory []map[string]string
@@ -897,24 +913,21 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		NoThinking bool
 	}
 	var promptMeta promptMetaType
-	if isPuterRequest {
-		builtPrompt = strings.TrimSpace(extractUserText(req.Messages))
-		if builtPrompt == "" {
-			builtPrompt = "puter request"
-		}
-		promptMeta = promptMetaType{
-			Profile:    "puter",
-			NoThinking: noThinking,
-		}
-	} else {
-		builtPrompt = strings.TrimSpace(extractUserText(req.Messages))
-		if builtPrompt == "" {
+	profileName := mode.PromptProfile
+	if profileName == "" {
+		profileName = "generic"
+	}
+	builtPrompt = strings.TrimSpace(extractUserText(req.Messages))
+	if builtPrompt == "" {
+		if mode.PromptProfile != "" {
+			builtPrompt = profileName + " request"
+		} else {
 			builtPrompt = "request"
 		}
-		promptMeta = promptMetaType{
-			Profile:    "generic",
-			NoThinking: noThinking,
-		}
+	}
+	promptMeta = promptMetaType{
+		Profile:    profileName,
+		NoThinking: noThinking,
 	}
 	noThinking = promptMeta.NoThinking
 	suppressThinking = promptMeta.NoThinking
@@ -1057,8 +1070,10 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	defer sh.release()
 
 	sh.setModelHint(req.Model)
-	// For codebuff raw SSE passthrough, skip Anthropic-format lifecycle events.
-	if targetChannel == "codebuff" && isStream {
+	// For passthrough providers that survived the early dispatch (e.g. model
+	// lookup resolved a passthrough channel), skip Anthropic-format lifecycle
+	// events to match freebuff2api behaviour.
+	if spec.Passthrough && isStream {
 		sh.mu.Lock()
 		sh.hasReturn = true
 		sh.mu.Unlock()
@@ -1110,9 +1125,9 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		payloadMessages := upstreamMessages
 		payloadSystem := req.System
 
-		// For codebuff passthrough: forward raw SSE directly to client.
+		// For passthrough providers: forward raw SSE directly to client.
 		var rawSSEWriter func(event string, data []byte)
-		if targetChannel == "codebuff" && isStream {
+		if spec.Passthrough && isStream {
 			rawFlusher, _ := w.(http.Flusher)
 			var rawSawToolCallsFinish bool
 			rawSSEWriter = func(event string, data []byte) {
