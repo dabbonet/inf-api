@@ -107,8 +107,6 @@ function isSidebarAccountAbnormal(acc) {
   const type = normalizeSidebarAccountType(acc);
   if (type === "warp") {
     if (!getSidebarAccountToken(acc)) return true;
-  } else if (type === "grok") {
-    if (!getSidebarAccountToken(acc)) return true;
   } else if (type === "puter") {
     if (!getSidebarAccountToken(acc)) return true;
   }

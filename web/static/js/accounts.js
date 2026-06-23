@@ -133,21 +133,7 @@ function subscriptionBadge(acc) {
         return { text: level, bg: "rgba(100, 116, 139, 0.12)", color: "#cbd5e1", tip: `Warp Quota Tier: ${level}` };
     }
   }
-  if (type !== "grok") {
-    return { text: level, bg: "rgba(100, 116, 139, 0.12)", color: "#cbd5e1", tip: `Subscription Level: ${level}` };
-  }
-  switch (level) {
-    case "heavy":
-      return { text: "heavy", bg: "rgba(251, 191, 36, 0.16)", color: "#fbbf24", tip: "Grok Heavy Account Pool" };
-    case "super":
-      return { text: "super", bg: "rgba(56, 189, 248, 0.16)", color: "#38bdf8", tip: "Grok Super Account Pool" };
-    case "lite":
-      return { text: "lite", bg: "rgba(167, 139, 250, 0.16)", color: "#c4b5fd", tip: "Grok Lite Account Pool" };
-    case "basic":
-      return { text: "basic", bg: "rgba(52, 211, 153, 0.14)", color: "#34d399", tip: "Grok Basic Account Pool" };
-    default:
-      return { text: level, bg: "rgba(100, 116, 139, 0.12)", color: "#cbd5e1", tip: `Grok Account Pool: ${level}` };
-  }
+  return { text: level, bg: "rgba(100, 116, 139, 0.12)", color: "#cbd5e1", tip: `Subscription Level: ${level}` };
 }
 
 function buildSubscriptionMarkup(acc) {
@@ -156,12 +142,11 @@ function buildSubscriptionMarkup(acc) {
 }
 
 function shouldShowNSFWBadge(acc) {
-  return normalizeAccountType(acc) === "grok" && !!acc?.nsfw_enabled;
+  return false;
 }
 
 function buildNSFWBadgeMarkup(acc) {
-  if (!shouldShowNSFWBadge(acc)) return "";
-  return `<span class="tag account-nsfw-tag" title="Grok NSFW Enabled" style="background:rgba(244, 114, 182, 0.14);color:#f472b6;border:none;">NSFW</span>`;
+  return "";
 }
 
 function applyTokenLabels(type) {
@@ -185,12 +170,6 @@ function applyTokenLabels(type) {
       ? "Only the first line is saved during editing; you can paste warp://auth/... callback URL / User JSON / id_token.refresh_token"
       : "Supports bulk addition for Warp. You can paste warp://auth/... callback URL / User JSON / id_token.refresh_token";
     input.required = true;
-  } else if (type === 'grok') {
-    label.textContent = "SSO Token";
-    input.placeholder = "One sso token (or Cookie containing sso=) per line";
-    hint.textContent = accountId
-      ? "Only the first line SSO Token is saved during editing"
-      : "Supports bulk addition for Grok. One sso token or Cookie segment per line";
   } else if (type === 'puter') {
       label.textContent = "Auth Token";
       input.placeholder = "One Puter auth_token per line";
@@ -292,11 +271,6 @@ function normalizeCredentialForType(type, credential) {
     }
     const match = raw.match(/(?:^|[?&;\s])refresh_token=([^&;\s]+)/i);
     return (match ? decodeURIComponent(match[1]) : raw).trim();
-  }
-
-  if (normalizedType === "grok") {
-    const ssoMatch = raw.match(/(?:^|[;\s])sso=([^;\s]+)/i);
-    return (ssoMatch ? ssoMatch[1] : raw).trim();
   }
 
   return raw;
@@ -447,8 +421,6 @@ function accountTypeLabel(type) {
       return "Codebuff";
     case "warp":
       return "Warp";
-    case "grok":
-      return "Grok";
     case "aihubmix":
       return "Aihubmix";
     case "zenmux":
@@ -615,10 +587,6 @@ function evaluateAccountStatus(acc) {
   if (type === 'warp') {
     if (!getAccountToken(acc)) {
       return { normal: false, text: 'Incomplete', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Missing Refresh Token' };
-    }
-  } else if (type === 'grok') {
-    if (!getAccountToken(acc)) {
-      return { normal: false, text: 'Incomplete', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)', tip: 'Missing SSO Token' };
     }
   } else if (type === 'puter') {
     if (!getAccountToken(acc)) {
@@ -1469,16 +1437,10 @@ function formatTokenDisplay(acc) {
       if (type === 'warp') {
         // Warp tokens (JWTs) have long common prefixes, so show more of the end
         return token.substring(0, 10) + '...' + token.substring(token.length - 10);
-      } else if (type === 'grok') {
-        return token.substring(0, 8) + '...' + token.substring(token.length - 8);
       }
       return token.substring(0, 30) + '...';
     }
     return token;
-  }
-  if (type === 'grok' && getAccountToken(acc)) {
-    const sso = getAccountToken(acc);
-    return sso.length > 20 ? sso.substring(0, 8) + '...' + sso.substring(sso.length - 8) : sso;
   }
   if (type === 'warp' && getAccountToken(acc)) {
     const rt = getAccountToken(acc);

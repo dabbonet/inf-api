@@ -159,7 +159,6 @@ function modelRefreshSourceLabel(source) {
     puter_public_models: "Puter Public Model API",
     puter_public_models_test_mode: "Puter Public API + Account Verification",
     puter_public_models_unverified: "Puter Public API",
-    grok_console_probe: "Grok Account Probe",
   };
   if (labels[value]) return labels[value];
   if (value.startsWith("warp_graphql")) return "Warp Account GraphQL";

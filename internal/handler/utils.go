@@ -114,9 +114,6 @@ func channelFromPath(path string) string {
 	if strings.HasPrefix(path, "/codebuff/") {
 		return "codebuff"
 	}
-	if strings.HasPrefix(path, "/grok/") {
-		return "grok"
-	}
 	return ""
 }
 
@@ -158,7 +155,6 @@ var modelMap = map[string]string{
 	"gpt-5.3-codex":              "gpt-5.3-codex",
 	"gpt-5.2-codex":              "gpt-5.2-codex",
 	"gpt-5.2":                    "gpt-5.2",
-	"grok-4.1-fast":              "grok-4.1-fast",
 	"glm-5":                      "glm-5",
 	"kimi-k2.5":                  "kimi-k2.5",
 }

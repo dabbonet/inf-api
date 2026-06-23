@@ -51,7 +51,7 @@ func TestMapModel(t *testing.T) {
 		{"gpt-5.2", "gpt-5.2"},
 
 		// Other models
-		{"grok-4.1-fast", "grok-4.1-fast"},
+		{"claude-haiku-4-5", "claude-haiku-4-5"},
 		{"glm-5", "glm-5"},
 		{"kimi-k2.5", "kimi-k2.5"},
 

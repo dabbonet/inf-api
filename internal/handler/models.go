@@ -102,7 +102,6 @@ func (h *Handler) HandleModelByID(w http.ResponseWriter, r *http.Request) {
 	for _, prefix := range []string{
 		"/puter/v1/models/",
 		"/codebuff/v1/models/",
-		"/grok/v1/models/",
 	} {
 		if strings.HasPrefix(path, prefix) {
 			id = strings.TrimPrefix(path, prefix)
