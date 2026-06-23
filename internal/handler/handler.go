@@ -581,10 +581,11 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fast path for codebuff: bypass all type conversions, match freebuff2api
-	// exactly — parse only model name, stream raw body + raw messages upstream.
-	if channelFromPath(r.URL.Path) == "codebuff" {
-		h.handleCodebuffDirect(w, r, bodyBytes, startTime)
+	// Passthrough providers (e.g. codebuff) bypass all type conversions.
+	// Match freebuff2api exactly — parse only model name, stream raw body +
+	// raw messages upstream.
+	if spec, ok := h.ResolveSpec(r, ""); ok && spec.Passthrough {
+		h.handlePassthroughProvider(w, r, bodyBytes, spec, startTime)
 		return
 	}
 
@@ -1444,13 +1445,14 @@ func randomSessionID() string {
 	return hex.EncodeToString(b)
 }
 
-// handleCodebuffDirect is a pure passthrough handler for codebuff that matches
-// freebuff2api's approach exactly. It parses only the model name from the
-// request body, then forwards the raw body + raw messages upstream with minimal
-// modification — no ClaudeRequest, no prompt.Message, no ContentBlock, no
-// SystemItems, no cache_control. This eliminates all intermediate type
-// conversions that freebuff2api does not perform.
-func (h *Handler) handleCodebuffDirect(w http.ResponseWriter, r *http.Request, bodyBytes []byte, startTime time.Time) {
+// handlePassthroughProvider is a generic raw-body forwarder for any provider
+// whose Spec declares Passthrough: true. It matches the freebuff2api approach:
+// parses only model/stream/messages/system from the body, then forwards the
+// raw body + raw messages upstream with minimal modification — no ClaudeRequest,
+// no prompt.Message, no ContentBlock, no SystemItems, no cache_control.
+// Used by codebuff today; future passthrough providers can opt in by setting
+// Passthrough: true on their Spec.
+func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Request, bodyBytes []byte, spec provider.Spec, startTime time.Time) {
 	// Extract minimal fields from raw body — just model, stream, messages, system.
 	var rawBody struct {
 		Model    string             `json:"model"`
@@ -1467,15 +1469,10 @@ func (h *Handler) handleCodebuffDirect(w http.ResponseWriter, r *http.Request, b
 	logger := debug.New(h.config.DebugEnabled, h.config.DebugLogSSE)
 	defer logger.Close()
 
-	// Determine channel from URL path
-	forcedChannel := channelFromPath(r.URL.Path)
-	targetChannel := strings.TrimSpace(forcedChannel)
-	if targetChannel == "" {
-		targetChannel = "codebuff"
-	}
+	targetChannel := strings.TrimSpace(spec.Name)
 
 	// Validate model availability
-	validatedModel, err := h.validateModelAvailability(r.Context(), rawBody.Model, forcedChannel)
+	validatedModel, err := h.validateModelAvailability(r.Context(), rawBody.Model, targetChannel)
 	if err != nil {
 		apperrors.New("invalid_request_error", err.Error(), http.StatusBadRequest).WriteResponse(w)
 		return
@@ -1485,7 +1482,7 @@ func (h *Handler) handleCodebuffDirect(w http.ResponseWriter, r *http.Request, b
 		mappedModel = validatedModel.ModelID
 	}
 
-	// Select account
+	// Select account — passthrough always requires a channel-bound account.
 	var failedAccountIDs []int64
 	apiClient, currentAccount, err := h.selectAccountWithOptions(r.Context(), targetChannel, true, failedAccountIDs, accountSelectionOptions{
 		ModelID: mappedModel,
@@ -1495,7 +1492,9 @@ func (h *Handler) handleCodebuffDirect(w http.ResponseWriter, r *http.Request, b
 		return
 	}
 
-	slog.Debug("codebuff direct passthrough",
+	slog.Debug("passthrough provider dispatch",
+		"provider", spec.Name,
+		"path_prefix", spec.PathPrefix,
 		"channel", targetChannel,
 		"requested_model", rawBody.Model,
 		"mapped_model", mappedModel,
@@ -1525,7 +1524,7 @@ func (h *Handler) handleCodebuffDirect(w http.ResponseWriter, r *http.Request, b
 				return
 			}
 			if rawSawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"stop"`)) {
-				slog.Debug("suppressing stop chunk in codebuff direct passthrough", "len", len(data))
+				slog.Debug("suppressing stop chunk in passthrough provider", "provider", spec.Name, "len", len(data))
 				return
 			}
 			fmt.Fprintf(w, "data: %s\n\n", data)
@@ -1546,12 +1545,12 @@ func (h *Handler) handleCodebuffDirect(w http.ResponseWriter, r *http.Request, b
 		RawOpenAIMessages: rawBody.Messages,
 		RawOpenAISystem:   rawBody.System,
 		RawSSEWriter:      rawSSEWriter,
-		TraceID:           fmt.Sprintf("codebuff-%x", time.Now().UnixNano()),
+		TraceID:           fmt.Sprintf("%s-%x", spec.Name, time.Now().UnixNano()),
 	}
 
 	// Call provider — SSE passthrough only
 	if err := apiClient.SendRequestWithPayload(r.Context(), upstreamReq, nil, logger); err != nil {
-		slog.Error("codebuff direct passthrough failed", "error", err)
+		slog.Error("passthrough provider request failed", "provider", spec.Name, "error", err)
 	}
 
 	// Log audit event
