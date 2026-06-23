@@ -13,16 +13,24 @@ const (
 )
 
 func SanitizeSystemItems(cfg *config.Config) Hook {
+	return SanitizeSystemItemsWithMode(cfg, false)
+}
+
+func SanitizeSystemItemsPuter(cfg *config.Config) Hook {
+	return SanitizeSystemItemsWithMode(cfg, true)
+}
+
+func SanitizeSystemItemsWithMode(cfg *config.Config, isPuter bool) Hook {
 	return func(req *Request) error {
 		if len(req.System) == 0 || cfg == nil {
 			return nil
 		}
-		req.System = sanitizeSystemItems(req.System, cfg)
+		req.System = sanitizeSystemItems(req.System, cfg, isPuter)
 		return nil
 	}
 }
 
-func sanitizeSystemItems(system SystemItems, cfg *config.Config) SystemItems {
+func sanitizeSystemItems(system SystemItems, cfg *config.Config, isPuter bool) SystemItems {
 	mode := ccEntrypointModeAuto
 	switch mode {
 	case ccEntrypointModeKeep, ccEntrypointModeAuto, ccEntrypointModeStrip:
@@ -52,10 +60,88 @@ func sanitizeSystemItems(system SystemItems, cfg *config.Config) SystemItems {
 		out = append(out, item)
 	}
 
+	out, filtered := filterClaudeCodeSystemItems(out, isPuter)
+	if filtered {
+		changed = true
+	}
 	if !changed {
 		return system
 	}
 	return out
+}
+
+func filterClaudeCodeSystemItems(system SystemItems, isPuter bool) (SystemItems, bool) {
+	if len(system) == 0 {
+		return system, false
+	}
+	dropped := false
+	out := make(SystemItems, 0, len(system))
+	for _, item := range system {
+		if item.Type != "text" || strings.TrimSpace(item.Text) == "" {
+			out = append(out, item)
+			continue
+		}
+		if isClaudeCodeSystem(item.Text) || (isPuter && isClaudeCodeEnvironment(item.Text)) {
+			dropped = true
+			continue
+		}
+		out = append(out, item)
+	}
+	return out, dropped
+}
+
+func isClaudeCodeSystem(text string) bool {
+	lower := strings.ToLower(text)
+	strongSignals := []string{
+		"claude code",
+		"claude agent sdk",
+		"you are an interactive cli tool",
+		"todowrite tool",
+		"skill tool",
+	}
+	for _, sig := range strongSignals {
+		if strings.Contains(lower, sig) {
+			return true
+		}
+	}
+	weakSignals := []string{
+		"task tool",
+		"vscode",
+		"system-reminder",
+		"claude-sonnet",
+		"claude-opus",
+		"enterplanmode",
+		"exitplanmode",
+	}
+	hits := 0
+	for _, sig := range weakSignals {
+		if strings.Contains(lower, sig) {
+			hits++
+			if hits >= 2 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isClaudeCodeEnvironment(text string) bool {
+	lower := strings.ToLower(text)
+	signals := []string{
+		"# environment",
+		"primary working directory:",
+		"gitstatus:",
+		"recent commits:",
+		"you are powered by the model named",
+		"claude code is available as a cli",
+	}
+	hits := 0
+	for _, sig := range signals {
+		if strings.Contains(lower, sig) {
+			hits++
+		}
+	}
+	return hits >= 2
 }
 
 func stripCCEntrypoint(text string, stripAll bool) (string, bool) {

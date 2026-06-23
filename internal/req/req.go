@@ -28,6 +28,21 @@ type SystemItem struct {
 
 type SystemItems []SystemItem
 
+func (si SystemItems) ToPrompt() []prompt.SystemItem {
+	if si == nil {
+		return nil
+	}
+	out := make([]prompt.SystemItem, len(si))
+	for i, item := range si {
+		out[i] = prompt.SystemItem{
+			Type:         item.Type,
+			Text:         item.Text,
+			CacheControl: item.CacheControl,
+		}
+	}
+	return out
+}
+
 func (s *SystemItems) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
 		*s = nil

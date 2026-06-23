@@ -27,6 +27,7 @@ import (
 	"orchids-api/internal/loadbalancer"
 	"orchids-api/internal/logutil"
 	"orchids-api/internal/prompt"
+	appreq "orchids-api/internal/req"
 	"orchids-api/internal/store"
 	"orchids-api/internal/tokencache"
 	"orchids-api/internal/upstream"
@@ -64,16 +65,7 @@ type ChunkRewriterInstaller interface {
 	BuildChunkRewriter() func([]byte) []byte
 }
 
-type ClaudeRequest struct {
-	Model          string                 `json:"model"`
-	Messages       []prompt.Message       `json:"messages"`
-	System         SystemItems            `json:"system"`
-	Tools          []interface{}          `json:"tools"`
-	ToolChoice     interface{}            `json:"tool_choice"`
-	Stream         bool                   `json:"stream"`
-	ConversationID string                 `json:"conversation_id"`
-	Metadata       map[string]interface{} `json:"metadata"`
-}
+type ClaudeRequest = appreq.Request
 
 type toolCall struct {
 	id    string
@@ -829,16 +821,15 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		if verboseDiagnostics {
 			slog.Debug("Checkpoint: skip context trimming")
 		}
-		if sanitized, changed := sanitizeSystemItems(req.System, false, false, h.config); changed {
-			req.System = sanitized
+		if err := appreq.SanitizeSystemItems(h.config)(&req); err != nil {
+			slog.Warn("Failed to sanitize system items", "error", err)
 		}
 	}
 	if isPuterRequest {
-		if sanitized, changed := sanitizeSystemItems(req.System, false, true, h.config); changed {
-			req.System = sanitized
-			if verboseDiagnostics {
-				slog.Debug("puter: sanitized forwarded system items")
-			}
+		if err := appreq.SanitizeSystemItemsPuter(h.config)(&req); err != nil {
+			slog.Warn("Failed to sanitize puter system items", "error", err)
+		} else if verboseDiagnostics {
+			slog.Debug("puter: sanitized forwarded system items")
 		}
 		req.Messages = sanitizePuterMessages(req.Messages)
 	}
@@ -1128,7 +1119,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			Model:             mappedModel,
 			Stream:            req.Stream,
 			Messages:          payloadMessages,
-			System:            payloadSystem,
+			System:            payloadSystem.ToPrompt(),
 			Tools:             effectiveTools,
 			ToolChoice:        req.ToolChoice,
 			NoTools:           gateNoTools,

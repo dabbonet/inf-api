@@ -14,7 +14,7 @@ var explicitEnvWorkdirRegex = regexp.MustCompile(`(?im)^\s*(?:cwd|working direct
 var isolatedPrimaryEnvWorkdirRegex = regexp.MustCompile(`(?im)^\s*primary\s+working\s+directory\s*:\s*([^\n\r]+)\s*$`)
 var primaryEnvWorkdirRegex = regexp.MustCompile(`(?im)^\s*(?:[-*]\s*)?primary\s+working\s+directory\s*:\s*([^\n\r]+)\s*$`)
 
-func extractWorkdirFromSystem(system []prompt.SystemItem) string {
+func extractWorkdirFromSystem(system SystemItems) string {
 	for _, item := range system {
 		if item.Type == "text" {
 			text := strings.TrimSpace(item.Text)
