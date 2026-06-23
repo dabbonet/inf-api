@@ -12,7 +12,8 @@ let modelRefreshResults = {};
 let modelRefreshConcurrency = 4;
 
 function modelChannels() {
-  const defaultChannels = ["Warp", "Puter", "Grok", "Aihubmix", "Zenmux"];
+  const defaultChannels = ["Puter", "Codebuff"];
+  const allowed = new Set(defaultChannels.map((c) => c.toLowerCase()));
   const seen = new Set();
   const ordered = [];
 
@@ -28,6 +29,7 @@ function modelChannels() {
     .sort((a, b) => a.localeCompare(b))
     .forEach((channel) => {
       const key = channel.toLowerCase();
+      if (!allowed.has(key)) return;
       if (seen.has(key)) return;
       seen.add(key);
       ordered.push(channel);
@@ -161,7 +163,6 @@ function modelRefreshSourceLabel(source) {
     puter_public_models_unverified: "Puter Public API",
   };
   if (labels[value]) return labels[value];
-  if (value.startsWith("warp_graphql")) return "Warp Account GraphQL";
   return value;
 }
 
@@ -527,7 +528,7 @@ function openModelModal(model = null) {
     title.textContent = "Add Model";
     form.reset();
     document.getElementById("modelId").value = "";
-    setSelectValue(document.getElementById("modelChannel"), currentModelChannel || "Warp");
+    setSelectValue(document.getElementById("modelChannel"), currentModelChannel || "");
     document.getElementById("modelSortOrder").value = "0";
     setSelectValue(document.getElementById("modelStatus"), "available");
   }

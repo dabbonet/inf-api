@@ -30,8 +30,7 @@ import (
 	"orchids-api/internal/util"
 )
 
-type API struct {
-	store               *store.Store
+type API struct {	store               *store.Store
 	tokenCache          tokencache.Cache
 	promptCache         tokencache.PromptCache
 	adminUser           string
@@ -1065,6 +1064,9 @@ func (a *API) HandleModels(w http.ResponseWriter, r *http.Request) {
 			if model == nil {
 				continue
 			}
+			if !isActiveModelChannel(model.Channel) {
+				continue
+			}
 			filtered = append(filtered, model)
 		}
 		json.NewEncoder(w).Encode(filtered)
@@ -1073,6 +1075,11 @@ func (a *API) HandleModels(w http.ResponseWriter, r *http.Request) {
 		var m store.Model
 		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if !isActiveModelChannel(m.Channel) {
+			http.Error(w, fmt.Sprintf("channel %q is no longer supported; use Puter or Codebuff", m.Channel), http.StatusBadRequest)
 			return
 		}
 
@@ -1109,6 +1116,10 @@ func (a *API) HandleModelByID(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if !isActiveModelChannel(m.Channel) {
+			http.Error(w, "Model not found", http.StatusNotFound)
+			return
+		}
 		json.NewEncoder(w).Encode(m)
 
 	case http.MethodPut:
@@ -1118,6 +1129,11 @@ func (a *API) HandleModelByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		m.ID = id
+
+		if !isActiveModelChannel(m.Channel) {
+			http.Error(w, fmt.Sprintf("channel %q is no longer supported; use Puter or Codebuff", m.Channel), http.StatusBadRequest)
+			return
+		}
 
 		if err := a.store.UpdateModel(r.Context(), &m); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1440,4 +1456,13 @@ func (a *API) persistConfig(ctx context.Context, current, newCfg *config.Config)
 		a.clearTokenCaches(ctx)
 	}
 	return nil
+}
+
+func isActiveModelChannel(channel string) bool {
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "puter", "codebuff":
+		return true
+	default:
+		return false
+	}
 }

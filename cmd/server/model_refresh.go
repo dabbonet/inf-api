@@ -82,6 +82,11 @@ func makeModelRefreshHandler(cfg *config.Config, s *store.Store) http.HandlerFun
 			}
 		}
 
+		if channel != "" && !isRefreshableModelChannel(channel) {
+			http.Error(w, fmt.Sprintf("channel %q is no longer supported; refresh only Puter or Codebuff", channel), http.StatusBadRequest)
+			return
+		}
+
 		result, err := runModelRefresh(r.Context(), cfg, s, channel, concurrency)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -529,4 +534,13 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func isRefreshableModelChannel(channel string) bool {
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "puter", "codebuff":
+		return true
+	default:
+		return false
+	}
 }
