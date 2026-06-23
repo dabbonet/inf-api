@@ -332,7 +332,61 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 		}
 		return usageStatus, httpStatus, fmt.Errorf("failed to fetch puter usage: %w", usageErr)
 	}
+
+	if strings.EqualFold(acc.AccountType, "codebuff") {
+		return a.refreshCodebuffAccountState(ctx, acc)
+	}
+
 	return "", http.StatusBadRequest, fmt.Errorf("unsupported account type: %s", acc.AccountType)
+}
+
+func (a *API) refreshCodebuffAccountState(ctx context.Context, acc *store.Account) (string, int, error) {
+	if acc == nil {
+		return "", http.StatusBadRequest, fmt.Errorf("account is nil")
+	}
+	token := strings.TrimSpace(acc.Token)
+	if token == "" {
+		token = strings.TrimSpace(firstNonEmptyString(acc.ClientCookie, acc.SessionCookie, acc.RefreshToken))
+	}
+	if token == "" {
+		return "", http.StatusBadRequest, fmt.Errorf("failed to verify codebuff account: missing bearer token")
+	}
+	if a.codebuffQuotaStore == nil {
+		// Quota store not yet wired; treat as best-effort info rather than fatal error.
+		return "", 0, nil
+	}
+
+	client := codebuff.NewClient(token, a.config.Load())
+
+	streakData, streakErr := client.GetStreak(ctx)
+	if streakErr == nil {
+		if streak := codebuff.ParseStreak(streakData); streak != nil {
+			_ = a.codebuffQuotaStore.RecordStreak(ctx, acc.ID, streak)
+		}
+	}
+
+	sessData, sessErr := client.GetSession(ctx, "")
+	if sessErr == nil {
+		if limits, _ := codebuff.ParseSessionRateLimits(sessData); len(limits) > 0 {
+			_ = a.codebuffQuotaStore.RecordSessionQuotas(ctx, acc.ID, limits)
+		}
+	}
+
+	if streakErr != nil && sessErr != nil {
+		usageStatus := classifyAccountStatusFromError(streakErr.Error())
+		if usageStatus == "" {
+			usageStatus = classifyAccountStatusFromError(sessErr.Error())
+		}
+		httpStatus := http.StatusBadGateway
+		if usageStatus != "" {
+			httpStatus = httpStatusFromAccountStatus(usageStatus)
+		}
+		if usageStatus == "" {
+			usageStatus = "502"
+		}
+		return usageStatus, httpStatus, fmt.Errorf("failed to fetch codebuff session: %w", sessErr)
+	}
+	return "", 0, nil
 }
 
 type ExportData struct {
@@ -609,6 +663,10 @@ func (a *API) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if strings.TrimSpace(acc.Token) == "" {
+			acc.Token = truncateAccountDisplayToken(&acc)
+		}
+
 		if acc.Enabled && shouldSyncAccountOnCreate(&acc) {
 			if wantsAsyncAccountSync(r) {
 				a.syncAccountAfterCreate(acc)
@@ -841,6 +899,12 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 		if err := a.store.UpdateAccount(r.Context(), &acc); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if strings.TrimSpace(acc.Token) == "" {
+			acc.Token = truncateAccountDisplayToken(&acc)
+			if updateErr := a.store.UpdateAccount(r.Context(), &acc); updateErr != nil {
+				slog.Warn("Failed to persist derived display token", "account_id", acc.ID, "error", updateErr)
+			}
 		}
 		json.NewEncoder(w).Encode(normalizeAccountOutput(&acc))
 
@@ -1465,4 +1529,25 @@ func isActiveModelChannel(channel string) bool {
 	default:
 		return false
 	}
+}
+
+func truncateAccountDisplayToken(acc *store.Account) string {
+	if acc == nil {
+		return ""
+	}
+	var raw string
+	switch strings.ToLower(strings.TrimSpace(acc.AccountType)) {
+	case "warp":
+		raw = firstNonEmptyString(acc.RefreshToken, acc.SessionCookie, acc.ClientCookie, acc.Token)
+	default:
+		raw = firstNonEmptyString(acc.ClientCookie, acc.SessionCookie, acc.RefreshToken, acc.Token)
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if len(raw) <= 30 {
+		return raw
+	}
+	return raw[:30] + "..."
 }
