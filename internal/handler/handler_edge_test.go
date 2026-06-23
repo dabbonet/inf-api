@@ -154,7 +154,7 @@ func TestHandleMessages_PuterStreamQuotaRetrySkipsRetryMarkerAndCoolsDownFailedA
 		first.ID:  0,
 		second.ID: 1,
 	})
-	h.SetClientFactory(func(acc *store.Account, cfg *config.Config) UpstreamClient {
+	h.SetClientFactory(func(acc *store.Account, cfg *config.Config) upstream.UpstreamClient {
 		if acc.ID == first.ID {
 			return &errorUpstreamEdge{err: errors.New("puter API error: code=insufficient_funds, status=402, message=Available funding is insufficient for this request.")}
 		}

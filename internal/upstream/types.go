@@ -1,12 +1,26 @@
 package upstream
 
 import (
+	"context"
 	stdjson "encoding/json"
 
 	"github.com/goccy/go-json"
 
+	"orchids-api/internal/debug"
 	"orchids-api/internal/prompt"
 )
+
+type UpstreamClient interface {
+	SendRequestWithPayload(ctx context.Context, req UpstreamRequest, onMessage func(SSEMessage), logger *debug.Logger) error
+}
+
+type FinalSSELifecycleOwner interface {
+	OwnsFinalSSELifecycle() bool
+}
+
+type ChunkRewriterInstaller interface {
+	BuildChunkRewriter() func([]byte) []byte
+}
 
 type DirectSSEEmitter interface {
 	WriteDirectSSE(event string, payload []byte, final bool)

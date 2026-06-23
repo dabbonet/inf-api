@@ -36,11 +36,11 @@ import (
 
 // ClientFactory creates an upstream client for a given account.
 // Used to decouple provider-specific client construction from the handler.
-type ClientFactory func(acc *store.Account, cfg *config.Config) UpstreamClient
+type ClientFactory func(acc *store.Account, cfg *config.Config) upstream.UpstreamClient
 
 type Handler struct {
 	config        *config.Config
-	client        UpstreamClient
+	client        upstream.UpstreamClient
 	clientFactory ClientFactory
 	clientCache   *accountClientCache
 	loadBalancer  *loadbalancer.LoadBalancer
@@ -51,18 +51,6 @@ type Handler struct {
 
 	sessionStore SessionStore
 	dedupStore   DedupStore
-}
-
-type UpstreamClient interface {
-	SendRequestWithPayload(ctx context.Context, req upstream.UpstreamRequest, onMessage func(upstream.SSEMessage), logger *debug.Logger) error
-}
-
-type FinalSSELifecycleOwner interface {
-	OwnsFinalSSELifecycle() bool
-}
-
-type ChunkRewriterInstaller interface {
-	BuildChunkRewriter() func([]byte) []byte
 }
 
 type ClaudeRequest = appreq.Request
@@ -193,8 +181,8 @@ func (h *Handler) computeRequestHash(r *http.Request, body []byte) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
-func ownsFinalSSELifecycle(client UpstreamClient) bool {
-	owner, ok := client.(FinalSSELifecycleOwner)
+func ownsFinalSSELifecycle(client upstream.UpstreamClient) bool {
+	owner, ok := client.(upstream.FinalSSELifecycleOwner)
 	return ok && owner.OwnsFinalSSELifecycle()
 }
 
@@ -1011,7 +999,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	sh.seedSideEffectDedupFromMessages(upstreamMessages)
 	sh.setUsageTokens(inputTokens, -1)
 	sh.setCacheTokens(cacheReadTokens, cacheCreationTokens)
-	if cr, ok := apiClient.(ChunkRewriterInstaller); ok {
+	if cr, ok := apiClient.(upstream.ChunkRewriterInstaller); ok {
 		sh.SetChunkRewriter(cr.BuildChunkRewriter())
 	}
 	sh.onConversationID = func(id string) {

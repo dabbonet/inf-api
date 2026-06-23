@@ -4,10 +4,10 @@ import (
 	"net/http"
 
 	"orchids-api/internal/config"
-	"orchids-api/internal/handler"
 	"orchids-api/internal/req"
 	"orchids-api/internal/store"
 	"orchids-api/internal/stream"
+	"orchids-api/internal/upstream"
 )
 
 type Spec struct {
@@ -17,5 +17,5 @@ type Spec struct {
 	Hooks         []req.Hook
 	Pipeline      *stream.Pipeline
 	Passthrough   bool
-	ClientFactory func(acc *store.Account, cfg *config.Config) handler.UpstreamClient
+	ClientFactory func(acc *store.Account, cfg *config.Config) upstream.UpstreamClient
 }

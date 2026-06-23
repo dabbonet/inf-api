@@ -12,17 +12,18 @@ import (
 	"orchids-api/internal/config"
 	"orchids-api/internal/puter"
 	"orchids-api/internal/store"
+	"orchids-api/internal/upstream"
 )
 
 type cachedAccountClient struct {
 	fingerprint string
-	client      UpstreamClient
+	client      upstream.UpstreamClient
 }
 
 type accountClientCache struct {
 	mu      sync.RWMutex
 	entries map[int64]cachedAccountClient
-	retired []UpstreamClient
+	retired []upstream.UpstreamClient
 }
 
 type clientCloser interface {
@@ -33,7 +34,7 @@ func newAccountClientCache() *accountClientCache {
 	return &accountClientCache{entries: make(map[int64]cachedAccountClient)}
 }
 
-func (h *Handler) getOrCreateAccountClient(acc *store.Account) UpstreamClient {
+func (h *Handler) getOrCreateAccountClient(acc *store.Account) upstream.UpstreamClient {
 	if acc == nil {
 		return nil
 	}
@@ -75,7 +76,7 @@ func (h *Handler) getOrCreateAccountClient(acc *store.Account) UpstreamClient {
 	return client
 }
 
-func (h *Handler) buildAccountClient(acc *store.Account) UpstreamClient {
+func (h *Handler) buildAccountClient(acc *store.Account) upstream.UpstreamClient {
 	if acc == nil {
 		return nil
 	}
@@ -127,7 +128,7 @@ func (h *Handler) Close() {
 	}
 }
 
-func closeUpstreamClient(client UpstreamClient) {
+func closeUpstreamClient(client upstream.UpstreamClient) {
 	if c, ok := client.(clientCloser); ok {
 		c.Close()
 	}

@@ -28,6 +28,7 @@ import (
 	"orchids-api/internal/store"
 	"orchids-api/internal/template"
 	"orchids-api/internal/tokencache"
+	"orchids-api/internal/upstream"
 )
 
 func main() {
@@ -147,7 +148,7 @@ func main() {
 		}
 	}
 
-	h.SetClientFactory(func(acc *store.Account, c *config.Config) handler.UpstreamClient {
+	h.SetClientFactory(func(acc *store.Account, c *config.Config) upstream.UpstreamClient {
 		if p := registry.Get(acc.AccountType); p != nil {
 			client := p.NewClient(acc, c)
 			if cb, ok := client.(*codebuff.Provider); ok && redisClientForCodebuff != nil {
@@ -159,7 +160,7 @@ func main() {
 					cb.SetTelemetryStore(codebuffTelemetryStore)
 				}
 			}
-			if upstreamClient, ok := client.(handler.UpstreamClient); ok {
+			if upstreamClient, ok := client.(upstream.UpstreamClient); ok {
 				return upstreamClient
 			}
 		}

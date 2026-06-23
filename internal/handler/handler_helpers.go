@@ -12,6 +12,7 @@ import (
 
 	apperrors "orchids-api/internal/errors"
 	"orchids-api/internal/store"
+	"orchids-api/internal/upstream"
 )
 
 func (h *Handler) resolveWorkdir(r *http.Request, req ClaudeRequest, conversationKey string) (string, string, bool) {
@@ -60,7 +61,7 @@ func (h *Handler) resolveWorkdir(r *http.Request, req ClaudeRequest, conversatio
 }
 
 // selectAccount logic extracted from HandleMessages
-func (h *Handler) selectAccount(ctx context.Context, targetChannel string, channelRequired bool, failedAccountIDs []int64, modelID ...string) (UpstreamClient, *store.Account, error) {
+func (h *Handler) selectAccount(ctx context.Context, targetChannel string, channelRequired bool, failedAccountIDs []int64, modelID ...string) (upstream.UpstreamClient, *store.Account, error) {
 	return h.selectAccountWithOptions(ctx, targetChannel, channelRequired, failedAccountIDs, accountSelectionOptions{
 		ModelID: firstString(modelID...),
 	})
@@ -70,7 +71,7 @@ type accountSelectionOptions struct {
 	ModelID string
 }
 
-func (h *Handler) selectAccountWithOptions(ctx context.Context, targetChannel string, channelRequired bool, failedAccountIDs []int64, opts accountSelectionOptions) (UpstreamClient, *store.Account, error) {
+func (h *Handler) selectAccountWithOptions(ctx context.Context, targetChannel string, channelRequired bool, failedAccountIDs []int64, opts accountSelectionOptions) (upstream.UpstreamClient, *store.Account, error) {
 	if h.loadBalancer != nil {
 		if targetChannel != "" {
 			slog.Debug("Account channel selection", "channel", targetChannel, "channel_required", channelRequired)
@@ -200,7 +201,7 @@ func (h *Handler) updateAccountStats(account *store.Account, inputTokens, output
 	}(account.ID, inputTokens, outputTokens)
 }
 
-func (h *Handler) syncWarpState(account *store.Account, client UpstreamClient, snapshot *store.Account) {
+func (h *Handler) syncWarpState(account *store.Account, client upstream.UpstreamClient, snapshot *store.Account) {
 }
 
 type upstreamErrorClass = apperrors.UpstreamErrorClass

@@ -50,7 +50,7 @@ func (f *fakePayloadClient) snapshotCalls() []upstream.UpstreamRequest {
 	return out
 }
 
-func newTestHandler(client UpstreamClient) *Handler {
+func newTestHandler(client upstream.UpstreamClient) *Handler {
 	return &Handler{
 		config:       &config.Config{DebugEnabled: false},
 		client:       client,
