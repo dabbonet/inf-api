@@ -198,6 +198,13 @@ function applyTokenLabels(type) {
         ? "Only the first line auth_token is saved during Puter editing. Get it at https://docs.puter.com/playground/ai-chatgpt/"
         : "Supports bulk addition for Puter. One auth_token per line; get it at https://docs.puter.com/playground/ai-chatgpt/";
       input.required = true;
+    } else if (type === 'codebuff') {
+      label.textContent = "Bearer Token";
+      input.placeholder = "One Codebuff Bearer token per line";
+      hint.textContent = accountId
+        ? "Only the first line Bearer token is saved during Codebuff editing."
+        : "Supports bulk addition for Codebuff. One Bearer token per line; requests are passed through unchanged.";
+      input.required = true;
     } else if (type === 'aihubmix') {
     label.textContent = "Aihubmix API Key";
     input.placeholder = "One Aihubmix API key per line (sk-...)";
@@ -434,10 +441,12 @@ function buildAccountPayload(type, baseData, credential) {
 
 function accountTypeLabel(type) {
   switch (String(type || "").trim().toLowerCase()) {
-    case "warp":
-      return "Warp";
     case "puter":
       return "Puter";
+    case "codebuff":
+      return "Codebuff";
+    case "warp":
+      return "Warp";
     case "grok":
       return "Grok";
     case "aihubmix":
@@ -451,11 +460,11 @@ function accountTypeLabel(type) {
 
 function getActiveAccountType() {
   const platform = String(currentPlatform || "").trim().toLowerCase();
-  return platform || "warp";
+  return platform || "puter";
 }
 
 function setAccountModalType(type) {
-  const normalized = String(type || "warp").trim().toLowerCase() || "warp";
+  const normalized = String(type || "puter").trim().toLowerCase() || "puter";
   const typeEl = document.getElementById("accountType");
   const displayEl = document.getElementById("accountTypeDisplay");
   if (typeEl) typeEl.value = normalized;
@@ -530,7 +539,7 @@ async function runAccountCreatePool(payloads, concurrency = 6, onProgress = null
 function renderPlatformTabs() {
   const container = document.getElementById("platformFilters");
   if (!container) return;
-  const defaultTypes = ["warp", "puter", "grok", "aihubmix", "zenmux"];
+  const defaultTypes = ["puter", "codebuff"];
   const types = new Set([...defaultTypes, ...accounts.map(normalizeAccountType)]);
   const sorted = Array.from(types).sort();
   const tabs = [...sorted];

@@ -12,7 +12,7 @@ function setSidebarAccountStats(total, normal, abnormal) {
 }
 
 function normalizeSidebarAccountType(acc) {
-  return String(acc?.account_type || "warp").toLowerCase();
+  return String(acc?.account_type || "puter").toLowerCase();
 }
 
 function normalizeSidebarStatusCode(statusCode) {
