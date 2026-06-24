@@ -1,6 +1,7 @@
 package codebuff
 
 import (
+	rootcodebuff "orchids-api/internal/codebuff"
 	"orchids-api/internal/config"
 	"orchids-api/internal/provider"
 	"orchids-api/internal/req"
@@ -15,7 +16,7 @@ func Spec() provider.Spec {
 		ParseRequest: req.ParsePassthrough,
 		Passthrough:  true,
 		ClientFactory: func(acc *store.Account, cfg *config.Config) upstream.UpstreamClient {
-			return nil
+			return rootcodebuff.NewFromAccount(acc, cfg)
 		},
 	}
 }

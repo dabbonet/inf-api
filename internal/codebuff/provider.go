@@ -31,7 +31,7 @@ type Provider struct {
 // NewFromAccount creates a codebuff Provider from a store.Account.
 // This matches the signature expected by handler.buildAccountClient.
 func NewFromAccount(acc *store.Account, cfg *config.Config) *Provider {
-	token := strings.TrimSpace(acc.Token)
+	token := ResolveAuthToken(acc)
 	if token == "" {
 		return nil
 	}
@@ -41,6 +41,32 @@ func NewFromAccount(acc *store.Account, cfg *config.Config) *Provider {
 		account:      acc,
 		sessionCache: nil, // populated lazily from Redis
 	}
+}
+
+// ResolveAuthToken extracts the bearer token that should be sent to codebuff
+// upstream. Order of preference:
+//  1. ClientCookie (full bearer)
+//  2. SessionCookie
+//  3. RefreshToken
+//  4. Token — only if it does NOT end in "..." (which signals a truncated preview
+//     written by truncateAccountDisplayToken). Truncated previews are rejected
+//     because upstream will return 401.
+func ResolveAuthToken(acc *store.Account) string {
+	if acc == nil {
+		return ""
+	}
+	for _, value := range []string{acc.ClientCookie, acc.SessionCookie, acc.RefreshToken} {
+		if token := strings.TrimSpace(value); token != "" {
+			return token
+		}
+	}
+	if token := strings.TrimSpace(acc.Token); token != "" {
+		if strings.HasSuffix(token, "...") {
+			return ""
+		}
+		return token
+	}
+	return ""
 }
 
 // SetRedisClient injects the Redis client used for session caching.

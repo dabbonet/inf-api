@@ -93,26 +93,10 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-// resolveCodebuffAuthToken picks the real credential to send to codebuff.
-// Order matters: acc.Token may contain a truncated display preview (e.g.
-// "abc123...") from truncateAccountDisplayToken, so we consult it last.
-// If acc.Token has no "..." truncation marker, we treat it as authoritative.
+// resolveCodebuffAuthToken delegates to codebuff.ResolveAuthToken so the
+// create/sync paths stay in lock-step with the per-request client factory.
 func resolveCodebuffAuthToken(acc *store.Account) string {
-	if acc == nil {
-		return ""
-	}
-	for _, value := range []string{acc.ClientCookie, acc.SessionCookie, acc.RefreshToken} {
-		if token := strings.TrimSpace(value); token != "" {
-			return token
-		}
-	}
-	if token := strings.TrimSpace(acc.Token); token != "" {
-		if strings.HasSuffix(token, "...") {
-			return ""
-		}
-		return token
-	}
-	return ""
+	return codebuff.ResolveAuthToken(acc)
 }
 
 func normalizeAccountOutput(acc *store.Account) *store.Account {
