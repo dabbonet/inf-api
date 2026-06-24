@@ -120,7 +120,27 @@ func normalizeAccountOutput(acc *store.Account) *store.Account {
 		return nil
 	}
 	out := *acc
+	if strings.TrimSpace(out.Subscription) == "" && isActiveModelChannel(out.AccountType) {
+		out.Subscription = "basic"
+	}
 	return &out
+}
+
+// ensureDefaultSubscription sets a default level for active account types
+// when the caller left Subscription blank. Returns true if a default was
+// applied (i.e. the field was empty before).
+func ensureDefaultSubscription(acc *store.Account) bool {
+	if acc == nil {
+		return false
+	}
+	if strings.TrimSpace(acc.Subscription) != "" {
+		return false
+	}
+	if !isActiveModelChannel(acc.AccountType) {
+		return false
+	}
+	acc.Subscription = "basic"
+	return true
 }
 
 func encodeAccountWithQuota(w http.ResponseWriter, acc *store.Account) error {
@@ -667,6 +687,7 @@ func (a *API) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 		if strings.EqualFold(acc.AccountType, "codebuff") {
 			acc.NSFWEnabled = true
 		}
+		ensureDefaultSubscription(&acc)
 		if existing, err := a.findDuplicateAccountByCredential(r.Context(), &acc, 0); err != nil {
 			slog.Error("Failed to detect duplicate account token", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -914,6 +935,7 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, duplicateAccountError(duplicate).Error(), http.StatusConflict)
 			return
 		}
+		ensureDefaultSubscription(&acc)
 
 		if err := a.store.UpdateAccount(r.Context(), &acc); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

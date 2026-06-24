@@ -89,6 +89,92 @@ func TestIsActiveModelChannel(t *testing.T) {
 	}
 }
 
+func TestEnsureDefaultSubscription(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name           string
+		acc            *store.Account
+		wantSubscribed string
+		wantApplied    bool
+	}{
+		{
+			name:           "nil account",
+			acc:            nil,
+			wantSubscribed: "",
+			wantApplied:    false,
+		},
+		{
+			name:           "codebuff empty gets basic",
+			acc:            &store.Account{AccountType: "codebuff"},
+			wantSubscribed: "basic",
+			wantApplied:    true,
+		},
+		{
+			name:           "puter empty gets basic",
+			acc:            &store.Account{AccountType: "puter"},
+			wantSubscribed: "basic",
+			wantApplied:    true,
+		},
+		{
+			name:           "warp empty is untouched",
+			acc:            &store.Account{AccountType: "warp"},
+			wantSubscribed: "",
+			wantApplied:    false,
+		},
+		{
+			name:           "existing subscription untouched",
+			acc:            &store.Account{AccountType: "codebuff", Subscription: "pro"},
+			wantSubscribed: "pro",
+			wantApplied:    false,
+		},
+		{
+			name:           "whitespace subscription treated as empty",
+			acc:            &store.Account{AccountType: "codebuff", Subscription: "   "},
+			wantSubscribed: "basic",
+			wantApplied:    true,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			applied := ensureDefaultSubscription(tc.acc)
+			if applied != tc.wantApplied {
+				t.Fatalf("ensureDefaultSubscription returned %v, want %v", applied, tc.wantApplied)
+			}
+			got := ""
+			if tc.acc != nil {
+				got = tc.acc.Subscription
+			}
+			if got != tc.wantSubscribed {
+				t.Fatalf("subscription = %q, want %q", got, tc.wantSubscribed)
+			}
+		})
+	}
+}
+
+func TestNormalizeAccountOutputAppliesDefaultSubscription(t *testing.T) {
+	t.Parallel()
+
+	codebuffAcc := &store.Account{AccountType: "codebuff"}
+	normalized := normalizeAccountOutput(codebuffAcc)
+	if normalized.Subscription != "basic" {
+		t.Fatalf("codebuff normalize got %q, want %q", normalized.Subscription, "basic")
+	}
+
+	warpAcc := &store.Account{AccountType: "warp"}
+	if got := normalizeAccountOutput(warpAcc).Subscription; got != "" {
+		t.Fatalf("warp normalize should not default, got %q", got)
+	}
+
+	premiumAcc := &store.Account{AccountType: "codebuff", Subscription: "pro"}
+	if got := normalizeAccountOutput(premiumAcc).Subscription; got != "pro" {
+		t.Fatalf("existing sub should pass through, got %q", got)
+	}
+}
+
 func TestResolveCodebuffAuthToken(t *testing.T) {
 	t.Parallel()
 
