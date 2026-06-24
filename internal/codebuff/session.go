@@ -215,6 +215,13 @@ func (sc *SessionCache) loadSession(ctx context.Context, key string) (*Session, 
 	return &sess, nil
 }
 
+// EvictSession removes the cached session for the given token and model,
+// forcing the next EnsureSession call to create a fresh session upstream.
+func (sc *SessionCache) EvictSession(ctx context.Context, token, model string) error {
+	key := fmt.Sprintf("%s:session:%s:%s", sc.prefix, hashToken(token), model)
+	return sc.redis.Del(ctx, key).Err()
+}
+
 func (sc *SessionCache) saveSession(ctx context.Context, key string, sess *Session) error {
 	if sess == nil {
 		return sc.redis.Del(ctx, key).Err()

@@ -1149,6 +1149,7 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			errClass := classifyUpstreamError(errStr)
 			if sh.hasAnyOutput() {
 				slog.Warn("Upstream failed after partial output, skip retry to avoid duplicated token billing", "trace_id", traceID, "attempt", upstreamReq.Attempt, "error", err)
+				sh.InjectUpstreamError(errStr)
 				sh.finishResponse("end_turn")
 				return
 			}
@@ -1420,6 +1421,7 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 
 	// Select account — passthrough always requires a channel-bound account.
 	var failedAccountIDs []int64
+	failedAccountSet := make(map[int64]struct{})
 	apiClient, currentAccount, err := h.selectAccountWithOptions(r.Context(), targetChannel, true, failedAccountIDs, accountSelectionOptions{
 		ModelID: mappedModel,
 	})
@@ -1445,48 +1447,153 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 		w.Header().Set("Connection", "keep-alive")
 	}
 
-	// Raw SSE writer — forwards upstream SSE directly to client, suppressing
-	// trailing finish_reason:"stop" after finish_reason:"tool_calls".
-	var rawSSEWriter func(event string, data []byte)
-	if rawBody.Stream {
-		rawFlusher, _ := w.(http.Flusher)
-		var rawSawToolCallsFinish bool
-		rawSSEWriter = func(event string, data []byte) {
-			if string(data) == "[DONE]" {
-				fmt.Fprintf(w, "data: [DONE]\n\n")
+	// Track connection
+	trackedAccountID := h.acquireTrackedAccount(currentAccount)
+	defer func() {
+		if trackedAccountID != 0 {
+			h.releaseTrackedAccount(trackedAccountID)
+		}
+	}()
+
+	// Retry configuration
+	maxRetries := h.config.MaxRetries
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
+	retryDelay := time.Duration(h.config.RetryDelay) * time.Millisecond
+	retriesRemaining := maxRetries
+
+	for attempt := 0; ; attempt++ {
+		// Track whether this attempt wrote any SSE data to the client.
+		hasOutput := false
+
+		// Raw SSE writer — forwards upstream SSE directly to client, suppressing
+		// trailing finish_reason:"stop" after finish_reason:"tool_calls".
+		var rawSSEWriter func(event string, data []byte)
+		if rawBody.Stream {
+			rawFlusher, _ := w.(http.Flusher)
+			var rawSawToolCallsFinish bool
+			rawSSEWriter = func(event string, data []byte) {
+				hasOutput = true
+				if string(data) == "[DONE]" {
+					fmt.Fprintf(w, "data: [DONE]\n\n")
+					if rawFlusher != nil {
+						rawFlusher.Flush()
+					}
+					return
+				}
+				if rawSawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"stop"`)) {
+					slog.Debug("suppressing stop chunk in passthrough provider", "provider", spec.Name, "len", len(data))
+					return
+				}
+				fmt.Fprintf(w, "data: %s\n\n", data)
 				if rawFlusher != nil {
 					rawFlusher.Flush()
 				}
-				return
-			}
-			if rawSawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"stop"`)) {
-				slog.Debug("suppressing stop chunk in passthrough provider", "provider", spec.Name, "len", len(data))
-				return
-			}
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			if rawFlusher != nil {
-				rawFlusher.Flush()
-			}
-			if !rawSawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"tool_calls"`)) {
-				rawSawToolCallsFinish = true
+				if !rawSawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"tool_calls"`)) {
+					rawSawToolCallsFinish = true
+				}
 			}
 		}
-	}
 
-	// Build minimal upstream request with raw body — no type conversions.
-	upstreamReq := upstream.UpstreamRequest{
-		Model:             mappedModel,
-		Stream:            rawBody.Stream,
-		RawBody:           bodyBytes,
-		RawOpenAIMessages: rawBody.Messages,
-		RawOpenAISystem:   rawBody.System,
-		RawSSEWriter:      rawSSEWriter,
-		TraceID:           fmt.Sprintf("%s-%x", spec.Name, time.Now().UnixNano()),
-	}
+		// Build minimal upstream request with raw body — no type conversions.
+		upstreamReq := upstream.UpstreamRequest{
+			Model:             mappedModel,
+			Stream:            rawBody.Stream,
+			RawBody:           bodyBytes,
+			RawOpenAIMessages: rawBody.Messages,
+			RawOpenAISystem:   rawBody.System,
+			RawSSEWriter:      rawSSEWriter,
+			TraceID:           fmt.Sprintf("%s-%x", spec.Name, time.Now().UnixNano()),
+		}
 
-	// Call provider — SSE passthrough only
-	if err := apiClient.SendRequestWithPayload(r.Context(), upstreamReq, nil, logger); err != nil {
-		slog.Error("passthrough provider request failed", "provider", spec.Name, "error", err)
+		// Call provider — SSE passthrough only
+		err := apiClient.SendRequestWithPayload(r.Context(), upstreamReq, nil, logger)
+		if err == nil {
+			break
+		}
+
+		errStr := err.Error()
+		errClass := classifyUpstreamError(errStr)
+
+		if rawBody.Stream && hasOutput {
+			slog.Warn("passthrough failed after partial output, skip retry to avoid duplicated token billing",
+				"provider", spec.Name, "attempt", attempt+1, "error", err)
+			escaped := strings.ReplaceAll(strings.ReplaceAll(errStr, `\`, `\\`), `"`, `\"`)
+			fmt.Fprintf(w, "data: {\"type\":\"error\",\"error\":{\"message\":\"Request failed: %s\"}}\n\n", escaped)
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			break
+		}
+
+		slog.Error("passthrough request error",
+			"provider", spec.Name,
+			"attempt", attempt+1,
+			"error", err,
+			"category", errClass.Category,
+			"retryable", errClass.Retryable,
+		)
+
+		// Mark account status for auth/rate-limit errors.
+		if currentAccount != nil && h.loadBalancer != nil && h.loadBalancer.Store != nil {
+			if status := classifyAccountStatus(errStr); status != "" {
+				if !errClass.Retryable || errClass.Category == "auth" || errClass.Category == "auth_blocked" || status == "403" || status == "429" || status == "402" {
+					h.loadBalancer.MarkAccountStatus(r.Context(), currentAccount, status)
+				}
+			}
+		}
+
+		if !errClass.Retryable || retriesRemaining <= 0 {
+			slog.Error("passthrough request failed, no more retries",
+				"category", errClass.Category,
+				"retries_remaining", retriesRemaining,
+			)
+			break
+		}
+
+		retriesRemaining--
+		slog.Warn("retrying passthrough request",
+			"retries_remaining", retriesRemaining,
+			"category", errClass.Category,
+			"switch_account", errClass.SwitchAccount,
+		)
+
+		// Account switch if the error warrants it.
+		if errClass.SwitchAccount && currentAccount != nil && h.loadBalancer != nil {
+			if trackedAccountID != 0 {
+				h.releaseTrackedAccount(trackedAccountID)
+				trackedAccountID = 0
+			}
+			if _, ok := failedAccountSet[currentAccount.ID]; !ok {
+				failedAccountSet[currentAccount.ID] = struct{}{}
+				failedAccountIDs = append(failedAccountIDs, currentAccount.ID)
+			}
+			slog.Warn("switching passthrough account", "failed_account", currentAccount.Name, "failed_count", len(failedAccountIDs))
+
+			nextClient, nextAccount, retryErr := h.selectAccountWithOptions(r.Context(), targetChannel, true, failedAccountIDs, accountSelectionOptions{
+				ModelID: mappedModel,
+			})
+			if retryErr == nil {
+				apiClient = nextClient
+				currentAccount = nextAccount
+				trackedAccountID = h.acquireTrackedAccount(currentAccount)
+				slog.Warn("switched to passthrough account", "new_account", currentAccount.Name)
+			} else if shouldRetryCurrentAccountWhenNoAlternative(errClass.Category) {
+				trackedAccountID = h.acquireTrackedAccount(currentAccount)
+				slog.Warn("no alternate passthrough accounts; retrying current", "account", currentAccount.Name, "error", retryErr)
+			} else {
+				slog.Error("no more passthrough accounts available", "error", retryErr)
+				break
+			}
+		}
+
+		if retryDelay > 0 {
+			delay := computeRetryDelay(retryDelay, attempt+1, errClass.Category)
+			if delay > 0 && !util.SleepWithContext(r.Context(), delay) {
+				break
+			}
+		}
 	}
 
 	// Log audit event
