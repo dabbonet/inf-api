@@ -88,3 +88,78 @@ func TestIsActiveModelChannel(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveCodebuffAuthToken(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		acc  *store.Account
+		want string
+	}{
+		{
+			name: "nil account returns empty",
+			acc:  nil,
+			want: "",
+		},
+		{
+			name: "empty fields returns empty",
+			acc:  &store.Account{AccountType: "codebuff"},
+			want: "",
+		},
+		{
+			name: "client_cookie wins over truncated token preview",
+			acc: &store.Account{
+				AccountType:  "codebuff",
+				ClientCookie: "REAL_FULL_BEARER_TOKEN_12345",
+				Token:        "REAL_FULL_BEARER_TOKEN_1...",
+			},
+			want: "REAL_FULL_BEARER_TOKEN_12345",
+		},
+		{
+			name: "session_cookie used when client_cookie empty",
+			acc: &store.Account{
+				AccountType:   "codebuff",
+				SessionCookie: "session_token_xyz",
+				Token:         "truncated_one...",
+			},
+			want: "session_token_xyz",
+		},
+		{
+			name: "refresh_token used when client_cookie and session empty",
+			acc: &store.Account{
+				AccountType:  "codebuff",
+				RefreshToken: "refresh_token_abc",
+				Token:        "truncated_two...",
+			},
+			want: "refresh_token_abc",
+		},
+		{
+			name: "truncated token preview alone returns empty",
+			acc: &store.Account{
+				AccountType: "codebuff",
+				Token:       "abcdefghij1234567890abcdefghij...",
+			},
+			want: "",
+		},
+		{
+			name: "non-truncated token used as final fallback",
+			acc: &store.Account{
+				AccountType: "codebuff",
+				Token:       "short_real_bearer",
+			},
+			want: "short_real_bearer",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := resolveCodebuffAuthToken(tc.acc)
+			if got != tc.want {
+				t.Fatalf("resolveCodebuffAuthToken = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

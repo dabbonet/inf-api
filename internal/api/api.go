@@ -93,6 +93,28 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
+// resolveCodebuffAuthToken picks the real credential to send to codebuff.
+// Order matters: acc.Token may contain a truncated display preview (e.g.
+// "abc123...") from truncateAccountDisplayToken, so we consult it last.
+// If acc.Token has no "..." truncation marker, we treat it as authoritative.
+func resolveCodebuffAuthToken(acc *store.Account) string {
+	if acc == nil {
+		return ""
+	}
+	for _, value := range []string{acc.ClientCookie, acc.SessionCookie, acc.RefreshToken} {
+		if token := strings.TrimSpace(value); token != "" {
+			return token
+		}
+	}
+	if token := strings.TrimSpace(acc.Token); token != "" {
+		if strings.HasSuffix(token, "...") {
+			return ""
+		}
+		return token
+	}
+	return ""
+}
+
 func normalizeAccountOutput(acc *store.Account) *store.Account {
 	if acc == nil {
 		return nil
@@ -344,10 +366,7 @@ func (a *API) refreshCodebuffAccountState(ctx context.Context, acc *store.Accoun
 	if acc == nil {
 		return "", http.StatusBadRequest, fmt.Errorf("account is nil")
 	}
-	token := strings.TrimSpace(acc.Token)
-	if token == "" {
-		token = strings.TrimSpace(firstNonEmptyString(acc.ClientCookie, acc.SessionCookie, acc.RefreshToken))
-	}
+	token := resolveCodebuffAuthToken(acc)
 	if token == "" {
 		return "", http.StatusBadRequest, fmt.Errorf("failed to verify codebuff account: missing bearer token")
 	}
