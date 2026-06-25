@@ -1463,9 +1463,9 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 	retryDelay := time.Duration(h.config.RetryDelay) * time.Millisecond
 	retriesRemaining := maxRetries
 
+	lastErrStr := ""
+	hasOutput := false
 	for attempt := 0; ; attempt++ {
-		// Track whether this attempt wrote any SSE data to the client.
-		hasOutput := false
 
 		// Raw SSE writer — forwards upstream SSE directly to client, suppressing
 		// trailing finish_reason:"stop" after finish_reason:"tool_calls".
@@ -1514,6 +1514,7 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 		}
 
 		errStr := err.Error()
+		lastErrStr = errStr
 		errClass := classifyUpstreamError(errStr)
 
 		if rawBody.Stream && hasOutput {
@@ -1593,6 +1594,24 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 			if delay > 0 && !util.SleepWithContext(r.Context(), delay) {
 				break
 			}
+		}
+	}
+
+	// ─── Post-loop error injection ────────────────────────────────────────
+	// If we exited the loop with NO output written and an error captured,
+	// emit a structured error response so the client sees the failure
+	// (otherwise the response is silently empty: 200 + 0 bytes).
+	if lastErrStr != "" && !hasOutput {
+		escaped := strings.ReplaceAll(strings.ReplaceAll(lastErrStr, `\`, `\\`), `"`, `\"`)
+		if rawBody.Stream {
+			fmt.Fprintf(w, "data: {\"type\":\"error\",\"error\":{\"message\":\"%s\"}}\n\n", escaped)
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, "{\"error\":{\"message\":\"%s\",\"type\":\"upstream_error\"}}\n", escaped)
 		}
 	}
 
