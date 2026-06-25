@@ -1464,6 +1464,7 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 	retriesRemaining := maxRetries
 
 	lastErrStr := ""
+	lastErrCategory := ""
 	hasOutput := false
 	for attempt := 0; ; attempt++ {
 
@@ -1516,6 +1517,7 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 		errStr := err.Error()
 		lastErrStr = errStr
 		errClass := classifyUpstreamError(errStr)
+		lastErrCategory = errClass.Category
 
 		if rawBody.Stream && hasOutput {
 			slog.Warn("passthrough failed after partial output, skip retry to avoid duplicated token billing",
@@ -1610,8 +1612,19 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 				flusher.Flush()
 			}
 		} else {
+			// Non-stream: map error category to proper HTTP status code
+			// so clients see the failure without parsing arbitrary status codes.
+			statusCode := errorCategoryToStatus(lastErrCategory)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, "{\"error\":{\"message\":\"%s\",\"type\":\"upstream_error\"}}\n", escaped)
+			w.WriteHeader(statusCode)
+			errType := "upstream_error"
+			if statusCode >= 400 && statusCode < 500 {
+				errType = lastErrCategory
+				if errType == "" {
+					errType = "invalid_request_error"
+				}
+			}
+			fmt.Fprintf(w, "{\"error\":{\"message\":\"%s\",\"type\":\"%s\",\"code\":%d}}\n", escaped, errType, statusCode)
 		}
 	}
 
