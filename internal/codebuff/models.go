@@ -37,6 +37,16 @@ var (
 		{ID: "minimax/minimax-m3", AgentID: "base2-free-minimax-m3", OwnedBy: "freebuff"},
 		{ID: "mimo/mimo-v2.5", AgentID: "base2-free-mimo", OwnedBy: "freebuff"},
 		{ID: "mimo/mimo-v2.5-pro", AgentID: "base2-free-mimo-pro", OwnedBy: "freebuff"},
+		// GLM 5.2 (Z.ai), served by Fireworks serverless upstream. Upstream
+		// intentionally keeps it out of the picker (it is gated by a referral
+		// program — see FREEBUFF_GLM_V52_REFERRAL_CAP, 1-hour weekly sessions
+		// gated by qualified-referral count). We expose it on our proxy so
+		// OpenCode/Hermes clients can route to it. Upstream symbol:
+		// `FREEBUFF_GLM_V52_MODEL_ID = 'z-ai/glm-5.2'` from
+		// CodebuffAI/codebuff@main, commit dd151df.
+		// AgentID is a best-effort mapping to match the `base2-free-*` pattern;
+		// override here if upstream rejects with 404/waiting_room_required.
+		{ID: "z-ai/glm-5.2", AgentID: "base2-free-glm-5.2", OwnedBy: "freebuff"},
 	}
 
 	DEFAULT_MODEL = FREEBUFF_MODELS[0]
