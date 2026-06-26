@@ -2211,6 +2211,12 @@ tr:hover td {
   border: 1px solid rgba(59, 130, 246, 0.3);
 }
 
+.badge-codebuff {
+  background: rgba(251, 146, 60, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(251, 146, 60, 0.35);
+}
+
 .badge-aihubmix {
   background: rgba(168, 85, 247, 0.15);
   color: #c084fc;

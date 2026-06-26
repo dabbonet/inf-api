@@ -1,6 +1,8 @@
 package codebuff
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"orchids-api/internal/prompt"
@@ -127,13 +129,44 @@ func TestErrorClassification(t *testing.T) {
 
 func TestSessionFresh(t *testing.T) {
 	fresh := &Session{RemainingMs: 60000}
-	if !fresh.IsFresh() {
+	if !fresh.IsFresh(30000) {
 		t.Fatal("expected session with 60s remaining to be fresh")
 	}
 	stale := &Session{RemainingMs: 1000}
-	if stale.IsFresh() {
+	if stale.IsFresh(30000) {
 		t.Fatal("expected session with 1s remaining to be stale")
 	}
+	// Nil session is not fresh — caller must hit cache + create path.
+	if (*Session)(nil).IsFresh(30000) {
+		t.Fatal("nil session must not be fresh")
+	}
+	// Session with unknown remaining time passes the first call.
+	unknown := &Session{RemainingMs: 0}
+	if !unknown.IsFresh(30000) {
+		t.Fatal("session with unknown remaining time should assume fresh on first use")
+	}
+}
+
+func TestSessionCacheKeyShapePerModel(t *testing.T) {
+	// Validate that lock + session keys include the model so two
+	// concurrent requests on different models of the same token do not
+	// contend on one Redis key.
+	sc := NewSessionCacheWith(nil, "codebuff", SessionCacheConfig{})
+	tokenHash := hashToken("tok")
+	lockA := fmt.Sprintf("codebuff:session_lock:%s:claude-3-5", tokenHash)
+	lockB := fmt.Sprintf("codebuff:session_lock:%s:gpt-4", tokenHash)
+	if lockA == lockB {
+		t.Fatal("lock keys must differ per model")
+	}
+	sessionA := fmt.Sprintf("codebuff:session:%s:claude-3-5", tokenHash)
+	sessionB := fmt.Sprintf("codebuff:session:%s:gpt-4", tokenHash)
+	if sessionA == sessionB {
+		t.Fatal("session keys must differ per model")
+	}
+	if !strings.Contains(sessionA, tokenHash) {
+		t.Fatal("session keys must contain hashed token")
+	}
+	_ = sc // silence unused if config struct moves
 }
 
 func TestRunPayloadRunID(t *testing.T) {

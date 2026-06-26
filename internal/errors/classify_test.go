@@ -104,6 +104,34 @@ func TestClassifyUpstreamError(t *testing.T) {
 			wantRetry:    false,
 			wantSwitch:   false,
 		},
+		{
+			name:         "codebuff 409 model_locked",
+			errStr:       "Codebuff chat failed: status=409 body={\"error\":\"model_locked\"}",
+			wantCategory: "session_conflict",
+			wantRetry:    true,
+			wantSwitch:   true,
+		},
+		{
+			name:         "codebuff 409 session_model_mismatch",
+			errStr:       "Codebuff request failed: status=409 body={\"error\":\"session_model_mismatch\"}",
+			wantCategory: "session_conflict",
+			wantRetry:    true,
+			wantSwitch:   true,
+		},
+		{
+			name:         "codebuff model_locked in error string",
+			errStr:       "codebuff session acquisition failed: Codebuff request failed: status=409 body={\"error\":\"model_locked\",\"retryAfterMs\":2000}",
+			wantCategory: "session_conflict",
+			wantRetry:    true,
+			wantSwitch:   true,
+		},
+		{
+			name:         "scanner unexpected eof",
+			errStr:       "codebuff stream error: unexpected EOF",
+			wantCategory: "network",
+			wantRetry:    true,
+			wantSwitch:   true,
+		},
 	}
 
 	for _, tt := range tests {

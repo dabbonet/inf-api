@@ -12,12 +12,9 @@ import (
 	"github.com/goccy/go-json"
 
 	"orchids-api/internal/config"
-	"orchids-api/internal/grok"
-	"orchids-api/internal/modelpolicy"
 	"orchids-api/internal/puter"
 	"orchids-api/internal/store"
 	"orchids-api/internal/util"
-	"orchids-api/internal/warp"
 )
 
 const (
@@ -29,17 +26,6 @@ var verifyPuterModelForRefresh = func(ctx context.Context, cfg *config.Config, a
 	client := puter.NewFromAccount(acc, refreshModelRequestConfig(cfg, "puter"))
 	defer client.Close()
 	return client.VerifyModel(ctx, modelID)
-}
-
-var probeWarpModelForRefresh = func(ctx context.Context, cfg *config.Config, acc *store.Account, modelID string) error {
-	client := warp.NewFromAccount(acc, refreshModelRequestConfig(cfg, "warp"))
-	defer client.Close()
-	return client.ProbeModel(ctx, modelID)
-}
-
-type modelRefreshRequest struct {
-	Channel     string `json:"channel"`
-	Concurrency int    `json:"concurrency,omitempty"`
 }
 
 type modelRefreshResult struct {
@@ -64,13 +50,9 @@ type discoveredModel struct {
 	SortOrder int
 }
 
-type warpAccountDiscovery struct {
-	index         int
-	id            int64
-	choices       []warp.ModelChoice
-	source        string
-	featureConfig warp.AccountFeatureConfig
-	ok            bool
+type modelRefreshRequest struct {
+	Channel     string `json:"channel"`
+	Concurrency int    `json:"concurrency,omitempty"`
 }
 
 type modelRefreshFunc func(ctx context.Context, cfg *config.Config, s *store.Store, channel string, concurrency int) (*modelRefreshResult, error)
@@ -98,6 +80,11 @@ func makeModelRefreshHandler(cfg *config.Config, s *store.Store) http.HandlerFun
 			if req.Concurrency != 0 {
 				concurrency = normalizeModelRefreshConcurrency(req.Concurrency)
 			}
+		}
+
+		if channel != "" && !isRefreshableModelChannel(channel) {
+			http.Error(w, fmt.Sprintf("channel %q is no longer supported; refresh only Puter or Codebuff", channel), http.StatusBadRequest)
+			return
 		}
 
 		result, err := runModelRefresh(r.Context(), cfg, s, channel, concurrency)
@@ -147,16 +134,8 @@ func syncModelsForChannelConcurrent(ctx context.Context, cfg *config.Config, s *
 
 func normalizeAdminModelChannel(channel string) string {
 	switch strings.ToLower(strings.TrimSpace(channel)) {
-	case "warp":
-		return "Warp"
 	case "puter":
 		return "Puter"
-	case "grok":
-		return "Grok"
-	case "aihubmix":
-		return "Aihubmix"
-	case "zenmux":
-		return "Zenmux"
 	default:
 		return ""
 	}
@@ -201,16 +180,8 @@ func discoverModelsForChannel(ctx context.Context, cfg *config.Config, s *store.
 
 func discoverModelsForChannelConcurrent(ctx context.Context, cfg *config.Config, s *store.Store, channel string, concurrency int) ([]discoveredModel, string, error) {
 	switch strings.ToLower(channel) {
-	case "warp":
-		return discoverWarpModelsConcurrent(ctx, cfg, s, concurrency)
 	case "puter":
 		return discoverPuterModelsConcurrent(ctx, cfg, s, concurrency)
-	case "grok":
-		return discoverGrokModelsConcurrent(ctx, cfg, s, concurrency)
-	case "aihubmix":
-		return discoverAihubmixModelsConcurrent(ctx, cfg, s, concurrency)
-	case "zenmux":
-		return discoverZenmuxModelsConcurrent(ctx, cfg, s, concurrency)
 	default:
 		return nil, "", fmt.Errorf("unsupported channel: %s", channel)
 	}
@@ -420,488 +391,6 @@ func isPuterModelDefinitiveReject(err error) bool {
 	return false
 }
 
-func discoverGrokModelsConcurrent(ctx context.Context, cfg *config.Config, s *store.Store, concurrency int) ([]discoveredModel, string, error) {
-	accounts, err := enabledAccountsByType(ctx, s, "grok")
-	if err != nil {
-		return nil, "", err
-	}
-	if len(accounts) == 0 {
-		return nil, "", fmt.Errorf("no enabled grok accounts")
-	}
-
-	tokens := grokAccountTokens(accounts)
-	if len(tokens) == 0 {
-		return nil, "", fmt.Errorf("no enabled grok account token")
-	}
-
-	candidates := canonicalizeDiscoveredModels(grokProbeCandidateModels(ctx, s), canonicalGrokRefreshModelID)
-	client := grok.New(refreshModelRequestConfig(cfg, "grok"))
-	accepted := make([]bool, len(candidates))
-	workerCount := boundedModelRefreshWorkers(len(candidates), concurrency)
-	if workerCount <= 1 {
-		token := tokens[0]
-		for i, candidate := range candidates {
-			if spec, ok := grok.ResolveModel(candidate.ID); ok && (spec.IsImage || spec.IsVideo) {
-				accepted[i] = true
-				continue
-			}
-			if spec, ok := grok.ResolveModel(candidate.ID); ok && strings.TrimSpace(spec.ConsoleModel) != "" {
-				accepted[i] = true
-				continue
-			}
-			result := client.ProbeConsoleModel(ctx, token, candidate.ID)
-			accepted[i] = result.OK && isAcceptedGrokCanonical(candidate.ID, result.CanonicalModel)
-		}
-	} else {
-		jobs := make(chan int, len(candidates))
-		var wg sync.WaitGroup
-		wg.Add(workerCount)
-		for worker := 0; worker < workerCount; worker++ {
-			go func() {
-				defer wg.Done()
-				for idx := range jobs {
-					candidate := candidates[idx]
-					if strings.TrimSpace(candidate.ID) == "" {
-						continue
-					}
-					if spec, ok := grok.ResolveModel(candidate.ID); ok && (spec.IsImage || spec.IsVideo) {
-						accepted[idx] = true
-						continue
-					}
-					if spec, ok := grok.ResolveModel(candidate.ID); ok && strings.TrimSpace(spec.ConsoleModel) != "" {
-						accepted[idx] = true
-						continue
-					}
-					if err := ctx.Err(); err != nil {
-						continue
-					}
-					token := tokens[idx%len(tokens)]
-					result := client.ProbeConsoleModel(ctx, token, candidate.ID)
-					accepted[idx] = result.OK && isAcceptedGrokCanonical(candidate.ID, result.CanonicalModel)
-				}
-			}()
-		}
-		for idx := range candidates {
-			jobs <- idx
-		}
-		close(jobs)
-		wg.Wait()
-	}
-
-	for idx, candidate := range candidates {
-		if accepted[idx] {
-			continue
-		}
-		if spec, ok := grok.ResolveModel(candidate.ID); ok && strings.TrimSpace(spec.ConsoleModel) != "" {
-			accepted[idx] = true
-		}
-	}
-
-	out := make([]discoveredModel, 0, len(candidates))
-	for idx, candidate := range candidates {
-		if !accepted[idx] {
-			continue
-		}
-		out = append(out, discoveredModel{
-			ID:        candidate.ID,
-			Name:      candidate.Name,
-			SortOrder: len(out),
-		})
-	}
-	if len(out) == 0 {
-		return nil, "", fmt.Errorf("no grok models verified by console.x.ai")
-	}
-	return out, "grok_console_probe", nil
-}
-
-func canonicalGrokRefreshModelID(modelID string) string {
-	id := strings.TrimSpace(modelID)
-	if id == "" {
-		return ""
-	}
-	if spec, ok := grok.ResolveModel(id); ok {
-		return spec.ID
-	}
-	return id
-}
-
-func canonicalizeDiscoveredModels(items []discoveredModel, normalize func(string) string) []discoveredModel {
-	seen := map[string]struct{}{}
-	out := make([]discoveredModel, 0, len(items))
-	for _, item := range items {
-		id := strings.TrimSpace(item.ID)
-		if normalize != nil {
-			id = strings.TrimSpace(normalize(id))
-		}
-		if id == "" {
-			continue
-		}
-		if _, exists := seen[id]; exists {
-			continue
-		}
-		seen[id] = struct{}{}
-		name := strings.TrimSpace(item.Name)
-		if spec, ok := grok.ResolveModel(id); ok && strings.TrimSpace(spec.Name) != "" {
-			name = strings.TrimSpace(spec.Name)
-		}
-		if name == "" {
-			name = id
-		}
-		out = append(out, discoveredModel{ID: id, Name: name, SortOrder: len(out)})
-	}
-	return out
-}
-
-func grokAccountTokens(accounts []*store.Account) []string {
-	seen := map[string]struct{}{}
-	tokens := make([]string, 0, len(accounts))
-	for _, acc := range accounts {
-		if acc == nil {
-			continue
-		}
-		token := grok.NormalizeSSOToken(firstNonEmpty(acc.ClientCookie, acc.RefreshToken, acc.Token))
-		if token == "" {
-			continue
-		}
-		if _, exists := seen[token]; exists {
-			continue
-		}
-		seen[token] = struct{}{}
-		tokens = append(tokens, token)
-	}
-	return tokens
-}
-
-func grokProbeCandidateModels(ctx context.Context, s *store.Store) []discoveredModel {
-	seen := map[string]struct{}{}
-	out := make([]discoveredModel, 0, 16)
-	appendCandidate := func(id, name string) {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			return
-		}
-		if _, ok := seen[id]; ok {
-			return
-		}
-		seen[id] = struct{}{}
-		if strings.TrimSpace(name) == "" {
-			name = id
-		}
-		out = append(out, discoveredModel{ID: id, Name: name, SortOrder: len(out)})
-	}
-
-	for _, id := range modelpolicy.PublicGrokModelIDs() {
-		name := id
-		if spec, ok := grok.ResolveModel(id); ok && strings.TrimSpace(spec.Name) != "" {
-			name = spec.Name
-		}
-		appendCandidate(id, name)
-	}
-
-	for _, id := range []string{
-		"grok-4.20-0309",
-		"grok-4.20-0309-non-reasoning",
-		"grok-4.20-0309-reasoning",
-		"grok-4.20-fast",
-		"grok-4.20-auto",
-		"grok-4.20-expert",
-		"grok-4.20-heavy",
-		"grok-4.3",
-		"grok-build-0.1",
-	} {
-		name := id
-		if spec, ok := grok.ResolveModel(id); ok && strings.TrimSpace(spec.Name) != "" {
-			name = spec.Name
-		}
-		appendCandidate(id, name)
-	}
-
-	if s != nil {
-		if existing, err := s.ListModels(ctx); err == nil {
-			for _, model := range existing {
-				if model == nil || !strings.EqualFold(strings.TrimSpace(model.Channel), "grok") {
-					continue
-				}
-				appendCandidate(model.ModelID, model.Name)
-			}
-		}
-	}
-
-	return out
-}
-
-func isAcceptedGrokCanonical(requested, canonical string) bool {
-	requested = strings.ToLower(strings.TrimSpace(requested))
-	canonical = strings.ToLower(strings.TrimSpace(canonical))
-	if requested == "" || canonical == "" {
-		return false
-	}
-	if requested == canonical {
-		return true
-	}
-	return false
-}
-
-func discoverWarpModelsConcurrent(ctx context.Context, cfg *config.Config, s *store.Store, concurrency int) ([]discoveredModel, string, error) {
-	if s == nil {
-		return nil, "", fmt.Errorf("store not configured")
-	}
-
-	accounts, err := enabledAccountsByType(ctx, s, "warp")
-	if err != nil {
-		return nil, "", err
-	}
-
-	seen := map[string]struct{}{}
-	out := make([]discoveredModel, 0, 24)
-	sourceSet := map[string]struct{}{}
-	appendChoice := func(choice warp.ModelChoice) {
-		id := strings.TrimSpace(choice.ID)
-		if id == "" {
-			return
-		}
-		if _, exists := seen[id]; exists {
-			return
-		}
-		seen[id] = struct{}{}
-		name := firstNonEmpty(choice.Name, id)
-		out = append(out, discoveredModel{
-			ID:        id,
-			Name:      name,
-			SortOrder: len(out),
-		})
-	}
-
-	workerCount := boundedModelRefreshWorkers(len(accounts), concurrency)
-	if workerCount > 0 {
-		jobs := make(chan int, len(accounts))
-		results := make(chan warpAccountDiscovery, len(accounts))
-		var wg sync.WaitGroup
-		wg.Add(workerCount)
-		for worker := 0; worker < workerCount; worker++ {
-			go func() {
-				defer wg.Done()
-				for idx := range jobs {
-					acc := accounts[idx]
-					client := warp.NewFromAccount(acc, cfg)
-					features, source, discoverErr := client.FetchDiscoveredFeatureModelChoices(ctx)
-					client.Close()
-					if discoverErr != nil {
-						continue
-					}
-					choices := warp.AgentModeModelChoices(features)
-					featureConfig := warp.AccountFeatureConfigFromChoices(features)
-					if warp.AccountFreeOnly(acc) {
-						probedChoices, probeSource := probeWarpFreeOnlyModelChoices(ctx, cfg, acc, choices)
-						choices = probedChoices
-						source = appendWarpDiscoverySource(source, probeSource)
-					}
-					if len(choices) == 0 {
-						continue
-					}
-					results <- warpAccountDiscovery{
-						index:         idx,
-						id:            acc.ID,
-						choices:       choices,
-						source:        source,
-						featureConfig: featureConfig,
-						ok:            true,
-					}
-				}
-			}()
-		}
-		for idx := range accounts {
-			jobs <- idx
-		}
-		close(jobs)
-		wg.Wait()
-		close(results)
-
-		ordered := make([]warpAccountDiscovery, len(accounts))
-		for result := range results {
-			if result.index >= 0 && result.index < len(ordered) {
-				ordered[result.index] = result
-			}
-		}
-		for _, result := range ordered {
-			if !result.ok {
-				continue
-			}
-			for _, part := range strings.Split(result.source, "+") {
-				part = strings.TrimSpace(part)
-				if part != "" {
-					sourceSet[part] = struct{}{}
-				}
-			}
-			for _, choice := range result.choices {
-				appendChoice(choice)
-			}
-		}
-		if len(out) > 0 {
-			saveWarpAccountModelChoices(ctx, s, ordered)
-		}
-	}
-
-	if len(out) > 0 {
-		return out, joinWarpDiscoverySources(sourceSet), nil
-	}
-	return nil, "", fmt.Errorf("warp model discovery returned no account choices")
-}
-
-func probeWarpFreeOnlyModelChoices(ctx context.Context, cfg *config.Config, acc *store.Account, discovered []warp.ModelChoice) ([]warp.ModelChoice, string) {
-	candidates := warpFreeOnlyProbeCandidates(discovered)
-	out := make([]warp.ModelChoice, 0, len(candidates))
-	for _, choice := range candidates {
-		if err := probeWarpModelForRefresh(ctx, cfg, acc, choice.ID); err != nil {
-			continue
-		}
-		out = append(out, choice)
-	}
-	if len(out) == 0 {
-		return nil, "free_probe"
-	}
-	return out, "free_probe"
-}
-
-func appendWarpDiscoverySource(parts ...string) string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		for _, sub := range strings.Split(part, "+") {
-			sub = strings.TrimSpace(sub)
-			if sub == "" {
-				continue
-			}
-			if _, exists := seen[sub]; exists {
-				continue
-			}
-			seen[sub] = struct{}{}
-			out = append(out, sub)
-		}
-	}
-	return strings.Join(out, "+")
-}
-
-func warpFreeOnlyProbeCandidates(discovered []warp.ModelChoice) []warp.ModelChoice {
-	preferred := []string{
-		warp.DefaultModel(),
-		"claude-4-5-haiku",
-		"claude-4-5-sonnet",
-		"claude-4-5-opus",
-		"gpt-5-2-low",
-		"gpt-5-1-low",
-		"gemini-3-5-flash",
-	}
-	byID := make(map[string]warp.ModelChoice, len(discovered)+len(preferred))
-	for _, choice := range discovered {
-		id := warp.NormalizeModelID(choice.ID)
-		if id == "" {
-			continue
-		}
-		choice.ID = id
-		if strings.TrimSpace(choice.Name) == "" {
-			choice.Name = id
-		}
-		byID[id] = choice
-	}
-	out := make([]warp.ModelChoice, 0, len(preferred))
-	seen := map[string]struct{}{}
-	for _, id := range preferred {
-		id = warp.NormalizeModelID(id)
-		if id == "" {
-			continue
-		}
-		choice, ok := byID[id]
-		if !ok {
-			choice = warp.ModelChoice{ID: id, Name: warpProbeModelName(id)}
-			ok = true
-		}
-		if !ok {
-			continue
-		}
-		if _, exists := seen[id]; exists {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, choice)
-	}
-	return out
-}
-
-func warpProbeModelName(id string) string {
-	switch id {
-	case warp.DefaultModel():
-		return "Warp Auto Open"
-	case "claude-4-5-haiku":
-		return "Claude 4.5 Haiku"
-	case "claude-4-5-sonnet":
-		return "Claude 4.5 Sonnet"
-	case "claude-4-5-opus":
-		return "Claude 4.5 Opus"
-	case "gpt-5-2-low":
-		return "GPT-5.2 Low"
-	case "gpt-5-1-low":
-		return "GPT-5.1 Low"
-	case "gemini-3-5-flash":
-		return "Gemini 3.5 Flash"
-	default:
-		return id
-	}
-}
-
-func saveWarpAccountModelChoices(ctx context.Context, s *store.Store, discoveries []warpAccountDiscovery) {
-	if s == nil {
-		return
-	}
-	accountChoices := &warp.AccountModelChoices{Accounts: make(map[string][]string)}
-	accountChoices.Sources = make(map[string]string)
-	accountChoices.FeatureConfigs = make(map[string]warp.AccountFeatureConfig)
-	for _, result := range discoveries {
-		if !result.ok || result.id == 0 || len(result.choices) == 0 {
-			continue
-		}
-		models := make([]string, 0, len(result.choices))
-		for _, choice := range result.choices {
-			models = append(models, choice.ID)
-		}
-		key := strconv.FormatInt(result.id, 10)
-		accountChoices.Accounts[key] = models
-		if source := strings.TrimSpace(result.source); source != "" {
-			accountChoices.Sources[key] = source
-		}
-		if !result.featureConfig.IsEmpty() {
-			accountChoices.FeatureConfigs[key] = result.featureConfig
-		}
-	}
-	if len(accountChoices.Accounts) == 0 {
-		return
-	}
-	if err := warp.SaveAccountModelChoices(ctx, s, accountChoices); err != nil {
-		// Model refresh should still succeed when the advisory account/model
-		// cache cannot be written.
-		return
-	}
-}
-
-func joinWarpDiscoverySources(sourceSet map[string]struct{}) string {
-	if len(sourceSet) == 0 {
-		return "warp_graphql"
-	}
-	ordered := make([]string, 0, 1)
-	for _, part := range []string{"feature_model_choice_all", "feature_model_choice_agent_mode", "free_probe"} {
-		if _, ok := sourceSet[part]; ok {
-			ordered = append(ordered, part)
-		}
-	}
-	if len(ordered) == 0 {
-		for part := range sourceSet {
-			ordered = append(ordered, part)
-		}
-		sort.Strings(ordered)
-	}
-	return "warp_graphql_" + strings.Join(ordered, "+")
-}
-
 func refreshModelRequestConfig(cfg *config.Config, channel string) *config.Config {
 	if cfg == nil {
 		cfg = &config.Config{}
@@ -911,7 +400,7 @@ func refreshModelRequestConfig(cfg *config.Config, channel string) *config.Confi
 	}
 
 	switch strings.ToLower(strings.TrimSpace(channel)) {
-	case "warp", "puter":
+	case "puter":
 		if cfg.RequestTimeout <= 0 || cfg.RequestTimeout > 15 {
 			cfg.RequestTimeout = 15
 		}
@@ -986,17 +475,6 @@ func applyModelRefresh(ctx context.Context, s *store.Store, channel string, sour
 			continue
 		}
 	}
-	if shouldForceWarpDefault(channel, defaultModelID) {
-		if existing := existingByID[defaultModelID]; existing != nil && !existing.IsDefault {
-			updated := *existing
-			updated.IsDefault = true
-			if err := s.UpdateModel(ctx, &updated); err != nil {
-				return nil, err
-			}
-			result.Updated++
-		}
-	}
-
 	if shouldDeleteMissingModelsOnRefresh(channel, source) {
 		for modelID, existing := range existingByID {
 			if _, ok := fetchedSet[modelID]; ok {
@@ -1028,9 +506,6 @@ func shouldDeleteMissingModelsOnRefresh(channel, source string) bool {
 }
 
 func chooseRefreshedDefaultModel(channel string, existing map[string]*store.Model, ordered []discoveredModel) string {
-	if strings.EqualFold(strings.TrimSpace(channel), "warp") && discoveredModelsContain(ordered, warpDefaultModelID()) {
-		return warpDefaultModelID()
-	}
 	for _, model := range ordered {
 		if current := existing[model.ID]; current != nil && current.IsDefault {
 			return model.ID
@@ -1040,14 +515,6 @@ func chooseRefreshedDefaultModel(channel string, existing map[string]*store.Mode
 		return model.ID
 	}
 	return ""
-}
-
-func warpDefaultModelID() string {
-	return "auto-open"
-}
-
-func shouldForceWarpDefault(channel, modelID string) bool {
-	return strings.EqualFold(strings.TrimSpace(channel), "warp") && modelID == warpDefaultModelID()
 }
 
 func discoveredModelsContain(models []discoveredModel, id string) bool {
@@ -1067,4 +534,13 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func isRefreshableModelChannel(channel string) bool {
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "puter", "codebuff":
+		return true
+	default:
+		return false
+	}
 }

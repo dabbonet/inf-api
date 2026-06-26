@@ -8,9 +8,7 @@ import (
 	"orchids-api/internal/api"
 	"orchids-api/internal/auth"
 	"orchids-api/internal/config"
-	"orchids-api/internal/grok"
 	"orchids-api/internal/handler"
-	"orchids-api/internal/loadbalancer"
 	"orchids-api/internal/middleware"
 	"orchids-api/internal/store"
 	"orchids-api/internal/template"
@@ -31,24 +29,16 @@ func registerRoutes(
 	cfg *config.Config,
 	s *store.Store,
 	h *handler.Handler,
-	grokHandler *grok.Handler,
 	apiHandler *api.API,
 	limiter *middleware.ConcurrencyLimiter,
 	tmplRenderer *template.Renderer,
-	lb *loadbalancer.LoadBalancer,
 ) {
 	// --- Channel-specific message routes ---
-	mux.HandleFunc("/warp/v1/messages", limiter.Limit(h.HandleMessages))
-	mux.HandleFunc("/warp/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
 	mux.HandleFunc("/puter/v1/messages", limiter.Limit(h.HandleMessages))
 	mux.HandleFunc("/puter/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
-	mux.HandleFunc("/aihubmix/v1/messages", limiter.Limit(h.HandleMessages))
-	mux.HandleFunc("/aihubmix/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
-	mux.HandleFunc("/zenmux/v1/messages", limiter.Limit(h.HandleMessages))
-	mux.HandleFunc("/zenmux/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
 
 	// --- Model routes (channel prefixes → same handlers) ---
-	modelPrefixes := []string{"/warp/v1", "/puter/v1", "/grok/v1", "/aihubmix/v1", "/zenmux/v1", "/v1"}
+	modelPrefixes := []string{"/puter/v1", "/v1"}
 	if cfg.CodebuffEnabled {
 		modelPrefixes = append(modelPrefixes, "/codebuff/v1")
 	}
@@ -56,34 +46,12 @@ func registerRoutes(
 	registerWithPrefixes(mux, modelPrefixes, "/models/", h.HandleModelByID)
 
 	// --- OpenAI-compatible chat/image routes (channel-specific + unified) ---
-	mux.HandleFunc("/warp/v1/chat/completions", limiter.Limit(h.HandleMessages))
 	mux.HandleFunc("/puter/v1/chat/completions", limiter.Limit(h.HandleMessages))
-	mux.HandleFunc("/aihubmix/v1/chat/completions", limiter.Limit(h.HandleMessages))
-	mux.HandleFunc("/zenmux/v1/chat/completions", limiter.Limit(h.HandleMessages))
 	if cfg.CodebuffEnabled {
 		mux.HandleFunc("/codebuff/v1/messages", limiter.Limit(h.HandleMessages))
 		mux.HandleFunc("/codebuff/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
 		mux.HandleFunc("/codebuff/v1/chat/completions", limiter.Limit(h.HandleMessages))
 	}
-
-	// Aihubmix-specific image generation endpoint. aihubmix supports OpenAI-style
-	// /v1/images/generations; zenmux does not expose an image endpoint.
-	mux.HandleFunc("/aihubmix/v1/images/generations", limiter.Limit(makeAihubmixImageHandler(cfg, s, lb)))
-
-	grokPrefixes := []string{"/grok/v1", "/v1"}
-	registerWithPrefixes(mux, grokPrefixes, "/chat/completions", limiter.Limit(grokHandler.HandleChatCompletions))
-	registerWithPrefixes(mux, grokPrefixes, "/responses", limiter.Limit(grokHandler.HandleResponses))
-	registerWithPrefixes(mux, grokPrefixes, "/images/generations", limiter.Limit(grokHandler.HandleImagesGenerations))
-	registerWithPrefixes(mux, grokPrefixes, "/images/edits", limiter.Limit(grokHandler.HandleImagesEdits))
-	registerWithPrefixes(mux, grokPrefixes, "/videos", limiter.Limit(grokHandler.HandleVideosCreate))
-	registerWithPrefixes(mux, grokPrefixes, "/videos/", limiter.Limit(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(strings.TrimRight(r.URL.Path, "/"), "/content") {
-			grokHandler.HandleVideosContent(w, r)
-			return
-		}
-		grokHandler.HandleVideosRetrieve(w, r)
-	}))
-	registerWithPrefixes(mux, grokPrefixes, "/files/", grokHandler.HandleFiles)
 
 	// --- Public auth/login (no prefix duplication) ---
 	mux.HandleFunc("/api/login", apiHandler.HandleLogin)
@@ -99,7 +67,6 @@ func registerRoutes(
 	// Admin routes under /api/* only (no dual prefix)
 	mux.HandleFunc("/api/accounts", sessionAuth(apiHandler.HandleAccounts))
 	mux.HandleFunc("/api/accounts/", sessionAuth(apiHandler.HandleAccountByID))
-	mux.HandleFunc("/api/warp/import-user-file", sessionAuth(apiHandler.HandleWarpUserFileImport))
 	mux.HandleFunc("/api/keys", sessionAuth(apiHandler.HandleKeys))
 	mux.HandleFunc("/api/keys/", sessionAuth(apiHandler.HandleKeyByID))
 	mux.HandleFunc("/api/models", sessionAuth(apiHandler.HandleModels))
@@ -123,81 +90,14 @@ func registerRoutes(
 		handler http.HandlerFunc
 	}{
 		{"/config", apiHandler.HandleConfig},
-		{"/verify", grokHandler.HandleAdminVerify},
-		{"/storage", grokHandler.HandleAdminStorage},
-		{"/tokens", grokHandler.HandleAdminTokens},
-		{"/tokens/refresh", grokHandler.HandleAdminTokensRefresh},
-		{"/tokens/refresh/async", grokHandler.HandleAdminTokensRefreshAsync},
-		{"/tokens/nsfw/enable", grokHandler.HandleAdminNSFWEnable},
-		{"/tokens/nsfw/enable/async", grokHandler.HandleAdminNSFWEnableAsync},
-		{"/batch/", grokHandler.HandleAdminBatchTask},
-		{"/cache", grokHandler.HandleAdminCache},
-		{"/cache/list", grokHandler.HandleAdminCacheList},
-		{"/cache/clear", grokHandler.HandleAdminCacheClear},
-		{"/cache/item/delete", grokHandler.HandleAdminCacheItemDelete},
-		{"/cache/online/clear", grokHandler.HandleAdminCacheOnlineClear},
-		{"/cache/online/clear/async", grokHandler.HandleAdminCacheOnlineClearAsync},
-		{"/cache/online/load/async", grokHandler.HandleAdminCacheOnlineLoadAsync},
-		{"/voice/token", grokHandler.HandleAdminVoiceToken},
-		{"/imagine/start", grokHandler.HandleAdminImagineStart},
-		{"/imagine/stop", grokHandler.HandleAdminImagineStop},
-		{"/imagine/sse", grokHandler.HandleAdminImagineSSE},
-		{"/imagine/ws", grokHandler.HandleAdminImagineWS},
-		{"/video/start", grokHandler.HandlePublicVideoStart},
-		{"/video/stop", grokHandler.HandlePublicVideoStop},
-		{"/video/sse", grokHandler.HandlePublicVideoSSE},
 	}
 	for _, rt := range adminRoutes {
 		registerWithPrefixes(mux, adminPrefixes, rt.path, sessionAuth(rt.handler))
 	}
 
-	// --- Public API routes (dual prefix) ---
-	publicAuth := func(next http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			middleware.PublicKeyAuth(cfg.PublicAPIKey(), cfg.PublicAPIEnabled(), next)(w, r)
-		}
-	}
-	publicImagineStreamAuth := func(next http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			middleware.PublicImagineStreamAuth(cfg.PublicAPIKey(), cfg.PublicAPIEnabled(), next)(w, r)
-		}
-	}
-
-	publicPrefixes := []string{"/api/v1/public", "/v1/public"}
-	publicAPIRoutes := []struct {
-		path    string
-		handler http.HandlerFunc
-	}{
-		{"/verify", publicAuth(grokHandler.HandlePublicVerify)},
-		{"/voice/token", publicAuth(grokHandler.HandleAdminVoiceToken)},
-		{"/imagine/config", grokHandler.HandlePublicImagineConfig},
-		{"/imagine/start", publicAuth(grokHandler.HandleAdminImagineStart)},
-		{"/imagine/stop", publicAuth(grokHandler.HandleAdminImagineStop)},
-		{"/imagine/sse", publicImagineStreamAuth(grokHandler.HandleAdminImagineSSE)},
-		{"/imagine/ws", publicImagineStreamAuth(grokHandler.HandleAdminImagineWS)},
-		{"/video/start", publicAuth(grokHandler.HandlePublicVideoStart)},
-		{"/video/stop", publicAuth(grokHandler.HandlePublicVideoStop)},
-		{"/video/sse", grokHandler.HandlePublicVideoSSE},
-	}
-	for _, rt := range publicAPIRoutes {
-		registerWithPrefixes(mux, publicPrefixes, rt.path, rt.handler)
-	}
-
 	// --- Static assets ---
 	staticRootHandler := web.StaticHandler()
 	mux.Handle("/static/", http.StripPrefix("/static/", staticRootHandler))
-
-	grokToolsURL := func() string {
-		return cfg.AdminPath + "/?tab=grok-tools"
-	}
-
-	redirectToGrokTools := func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		http.Redirect(w, r, grokToolsURL(), http.StatusFound)
-	}
 
 	// --- Root + public pages ---
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -205,45 +105,8 @@ func registerRoutes(
 			http.NotFound(w, r)
 			return
 		}
-		if cfg.PublicAPIEnabled() {
-			http.Redirect(w, r, grokToolsURL(), http.StatusFound)
-			return
-		}
 		http.Redirect(w, r, cfg.AdminPath+"/login.html", http.StatusFound)
 	})
-	mux.HandleFunc("/login", redirectToGrokTools)
-	mux.HandleFunc("/imagine", redirectToGrokTools)
-	mux.HandleFunc("/voice", redirectToGrokTools)
-	mux.HandleFunc("/video", redirectToGrokTools)
-
-	// Public page aliases (dual prefix)
-	redirectPublicRoot := func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if !cfg.PublicAPIEnabled() {
-			http.NotFound(w, r)
-			return
-		}
-		http.Redirect(w, r, grokToolsURL(), http.StatusFound)
-	}
-	publicPagePrefixes := []string{"/v1/public", "/api/v1/public"}
-	for _, prefix := range publicPagePrefixes {
-		mux.HandleFunc(prefix, redirectPublicRoot)
-		mux.HandleFunc(prefix+"/", redirectPublicRoot)
-	}
-	publicPages := []struct {
-		path string
-	}{
-		{"/login"},
-		{"/imagine"},
-		{"/voice"},
-		{"/video"},
-	}
-	for _, page := range publicPages {
-		registerWithPrefixes(mux, publicPagePrefixes, page.path, redirectToGrokTools)
-	}
 
 	// --- Admin Web UI ---
 	registerAdminUI(mux, cfg, s, staticRootHandler, tmplRenderer)

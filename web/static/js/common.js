@@ -12,7 +12,7 @@ function setSidebarAccountStats(total, normal, abnormal) {
 }
 
 function normalizeSidebarAccountType(acc) {
-  return String(acc?.account_type || "warp").toLowerCase();
+  return String(acc?.account_type || "puter").toLowerCase();
 }
 
 function normalizeSidebarStatusCode(statusCode) {
@@ -106,8 +106,6 @@ function isSidebarAccountAbnormal(acc) {
 
   const type = normalizeSidebarAccountType(acc);
   if (type === "warp") {
-    if (!getSidebarAccountToken(acc)) return true;
-  } else if (type === "grok") {
     if (!getSidebarAccountToken(acc)) return true;
   } else if (type === "puter") {
     if (!getSidebarAccountToken(acc)) return true;

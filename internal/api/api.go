@@ -19,23 +19,18 @@ import (
 
 	"github.com/goccy/go-json"
 
-	"orchids-api/internal/aihubmix"
 	"orchids-api/internal/auth"
 	"orchids-api/internal/codebuff"
 	"orchids-api/internal/config"
 	apperrors "orchids-api/internal/errors"
-	"orchids-api/internal/grok"
 	"orchids-api/internal/middleware"
 	"orchids-api/internal/puter"
 	"orchids-api/internal/store"
 	"orchids-api/internal/tokencache"
 	"orchids-api/internal/util"
-	"orchids-api/internal/warp"
-	"orchids-api/internal/zenmux"
 )
 
-type API struct {
-	store               *store.Store
+type API struct {	store               *store.Store
 	tokenCache          tokencache.Cache
 	promptCache         tokencache.PromptCache
 	adminUser           string
@@ -65,85 +60,7 @@ var puterFetchMonthlyUsage = func(ctx context.Context, acc *store.Account, cfg *
 	return client.FetchMonthlyUsage(ctx)
 }
 
-const defaultGrokVerifyModelID = "grok-4.20-0309"
 
-func normalizeGrokVerifyModelID(raw string) string {
-	model := strings.TrimSpace(raw)
-	if model == "" {
-		return defaultGrokVerifyModelID
-	}
-	lower := strings.ToLower(model)
-	if lower == "grok" || !strings.HasPrefix(lower, "grok-") {
-		return defaultGrokVerifyModelID
-	}
-	return model
-}
-
-func isGrokModelNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	lower := strings.ToLower(err.Error())
-	return strings.Contains(lower, "model is not found") || strings.Contains(lower, "model not found")
-}
-
-func verifyGrokAccount(ctx context.Context, acc *store.Account, cfg *config.Config) error {
-	if acc == nil {
-		return fmt.Errorf("missing grok account")
-	}
-	credential := strings.TrimSpace(firstNonEmptyString(acc.ClientCookie, acc.RefreshToken, acc.Token))
-	if grok.NormalizeSSOToken(credential) == "" {
-		return fmt.Errorf("missing sso token")
-	}
-	acc.ClientCookie = credential
-
-	client := grok.New(cfg)
-	if modelID := normalizeGrokVerifyModelID(acc.AgentMode); modelID != "" && modelID != acc.AgentMode {
-		acc.AgentMode = modelID
-	}
-
-	verifyCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	info, verifyErr := client.VerifyToken(verifyCtx, credential, "")
-	cancel()
-	if verifyErr != nil && isGrokModelNotFound(verifyErr) {
-		verifyCtx, cancel = context.WithTimeout(ctx, 20*time.Second)
-		info, verifyErr = client.VerifyToken(verifyCtx, credential, "grok-4.20-0309-non-reasoning")
-		cancel()
-	}
-	if verifyErr != nil {
-		return verifyErr
-	}
-	if info != nil {
-		grok.ApplyQuotaInfo(acc, info)
-	}
-	return nil
-}
-
-func normalizeWarpTokenInput(acc *store.Account) {
-	if acc == nil || !strings.EqualFold(acc.AccountType, "warp") {
-		return
-	}
-	acc.RefreshToken = warp.ResolveRefreshToken(acc)
-	// Warp only uses refresh_token and clears client_cookie to avoid mixing them.
-	acc.Token = ""
-	acc.ClientCookie = ""
-	acc.SessionCookie = ""
-}
-
-func normalizeWarpTokenOutput(acc *store.Account) *store.Account {
-	if acc == nil {
-		return nil
-	}
-	copyAcc := *acc
-	if strings.EqualFold(copyAcc.AccountType, "warp") {
-		copyAcc.RefreshToken = warp.ResolveRefreshToken(&copyAcc)
-		// Warp only exposes the refresh_token to the outside world to avoid backfilling the runtime JWT as user credentials to the frontend.
-		copyAcc.Token = ""
-		copyAcc.ClientCookie = ""
-		copyAcc.SessionCookie = ""
-	}
-	return &copyAcc
-}
 
 // classifyAccountStatusFromError delegates to the centralized errors package.
 func classifyAccountStatusFromError(errStr string) string {
@@ -167,27 +84,6 @@ func httpStatusFromAccountStatus(status string) int {
 	}
 }
 
-func normalizeGrokTokenInput(acc *store.Account) {
-	if acc == nil || !strings.EqualFold(acc.AccountType, "grok") {
-		return
-	}
-	raw := strings.TrimSpace(acc.ClientCookie)
-	if raw == "" {
-		raw = strings.TrimSpace(acc.RefreshToken)
-	}
-	if grok.NormalizeSSOToken(raw) == "" {
-		acc.ClientCookie = ""
-	} else {
-		acc.ClientCookie = raw
-	}
-	// Grok app-chat can benefit from the full browser cookie stored in ClientCookie.
-	acc.RefreshToken = ""
-	acc.SessionCookie = ""
-	acc.SessionID = ""
-	acc.ClientUat = ""
-	acc.ProjectID = ""
-}
-
 func firstNonEmptyString(values ...string) string {
 	for _, value := range values {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
@@ -197,21 +93,38 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
+// resolveCodebuffAuthToken delegates to codebuff.ResolveAuthToken so the
+// create/sync paths stay in lock-step with the per-request client factory.
+func resolveCodebuffAuthToken(acc *store.Account) string {
+	return codebuff.ResolveAuthToken(acc)
+}
+
 func normalizeAccountOutput(acc *store.Account) *store.Account {
-	out := normalizeWarpTokenOutput(acc)
-	if out == nil {
+	if acc == nil {
 		return nil
 	}
-	if strings.EqualFold(out.AccountType, "warp") && out.WarpMonthlyLimit > 0 {
-		out.Subscription = warp.InferSubscriptionFromRequestLimit(&warp.RequestLimitInfo{
-			RequestLimit: int(out.WarpMonthlyLimit),
-		})
+	out := *acc
+	if strings.TrimSpace(out.Subscription) == "" && isActiveModelChannel(out.AccountType) {
+		out.Subscription = "basic"
 	}
-	if strings.EqualFold(out.AccountType, "grok") {
-		out.RefreshToken = ""
-		out.SessionCookie = ""
+	return &out
+}
+
+// ensureDefaultSubscription sets a default level for active account types
+// when the caller left Subscription blank. Returns true if a default was
+// applied (i.e. the field was empty before).
+func ensureDefaultSubscription(acc *store.Account) bool {
+	if acc == nil {
+		return false
 	}
-	return out
+	if strings.TrimSpace(acc.Subscription) != "" {
+		return false
+	}
+	if !isActiveModelChannel(acc.AccountType) {
+		return false
+	}
+	acc.Subscription = "basic"
+	return true
 }
 
 func encodeAccountWithQuota(w http.ResponseWriter, acc *store.Account) error {
@@ -281,16 +194,8 @@ func normalizedAccountCredentialKey(acc *store.Account) string {
 	var token string
 
 	switch accountType {
-	case "warp":
-		token = strings.TrimSpace(warp.ResolveRefreshToken(acc))
-	case "grok":
-		token = grok.NormalizeSSOToken(firstNonEmptyString(acc.ClientCookie, acc.RefreshToken, acc.Token))
 	case "puter":
 		token = puter.ResolveAuthToken(acc)
-	case "aihubmix":
-		token = strings.TrimSpace(aihubmix.ResolveAPIKey(acc))
-	case "zenmux":
-		token = strings.TrimSpace(zenmux.ResolveAPIKey(acc))
 	default:
 		token = strings.TrimSpace(firstNonEmptyString(acc.RefreshToken, acc.SessionCookie, acc.ClientCookie, acc.Token))
 	}
@@ -360,50 +265,6 @@ func buildQuotaResponseFields(acc *store.Account) map[string]interface{} {
 	}
 
 	switch strings.ToLower(strings.TrimSpace(acc.AccountType)) {
-	case "grok":
-		limit = grok.InferQuotaLimit(acc)
-		remaining := current
-		if remaining > limit && limit > 0 {
-			limit = remaining
-		}
-		used := limit - remaining
-		if used < 0 {
-			used = 0
-		}
-		fields["quota_limit"] = limit
-		fields["quota_used"] = used
-		fields["quota_remaining"] = remaining
-		fields["quota_mode"] = "remaining"
-		fields["quota_unit"] = "requests"
-	case "warp":
-		baseLimit := limit
-		if acc.WarpMonthlyLimit > 0 {
-			baseLimit = acc.WarpMonthlyLimit
-		}
-		used := current
-		if used > baseLimit && baseLimit > 0 {
-			used = baseLimit
-		}
-		baseRemaining := acc.WarpMonthlyRemaining
-		if baseRemaining <= 0 && baseLimit > 0 {
-			baseRemaining = baseLimit - current
-		}
-		if baseRemaining < 0 {
-			baseRemaining = 0
-		}
-		bonusRemaining := acc.WarpBonusRemaining
-		if bonusRemaining < 0 {
-			bonusRemaining = 0
-		}
-		remaining := baseRemaining + bonusRemaining
-		fields["quota_limit"] = baseLimit
-		fields["quota_used"] = used
-		fields["quota_remaining"] = remaining
-		fields["quota_mode"] = "warp_split"
-		fields["quota_unit"] = "requests"
-		fields["quota_base_limit"] = baseLimit
-		fields["quota_base_remaining"] = baseRemaining
-		fields["quota_bonus_remaining"] = bonusRemaining
 	case "puter":
 		if limit <= 0 {
 			fields["quota_limit"] = 0.0
@@ -428,35 +289,6 @@ func buildQuotaResponseFields(acc *store.Account) map[string]interface{} {
 		fields["quota_mode"] = "remaining"
 		fields["quota_unit"] = "credits"
 	default:
-		at := strings.ToLower(strings.TrimSpace(acc.AccountType))
-		if at == "aihubmix" || at == "zenmux" {
-			if limit <= 0 {
-				fields["quota_limit"] = 0.0
-				fields["quota_used"] = 0.0
-				fields["quota_remaining"] = 0.0
-				fields["quota_mode"] = "unknown"
-				fields["quota_unit"] = "USD"
-				fields["quota_supported"] = false
-				break
-			}
-			used := current
-			if used < 0 {
-				used = 0
-			}
-			if used > limit {
-				used = limit
-			}
-			remaining := limit - used
-			if remaining < 0 {
-				remaining = 0
-			}
-			fields["quota_limit"] = limit
-			fields["quota_used"] = used
-			fields["quota_remaining"] = remaining
-			fields["quota_mode"] = "used"
-			fields["quota_unit"] = "USD"
-			break
-		}
 		if limit <= 0 {
 			fields["quota_limit"] = 0.0
 			fields["quota_used"] = 0.0
@@ -506,108 +338,6 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 		return "", http.StatusBadRequest, fmt.Errorf("account is nil")
 	}
 
-	if strings.EqualFold(acc.AccountType, "warp") {
-		cfg := a.config.Load()
-		warpClient := warp.NewFromAccount(acc, cfg)
-		jwt, err := warpClient.ForceRefreshAccount(ctx)
-		if err != nil {
-			httpStatus := http.StatusBadRequest
-			if code := warp.HTTPStatusCode(err); code >= 400 {
-				httpStatus = code
-			}
-			accountStatus := ""
-			if httpStatus == http.StatusUnauthorized || httpStatus == http.StatusForbidden || httpStatus == http.StatusTooManyRequests {
-				accountStatus = strconv.Itoa(httpStatus)
-			}
-			return accountStatus, httpStatus, fmt.Errorf("failed to refresh warp account: %w", err)
-		}
-		acc.Token = jwt
-		warpClient.SyncAccountState()
-
-		limitCtx, limitCancel := context.WithTimeout(ctx, 15*time.Second)
-		limitInfo, bonuses, limitErr := warpClient.GetRequestLimitInfo(limitCtx)
-		limitCancel()
-		if limitErr == nil && limitInfo != nil {
-			warp.ApplyRequestLimitInfoToAccount(acc, limitInfo, bonuses)
-		} else if limitErr != nil {
-			slog.Warn("Warp quota sync failed after refresh; keeping account available", "account_id", acc.ID, "error", limitErr)
-		}
-		featureConfig := warp.AccountFeatureConfig{}
-		if a.store != nil && acc.ID != 0 {
-			modelCtx, modelCancel := context.WithTimeout(ctx, 15*time.Second)
-			features, source, modelErr := warpClient.FetchDiscoveredFeatureModelChoices(modelCtx)
-			modelCancel()
-			choices := warp.AgentModeModelChoices(features)
-			featureConfig = warp.AccountFeatureConfigFromChoices(features)
-			if modelErr == nil && len(choices) > 0 {
-				models := make([]string, 0, len(choices))
-				for _, choice := range choices {
-					models = append(models, choice.ID)
-				}
-				existing, err := warp.LoadAccountModelChoices(ctx, a.store)
-				if err != nil {
-					slog.Warn("Warp model choices sync failed after refresh", "account_id", acc.ID, "source", source, "error", err)
-				} else {
-					if existing == nil {
-						existing = &warp.AccountModelChoices{Accounts: map[string][]string{}}
-					}
-					if existing.Accounts == nil {
-						existing.Accounts = map[string][]string{}
-					}
-					if existing.Sources == nil {
-						existing.Sources = map[string]string{}
-					}
-					if existing.FeatureConfigs == nil {
-						existing.FeatureConfigs = map[string]warp.AccountFeatureConfig{}
-					}
-					key := strconv.FormatInt(acc.ID, 10)
-					existing.Accounts[key] = models
-					existing.Sources[key] = source
-					if !featureConfig.IsEmpty() {
-						existing.FeatureConfigs[key] = featureConfig
-					}
-					if err := warp.SaveAccountModelChoices(ctx, a.store, existing); err != nil {
-						slog.Warn("Warp model choices sync failed after refresh", "account_id", acc.ID, "source", source, "error", err)
-					}
-				}
-			} else if modelErr != nil {
-				slog.Warn("Warp model choices fetch failed after refresh", "account_id", acc.ID, "error", modelErr)
-			}
-		}
-		if strings.TrimSpace(acc.StatusCode) == "403" {
-			probeModel := firstNonEmptyString(featureConfig.BaseModel, warp.DefaultModel())
-			probeCtx, probeCancel := context.WithTimeout(ctx, 20*time.Second)
-			probeErr := warpClient.ProbeModelWithFeatureConfig(probeCtx, probeModel, featureConfig)
-			probeCancel()
-			if probeErr != nil {
-				httpStatus := http.StatusBadRequest
-				if code := warp.HTTPStatusCode(probeErr); code >= 400 {
-					httpStatus = code
-				}
-				accountStatus := classifyAccountStatusFromError(probeErr.Error())
-				if accountStatus == "" && httpStatus == http.StatusForbidden {
-					accountStatus = "403"
-				}
-				if accountStatus == "403" {
-					return accountStatus, httpStatus, fmt.Errorf("failed to verify warp AI feature after refresh: %w", probeErr)
-				}
-				slog.Warn("Warp AI feature probe failed after refresh; preserving existing 403 status", "account_id", acc.ID, "error", probeErr)
-				return "403", httpStatus, fmt.Errorf("failed to verify warp AI feature after refresh: %w", probeErr)
-			}
-		}
-		return "", 0, nil
-	}
-
-	if strings.EqualFold(acc.AccountType, "grok") {
-		if verifyErr := verifyGrokAccount(ctx, acc, a.config.Load()); verifyErr != nil {
-			if strings.Contains(strings.ToLower(verifyErr.Error()), "missing sso token") {
-				return "", http.StatusBadRequest, fmt.Errorf("failed to verify grok account: %w", verifyErr)
-			}
-			status := classifyAccountStatusFromError(verifyErr.Error())
-			return status, httpStatusFromAccountStatus(status), fmt.Errorf("failed to verify grok account: %w", verifyErr)
-		}
-		return "", 0, nil
-	}
 	if strings.EqualFold(acc.AccountType, "puter") {
 		if puter.ResolveAuthToken(acc) == "" {
 			return "", http.StatusBadRequest, fmt.Errorf("failed to verify puter account: missing auth token")
@@ -628,20 +358,58 @@ func (a *API) refreshAccountState(ctx context.Context, acc *store.Account) (stri
 		}
 		return usageStatus, httpStatus, fmt.Errorf("failed to fetch puter usage: %w", usageErr)
 	}
-	if strings.EqualFold(acc.AccountType, "aihubmix") {
-		if aihubmix.ResolveAPIKey(acc) == "" {
-			return "", http.StatusBadRequest, fmt.Errorf("missing aihubmix api key")
-		}
-		return "", 0, nil
-	}
-	if strings.EqualFold(acc.AccountType, "zenmux") {
-		if zenmux.ResolveAPIKey(acc) == "" {
-			return "", http.StatusBadRequest, fmt.Errorf("missing zenmux api key")
-		}
-		return "", 0, nil
+
+	if strings.EqualFold(acc.AccountType, "codebuff") {
+		return a.refreshCodebuffAccountState(ctx, acc)
 	}
 
 	return "", http.StatusBadRequest, fmt.Errorf("unsupported account type: %s", acc.AccountType)
+}
+
+func (a *API) refreshCodebuffAccountState(ctx context.Context, acc *store.Account) (string, int, error) {
+	if acc == nil {
+		return "", http.StatusBadRequest, fmt.Errorf("account is nil")
+	}
+	token := resolveCodebuffAuthToken(acc)
+	if token == "" {
+		return "", http.StatusBadRequest, fmt.Errorf("failed to verify codebuff account: missing bearer token")
+	}
+	if a.codebuffQuotaStore == nil {
+		// Quota store not yet wired; treat as best-effort info rather than fatal error.
+		return "", 0, nil
+	}
+
+	client := codebuff.NewClient(token, a.config.Load())
+
+	streakData, streakErr := client.GetStreak(ctx)
+	if streakErr == nil {
+		if streak := codebuff.ParseStreak(streakData); streak != nil {
+			_ = a.codebuffQuotaStore.RecordStreak(ctx, acc.ID, streak)
+		}
+	}
+
+	sessData, sessErr := client.GetSession(ctx, "")
+	if sessErr == nil {
+		if limits, _ := codebuff.ParseSessionRateLimits(sessData); len(limits) > 0 {
+			_ = a.codebuffQuotaStore.RecordSessionQuotas(ctx, acc.ID, limits)
+		}
+	}
+
+	if streakErr != nil && sessErr != nil {
+		usageStatus := classifyAccountStatusFromError(streakErr.Error())
+		if usageStatus == "" {
+			usageStatus = classifyAccountStatusFromError(sessErr.Error())
+		}
+		httpStatus := http.StatusBadGateway
+		if usageStatus != "" {
+			httpStatus = httpStatusFromAccountStatus(usageStatus)
+		}
+		if usageStatus == "" {
+			usageStatus = "502"
+		}
+		return usageStatus, httpStatus, fmt.Errorf("failed to fetch codebuff session: %w", sessErr)
+	}
+	return "", 0, nil
 }
 
 type ExportData struct {
@@ -900,16 +668,10 @@ func (a *API) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if strings.EqualFold(acc.AccountType, "warp") {
-			normalizeWarpTokenInput(&acc)
-		} else if strings.EqualFold(acc.AccountType, "grok") {
-			normalizeGrokTokenInput(&acc)
+		if strings.EqualFold(acc.AccountType, "codebuff") {
 			acc.NSFWEnabled = true
-		} else if strings.EqualFold(acc.AccountType, "aihubmix") {
-			acc.Token = aihubmix.ResolveAPIKey(&acc)
-		} else if strings.EqualFold(acc.AccountType, "zenmux") {
-			acc.Token = zenmux.ResolveAPIKey(&acc)
 		}
+		ensureDefaultSubscription(&acc)
 		if existing, err := a.findDuplicateAccountByCredential(r.Context(), &acc, 0); err != nil {
 			slog.Error("Failed to detect duplicate account token", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -923,6 +685,10 @@ func (a *API) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 			slog.Error("Failed to create account", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+
+		if strings.TrimSpace(acc.Token) == "" {
+			acc.Token = truncateAccountDisplayToken(&acc)
 		}
 
 		if acc.Enabled && shouldSyncAccountOnCreate(&acc) {
@@ -953,59 +719,6 @@ func (a *API) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
-}
-
-func (a *API) HandleWarpUserFileImport(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "missing uploaded WARP User file: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	credential, err := warp.ReadLocalUserCredentialFromReader(file, 1<<20)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	acc := &store.Account{
-		Name:         strings.TrimSpace(header.Filename),
-		AccountType:  "warp",
-		RefreshToken: credential.RefreshToken,
-		Enabled:      true,
-		Weight:       1,
-	}
-	if acc.Name == "" {
-		acc.Name = "WARP User"
-	}
-	normalizeWarpTokenInput(acc)
-
-	if existing, err := a.findDuplicateAccountByCredential(r.Context(), acc, 0); err != nil {
-		slog.Error("Failed to detect duplicate account token", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	} else if existing != nil {
-		http.Error(w, duplicateAccountError(existing).Error(), http.StatusConflict)
-		return
-	}
-	if err := a.store.CreateAccount(r.Context(), acc); err != nil {
-		slog.Error("Failed to create WARP account from uploaded User file", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if acc.Enabled && shouldSyncAccountOnCreate(acc) {
-		a.syncAccountAfterCreate(*acc)
-	}
-
-	encodeAccountWithQuota(w, acc)
 }
 
 func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
@@ -1179,45 +892,10 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(acc.AccountType) == "" {
 			acc.AccountType = existing.AccountType
 		}
-		if strings.EqualFold(acc.AccountType, "warp") {
-			normalizeWarpTokenInput(&acc)
-		} else if strings.EqualFold(acc.AccountType, "grok") {
-			normalizeGrokTokenInput(&acc)
-		} else if strings.EqualFold(acc.AccountType, "aihubmix") {
-			if strings.TrimSpace(acc.Token) == "" {
-				if acc.ClientCookie == "" {
-					acc.ClientCookie = existing.ClientCookie
-				}
-				if acc.RefreshToken == "" {
-					acc.RefreshToken = existing.RefreshToken
-				}
-				acc.Token = aihubmix.ResolveAPIKey(&acc)
-			}
-		} else if strings.EqualFold(acc.AccountType, "zenmux") {
-			if strings.TrimSpace(acc.Token) == "" {
-				if acc.ClientCookie == "" {
-					acc.ClientCookie = existing.ClientCookie
-				}
-				if acc.RefreshToken == "" {
-					acc.RefreshToken = existing.RefreshToken
-				}
-				acc.Token = zenmux.ResolveAPIKey(&acc)
-			}
-		}
+		
 
 		if acc.SessionID == "" {
 			acc.SessionID = existing.SessionID
-		}
-		if strings.EqualFold(acc.AccountType, "warp") {
-			if strings.TrimSpace(acc.RefreshToken) == "" {
-				acc.RefreshToken = existing.RefreshToken
-			}
-			if strings.TrimSpace(acc.DeviceID) == "" {
-				acc.DeviceID = existing.DeviceID
-			}
-			if strings.TrimSpace(acc.RequestID) == "" {
-				acc.RequestID = existing.RequestID
-			}
 		}
 		if acc.SessionCookie == "" {
 			acc.SessionCookie = existing.SessionCookie
@@ -1241,10 +919,17 @@ func (a *API) HandleAccountByID(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, duplicateAccountError(duplicate).Error(), http.StatusConflict)
 			return
 		}
+		ensureDefaultSubscription(&acc)
 
 		if err := a.store.UpdateAccount(r.Context(), &acc); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if strings.TrimSpace(acc.Token) == "" {
+			acc.Token = truncateAccountDisplayToken(&acc)
+			if updateErr := a.store.UpdateAccount(r.Context(), &acc); updateErr != nil {
+				slog.Warn("Failed to persist derived display token", "account_id", acc.ID, "error", updateErr)
+			}
 		}
 		json.NewEncoder(w).Encode(normalizeAccountOutput(&acc))
 
@@ -1305,15 +990,6 @@ func (a *API) HandleImport(w http.ResponseWriter, r *http.Request) {
 	for _, acc := range exportData.Accounts {
 		acc.ID = 0
 		acc.RequestCount = 0
-		if strings.EqualFold(acc.AccountType, "warp") {
-			normalizeWarpTokenInput(&acc)
-		} else if strings.EqualFold(acc.AccountType, "grok") {
-			normalizeGrokTokenInput(&acc)
-		} else if strings.EqualFold(acc.AccountType, "aihubmix") {
-			acc.Token = aihubmix.ResolveAPIKey(&acc)
-		} else if strings.EqualFold(acc.AccountType, "zenmux") {
-			acc.Token = zenmux.ResolveAPIKey(&acc)
-		}
 		if err := a.store.CreateAccount(r.Context(), &acc); err != nil {
 			slog.Warn("Failed to import account", "name", acc.Name, "error", err)
 			result.Skipped++
@@ -1477,6 +1153,9 @@ func (a *API) HandleModels(w http.ResponseWriter, r *http.Request) {
 			if model == nil {
 				continue
 			}
+			if !isActiveModelChannel(model.Channel) {
+				continue
+			}
 			filtered = append(filtered, model)
 		}
 		json.NewEncoder(w).Encode(filtered)
@@ -1485,6 +1164,11 @@ func (a *API) HandleModels(w http.ResponseWriter, r *http.Request) {
 		var m store.Model
 		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if !isActiveModelChannel(m.Channel) {
+			http.Error(w, fmt.Sprintf("channel %q is no longer supported; use Puter or Codebuff", m.Channel), http.StatusBadRequest)
 			return
 		}
 
@@ -1521,6 +1205,10 @@ func (a *API) HandleModelByID(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if !isActiveModelChannel(m.Channel) {
+			http.Error(w, "Model not found", http.StatusNotFound)
+			return
+		}
 		json.NewEncoder(w).Encode(m)
 
 	case http.MethodPut:
@@ -1530,6 +1218,11 @@ func (a *API) HandleModelByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		m.ID = id
+
+		if !isActiveModelChannel(m.Channel) {
+			http.Error(w, fmt.Sprintf("channel %q is no longer supported; use Puter or Codebuff", m.Channel), http.StatusBadRequest)
+			return
+		}
 
 		if err := a.store.UpdateModel(r.Context(), &m); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1852,4 +1545,34 @@ func (a *API) persistConfig(ctx context.Context, current, newCfg *config.Config)
 		a.clearTokenCaches(ctx)
 	}
 	return nil
+}
+
+func isActiveModelChannel(channel string) bool {
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "puter", "codebuff":
+		return true
+	default:
+		return false
+	}
+}
+
+func truncateAccountDisplayToken(acc *store.Account) string {
+	if acc == nil {
+		return ""
+	}
+	var raw string
+	switch strings.ToLower(strings.TrimSpace(acc.AccountType)) {
+	case "warp":
+		raw = firstNonEmptyString(acc.RefreshToken, acc.SessionCookie, acc.ClientCookie, acc.Token)
+	default:
+		raw = firstNonEmptyString(acc.ClientCookie, acc.SessionCookie, acc.RefreshToken, acc.Token)
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if len(raw) <= 30 {
+		return raw
+	}
+	return raw[:30] + "..."
 }

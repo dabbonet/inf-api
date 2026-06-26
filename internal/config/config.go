@@ -48,7 +48,7 @@ type Config struct {
 	CodebuffOS          string   `json:"codebuff_os"`
 	ZeroclickBaseURL    string   `json:"zeroclick_base_url"`
 
-	// ── Per-client state (used by warp client, not configurable) ──
+	// ── Per-client state (not configurable) ──
 	SessionID     string `json:"-"`
 	ClientCookie  string `json:"-"`
 	SessionCookie string `json:"-"`
@@ -68,22 +68,6 @@ type Config struct {
 	UpstreamURL               string   `json:"-"`
 	UpstreamToken             string   `json:"-"`
 	UpstreamMode              string   `json:"-"`
-	GrokAPIBaseURL            string   `json:"-"`
-	GrokUserAgent             string   `json:"-"`
-	GrokCFClearance           string   `json:"-"`
-	GrokCFBM                  string   `json:"-"`
-	GrokStatsigID             string   `json:"grok_statsig_id,omitempty"`
-	GrokConfigCFClearance     string   `json:"grok_cf_clearance,omitempty"`
-	GrokConfigCFBM            string   `json:"grok_cf_bm,omitempty"`
-	GrokBaseProxyURL          string   `json:"-"`
-	GrokAssetProxyURL         string   `json:"-"`
-	GrokTemporary             *bool    `json:"grok_temporary,omitempty"`
-	GrokDisableMemory         *bool    `json:"grok_disable_memory,omitempty"`
-	GrokCustomInstruction     string   `json:"grok_custom_instruction,omitempty"`
-	WarpDisableTools          *bool    `json:"-"`
-	WarpMaxToolResults        int      `json:"-"`
-	WarpMaxHistoryMessages    int      `json:"-"`
-	WarpSplitToolResults      bool     `json:"-"`
 	Stream                    *bool    `json:"-"`
 	ImageNSFW                 *bool    `json:"-"`
 	ImageFinalMinBytes        int      `json:"-"`
@@ -217,12 +201,6 @@ func ApplyHardcoded(cfg *Config) {
 	cfg.ContextMaxTokens = 100000
 	cfg.ContextSummaryMaxTokens = 800
 	cfg.ContextKeepTurns = 6
-	cfg.GrokAPIBaseURL = "https://grok.com"
-	cfg.GrokUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
-	v := false
-	cfg.WarpDisableTools = &v
-	cfg.WarpMaxToolResults = 10
-	cfg.WarpMaxHistoryMessages = 20
 	vTrue := true
 	cfg.Stream = &vTrue
 	cfg.ImageNSFW = &vTrue
@@ -254,27 +232,6 @@ func (c *Config) ChatDefaultStream() bool {
 		return true
 	}
 	return *c.Stream
-}
-
-func (c *Config) GrokChatTemporary() bool {
-	if c == nil || c.GrokTemporary == nil {
-		return true
-	}
-	return *c.GrokTemporary
-}
-
-func (c *Config) GrokChatDisableMemory(defaultValue bool) bool {
-	if c == nil || c.GrokDisableMemory == nil {
-		return defaultValue
-	}
-	return *c.GrokDisableMemory
-}
-
-func (c *Config) GrokChatCustomInstruction() string {
-	if c == nil {
-		return ""
-	}
-	return strings.TrimSpace(c.GrokCustomInstruction)
 }
 
 func (c *Config) PublicImagineNSFW() bool {

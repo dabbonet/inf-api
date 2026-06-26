@@ -31,7 +31,7 @@ func TestGetOrCreateAccountClient_ReusesClientAcrossStatsOnlyAccountUpdates(t *t
 	}
 
 	created := 0
-	h.SetClientFactory(func(acc *store.Account, cfg *config.Config) UpstreamClient {
+	h.SetClientFactory(func(acc *store.Account, cfg *config.Config) upstream.UpstreamClient {
 		created++
 		return &testCachedClient{id: created}
 	})
@@ -82,7 +82,7 @@ func TestGetOrCreateAccountClient_RebuildsWhenCredentialsChange(t *testing.T) {
 	}
 
 	created := 0
-	h.SetClientFactory(func(acc *store.Account, cfg *config.Config) UpstreamClient {
+	h.SetClientFactory(func(acc *store.Account, cfg *config.Config) upstream.UpstreamClient {
 		created++
 		return &testCachedClient{id: created}
 	})

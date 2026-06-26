@@ -11,6 +11,38 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// SessionCacheConfig holds tunable parameters for SessionCache.
+type SessionCacheConfig struct {
+	// LockTTL controls how long a Redis SETNX lock survives without renewal.
+	// Default: 60s.
+	LockTTL time.Duration
+	// PollTimeout bounds how long a waiter spins while another process creates
+	// the session before it gives up. Default: 5s.
+	PollTimeout time.Duration
+	// PollDelay is the interval between Redis cache checks while waiting on
+	// a lock. Default: 250ms.
+	PollDelay time.Duration
+	// FreshThresholdMs marks a cached session "fresh enough" once its
+	// upstream-reported remaining time exceeds this in milliseconds.
+	// Default: 30000 (30s).
+	FreshThresholdMs int
+}
+
+func (c *SessionCacheConfig) withDefaults() {
+	if c.LockTTL <= 0 {
+		c.LockTTL = 60 * time.Second
+	}
+	if c.PollTimeout <= 0 {
+		c.PollTimeout = 5 * time.Second
+	}
+	if c.PollDelay <= 0 {
+		c.PollDelay = 250 * time.Millisecond
+	}
+	if c.FreshThresholdMs <= 0 {
+		c.FreshThresholdMs = 30000
+	}
+}
+
 // Session holds a cached codebuff session.
 type Session struct {
 	InstanceID  string
@@ -19,29 +51,52 @@ type Session struct {
 	RemainingMs int
 }
 
-// IsFresh returns true if the session has more than 30s of remaining time.
-func (s *Session) IsFresh() bool {
-	return s == nil || s.RemainingMs == 0 || s.RemainingMs > 30000
+// IsFresh returns true if the session has more than the configured
+// threshold of remaining time. A nil session is treated as "not fresh":
+// callers must hit cache to confirm and fall through to the create path.
+func (s *Session) IsFresh(thresholdMs int) bool {
+	if s == nil {
+		return false
+	}
+	// 0 means upstream didn't report remainingMs; assume fresh on first
+	// use, eviction handles the next refresh.
+	if s.RemainingMs == 0 {
+		return true
+	}
+	return s.RemainingMs > thresholdMs
 }
 
-// SessionCache stores codebuff sessions in Redis with per-token locking.
+// SessionCache stores codebuff sessions in Redis with per-(token,model)
+// locking so different models on the same token don't contend.
 type SessionCache struct {
 	redis       *redis.Client
 	prefix      string
 	lockTTL     time.Duration
 	pollTimeout time.Duration
+	pollDelay   time.Duration
+	freshMs     int
 }
 
-// NewSessionCache creates a new Redis-backed session cache.
+// NewSessionCache creates a new Redis-backed session cache with defaults.
 func NewSessionCache(client *redis.Client, prefix string) *SessionCache {
+	return NewSessionCacheWith(client, prefix, SessionCacheConfig{})
+}
+
+// NewSessionCacheWith creates a new Redis-backed session cache with the
+// provided tuning. Zero-valued config fields fall back to documented
+// defaults.
+func NewSessionCacheWith(client *redis.Client, prefix string, cfg SessionCacheConfig) *SessionCache {
+	cfg.withDefaults()
 	if prefix == "" {
 		prefix = "codebuff"
 	}
 	return &SessionCache{
 		redis:       client,
 		prefix:      prefix,
-		lockTTL:     60 * time.Second,
-		pollTimeout: 5 * time.Second,
+		lockTTL:     cfg.LockTTL,
+		pollTimeout: cfg.PollTimeout,
+		pollDelay:   cfg.PollDelay,
+		freshMs:     cfg.FreshThresholdMs,
 	}
 }
 
@@ -50,12 +105,14 @@ func NewSessionCache(client *redis.Client, prefix string) *SessionCache {
 // The returned map is non-nil only when a new session was created upstream.
 func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token, model string) (*Session, map[string]any, error) {
 	tokenHash := hashToken(token)
-	lockKey := fmt.Sprintf("%s:session_lock:%s", sc.prefix, tokenHash)
+	// Per-(token,model) lock so concurrent requests for *different* models
+	// on the same token don't fight over a single key.
+	lockKey := fmt.Sprintf("%s:session_lock:%s:%s", sc.prefix, tokenHash, model)
 	sessionKey := fmt.Sprintf("%s:session:%s:%s", sc.prefix, tokenHash, model)
 
 	// 1. Try cached session.
 	cached, err := sc.loadSession(ctx, sessionKey)
-	if err == nil && cached != nil && cached.IsFresh() {
+	if err == nil && cached != nil && cached.IsFresh(sc.freshMs) {
 		data, err := client.GetSession(ctx, cached.InstanceID)
 		if err == nil {
 			if status, _ := data["status"].(string); status == "active" {
@@ -92,10 +149,10 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 			select {
 			case <-ctx.Done():
 				return nil, nil, ctx.Err()
-			case <-time.After(250 * time.Millisecond):
+			case <-time.After(sc.pollDelay):
 			}
 			cached, err = sc.loadSession(ctx, sessionKey)
-			if err == nil && cached != nil && cached.IsFresh() {
+			if err == nil && cached != nil && cached.IsFresh(sc.freshMs) {
 				return cached, nil, nil
 			}
 		}
@@ -106,7 +163,7 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 
 	// 3. Double-check cache after acquiring lock.
 	cached, err = sc.loadSession(ctx, sessionKey)
-	if err == nil && cached != nil && cached.IsFresh() {
+	if err == nil && cached != nil && cached.IsFresh(sc.freshMs) {
 		return cached, nil, nil
 	}
 
@@ -156,6 +213,13 @@ func (sc *SessionCache) loadSession(ctx context.Context, key string) (*Session, 
 		return nil, err
 	}
 	return &sess, nil
+}
+
+// EvictSession removes the cached session for the given token and model,
+// forcing the next EnsureSession call to create a fresh session upstream.
+func (sc *SessionCache) EvictSession(ctx context.Context, token, model string) error {
+	key := fmt.Sprintf("%s:session:%s:%s", sc.prefix, hashToken(token), model)
+	return sc.redis.Del(ctx, key).Err()
 }
 
 func (sc *SessionCache) saveSession(ctx context.Context, key string, sess *Session) error {

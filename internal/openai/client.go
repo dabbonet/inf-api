@@ -18,8 +18,8 @@ import (
 )
 
 // Client is a generic OpenAI-compatible HTTP client.
-// It can be embedded by channel-specific wrappers (aihubmix, zenmux, ...)
-// which only customize the base URL, default model, and channel tag.
+// It can be embedded by channel-specific wrappers which only customize
+// the base URL, default model, and channel tag.
 type Client struct {
 	channel       string
 	baseURL       string
@@ -31,7 +31,7 @@ type Client struct {
 }
 
 // NewClient builds an OpenAI-compatible client from a store account.
-// baseURL is the upstream root (e.g. "https://aihubmix.com/v1"); it must
+// baseURL is the upstream root (e.g. "https://api.example.com/v1"); it must
 // not end with a slash. defaultModel is the model used when the caller does
 // not supply one.
 func NewClient(channel, baseURL, defaultModel string, acc *store.Account, cfg *config.Config) *Client {
@@ -78,7 +78,7 @@ func ResolveAPIKey(acc *store.Account) string {
 	return ""
 }
 
-// Channel returns the channel tag (lowercase, e.g. "aihubmix").
+// Channel returns the channel tag (lowercase, e.g. "puter").
 func (c *Client) Channel() string { return c.channel }
 
 // BaseURL returns the upstream root (no trailing slash).

@@ -155,11 +155,8 @@ func New(opts Options) (*Store, error) {
 
 func (s *Store) seedModels() error {
 	ctx := context.Background()
-	s.cleanupDeprecatedModelIDs(ctx)
 	existing, err := s.ListModels(ctx)
 	if err == nil && len(existing) > 0 {
-		s.ensureRequiredGrokChatModels(ctx)
-		s.ensureAihubmixZenmuxSeedModels(ctx)
 		slog.Debug("Model seed skipped; existing model records preserved", "count", len(existing))
 		return nil
 	}
@@ -174,11 +171,7 @@ func (s *Store) seedModels() error {
 		// Do not directly expose aggregate source models such as openrouter:/togetherai: to avoid excessive list expansion.
 	}
 
-	models = append(models, BuildWarpSeedModels()...)
-	models = append(models, buildGrokSeedModels()...)
 	models = append(models, buildPuterSeedModels()...)
-	models = append(models, buildAihubmixSeedModels()...)
-	models = append(models, buildZenmuxSeedModels()...)
 
 	for _, m := range models {
 		if _, err := s.GetModelByChannelAndModelID(ctx, m.Channel, m.ModelID); err == nil {
@@ -191,143 +184,7 @@ func (s *Store) seedModels() error {
 		}
 	}
 
-	s.cleanupDeprecatedModelIDs(ctx)
-	s.ensureRequiredGrokChatModels(ctx)
-
 	return nil
-}
-
-func (s *Store) cleanupDeprecatedModelIDs(ctx context.Context) {
-	deprecatedModelIDs := []string{
-		"grok-3",
-		"grok-3-thinking",
-		"grok-3-fast",
-		"grok-4",
-		"grok-4-mini",
-		"grok-4-fast",
-		"grok-4-heavy",
-		"grok-4.1-mini",
-		"grok-4.1-fast",
-		"grok-4.1-thinking",
-		"grok-4.1",
-		"grok-4-1-thinking-1129",
-		"grok-4.2",
-		"grok-4.20-beta",
-		"grok-4.20-reasoning",
-		"grok-4.20-non-reasoning",
-		"grok-4.20-multi-agent",
-		"grok-420",
-		"grok-4.3-beta",
-		"grok-code-fast",
-		"grok-code-fast-1",
-		"grok-imagine-1.0",
-		"grok-imagine-1.0-fast",
-		"grok-imagine-1.0-edit",
-		"grok-imagine-1.0-video",
-		"grok-2",
-		"grok-2.1",
-		"grok-3.1",
-		"grok-4.21",
-	}
-	for _, modelID := range deprecatedModelIDs {
-		m, err := s.GetModelByModelID(ctx, modelID)
-		if err != nil || m == nil {
-			continue
-		}
-		if err := s.DeleteModel(ctx, m.ID); err != nil {
-			slog.Warn("Failed to remove deprecated model", "model_id", modelID, "error", err)
-			continue
-		}
-		slog.Debug("Removed deprecated model", "model_id", modelID)
-	}
-}
-
-func (s *Store) ensureAihubmixZenmuxSeedModels(ctx context.Context) {
-	seeds := buildAihubmixSeedModels()
-	seeds = append(seeds, buildZenmuxSeedModels()...)
-	for i := range seeds {
-		m := seeds[i]
-		if _, err := s.GetModelByChannelAndModelID(ctx, m.Channel, m.ModelID); err == nil {
-			continue
-		}
-		if err := s.CreateModel(ctx, &m); err != nil {
-			slog.Warn("Failed to ensure seed model", "channel", m.Channel, "model_id", m.ModelID, "error", err)
-			continue
-		}
-		slog.Debug("Ensured seed model", "channel", m.Channel, "model_id", m.ModelID)
-	}
-}
-
-func (s *Store) ensureRequiredGrokChatModels(ctx context.Context) {
-	required := []struct {
-		id   string
-		name string
-	}{
-		{"grok-4.3", "Grok 4.3"},
-		{"grok-build-0.1", "Grok Build 0.1"},
-	}
-	for _, item := range required {
-		if _, err := s.GetModelByChannelAndModelID(ctx, "Grok", item.id); err == nil {
-			continue
-		}
-		record := &Model{
-			Channel:   "Grok",
-			ModelID:   item.id,
-			Name:      item.name,
-			Status:    ModelStatusAvailable,
-			Verified:  true,
-			IsDefault: false,
-			SortOrder: 15,
-		}
-		if err := s.CreateModel(ctx, record); err != nil {
-			slog.Warn("Failed to ensure required Grok model", "model_id", item.id, "error", err)
-			continue
-		}
-		slog.Debug("Ensured required Grok model", "model_id", item.id)
-	}
-}
-
-func buildGrokSeedModels() []Model {
-	items := []struct {
-		id   string
-		name string
-	}{
-		{"grok-4.20-0309-non-reasoning", "Grok 4.20 0309 Non-Reasoning"},
-		{"grok-4.20-0309", "Grok 4.20 0309"},
-		{"grok-4.20-0309-reasoning", "Grok 4.20 0309 Reasoning"},
-		{"grok-4.20-0309-non-reasoning-super", "Grok 4.20 0309 Non-Reasoning Super"},
-		{"grok-4.20-0309-super", "Grok 4.20 0309 Super"},
-		{"grok-4.20-0309-reasoning-super", "Grok 4.20 0309 Reasoning Super"},
-		{"grok-4.20-0309-non-reasoning-heavy", "Grok 4.20 0309 Non-Reasoning Heavy"},
-		{"grok-4.20-0309-heavy", "Grok 4.20 0309 Heavy"},
-		{"grok-4.20-0309-reasoning-heavy", "Grok 4.20 0309 Reasoning Heavy"},
-		{"grok-4.20-multi-agent-0309", "Grok 4.20 Multi-Agent 0309"},
-		{"grok-4.20-fast", "Grok 4.20 Fast"},
-		{"grok-4.20-auto", "Grok 4.20 Auto"},
-		{"grok-4.20-expert", "Grok 4.20 Expert"},
-		{"grok-4.20-heavy", "Grok 4.20 Heavy"},
-		{"grok-4.3", "Grok 4.3"},
-		{"grok-build-0.1", "Grok Build 0.1"},
-		{"grok-imagine-image-lite", "Grok Imagine Image Lite"},
-		{"grok-imagine-image", "Grok Imagine Image"},
-		{"grok-imagine-image-pro", "Grok Imagine Image Pro"},
-		{"grok-imagine-image-edit", "Grok Imagine Image Edit"},
-		{"grok-imagine-video", "Grok Imagine Video"},
-	}
-	models := make([]Model, 0, len(items))
-	for i, item := range items {
-		models = append(models, Model{
-			ID:        fmt.Sprintf("grok-%03d", i+1),
-			Channel:   "Grok",
-			ModelID:   item.id,
-			Name:      item.name,
-			Status:    ModelStatusAvailable,
-			Verified:  true,
-			IsDefault: i == 1,
-			SortOrder: i,
-		})
-	}
-	return models
 }
 
 func (s *Store) Close() error {

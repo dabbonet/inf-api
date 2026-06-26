@@ -16,7 +16,6 @@ func buildPuterSeedModels() []Model {
 		"gpt-4o",
 		"o3",
 		"gemini-2.5-pro",
-		"grok-3",
 	}
 
 	models := make([]Model, 0, len(modelIDs))

@@ -12,65 +12,17 @@ import (
 
 	apperrors "orchids-api/internal/errors"
 	"orchids-api/internal/store"
-	"orchids-api/internal/warp"
+	"orchids-api/internal/upstream"
 )
 
-func normalizeRequestedModelID(modelID string) string {
-	modelID = strings.ToLower(strings.TrimSpace(modelID))
-	if isWarpVirtualModel(modelID) {
-		return upstreamWarpModelID(modelID)
-	}
-	return modelID
-}
-
-func (h *Handler) resolveModelAlias(ctx context.Context, modelID string) (string, *store.Model) {
-	if m := warpVirtualModelRecord(modelID); m != nil {
-		return m.ModelID, m
-	}
-	if h == nil || h.loadBalancer == nil || h.loadBalancer.Store == nil {
-		return modelID, nil
-	}
-	candidate := normalizeRequestedModelID(modelID)
-	if candidate == "" {
-		return modelID, nil
-	}
-	if m, err := h.loadBalancer.Store.GetModelByModelID(ctx, candidate); err == nil && m != nil {
-		return candidate, m
-	}
-	return modelID, nil
-}
-
-func (h *Handler) resolveModelAliasForChannel(ctx context.Context, channel, modelID string) (string, *store.Model) {
-	if strings.EqualFold(strings.TrimSpace(channel), "warp") {
-		if m := warpVirtualModelRecord(modelID); m != nil {
-			return m.ModelID, m
-		}
-	}
-	if h == nil || h.loadBalancer == nil || h.loadBalancer.Store == nil {
-		return modelID, nil
-	}
-	candidate := normalizeRequestedModelID(modelID)
-	if candidate == "" {
-		return modelID, nil
-	}
-	if m, err := h.loadBalancer.Store.GetModelByChannelAndModelID(ctx, channel, candidate); err == nil && m != nil {
-		return candidate, m
-	}
-	return modelID, nil
-}
-
-// resolveWorkdir determines the working directory from headers, system prompt, or session.
-// Returns the current workdir, the previous round of workdir, and whether changes have occurred.
 func (h *Handler) resolveWorkdir(r *http.Request, req ClaudeRequest, conversationKey string) (string, string, bool) {
 	prevWorkdir := ""
 	if conversationKey != "" {
 		prevWorkdir, _ = h.sessionStore.GetWorkdir(r.Context(), conversationKey)
 	}
 
-	// Prefer explicit workdir from request payload/header/system.
 	dynamicWorkdir, source := extractWorkdirFromRequest(r, req)
 
-	// Only recover from session when we have a stable explicit conversation key.
 	hasExplicitSession := req.ConversationID != "" ||
 		headerValue(r, "X-Conversation-Id", "X-Session-Id", "X-Thread-Id", "X-Chat-Id") != "" ||
 		(req.Metadata != nil && metadataString(req.Metadata,
@@ -86,7 +38,6 @@ func (h *Handler) resolveWorkdir(r *http.Request, req ClaudeRequest, conversatio
 		slog.Debug("Recovered workdir from session", "workdir", dynamicWorkdir, "session", conversationKey)
 	}
 
-	// Persist for future turns in this session
 	if dynamicWorkdir != "" && conversationKey != "" {
 		h.sessionStore.SetWorkdir(r.Context(), conversationKey, dynamicWorkdir)
 		h.sessionStore.Touch(r.Context(), conversationKey)
@@ -110,18 +61,17 @@ func (h *Handler) resolveWorkdir(r *http.Request, req ClaudeRequest, conversatio
 }
 
 // selectAccount logic extracted from HandleMessages
-func (h *Handler) selectAccount(ctx context.Context, targetChannel string, channelRequired bool, failedAccountIDs []int64, modelID ...string) (UpstreamClient, *store.Account, error) {
+func (h *Handler) selectAccount(ctx context.Context, targetChannel string, channelRequired bool, failedAccountIDs []int64, modelID ...string) (upstream.UpstreamClient, *store.Account, error) {
 	return h.selectAccountWithOptions(ctx, targetChannel, channelRequired, failedAccountIDs, accountSelectionOptions{
 		ModelID: firstString(modelID...),
 	})
 }
 
 type accountSelectionOptions struct {
-	ModelID               string
-	RequireWarpCloudAgent bool
+	ModelID string
 }
 
-func (h *Handler) selectAccountWithOptions(ctx context.Context, targetChannel string, channelRequired bool, failedAccountIDs []int64, opts accountSelectionOptions) (UpstreamClient, *store.Account, error) {
+func (h *Handler) selectAccountWithOptions(ctx context.Context, targetChannel string, channelRequired bool, failedAccountIDs []int64, opts accountSelectionOptions) (upstream.UpstreamClient, *store.Account, error) {
 	if h.loadBalancer != nil {
 		if targetChannel != "" {
 			slog.Debug("Account channel selection", "channel", targetChannel, "channel_required", channelRequired)
@@ -156,88 +106,7 @@ func (h *Handler) selectAccountRecordWithOptions(ctx context.Context, targetChan
 	if h == nil || h.loadBalancer == nil {
 		return nil, errors.New("load balancer not configured")
 	}
-	if !strings.EqualFold(strings.TrimSpace(targetChannel), "warp") {
-		return h.loadBalancer.GetNextAccountExcludingByChannelWithTracker(ctx, failedAccountIDs, targetChannel, h.connTracker)
-	}
-
-	requestedModel := normalizeRequestedModelID(opts.ModelID)
-	warpFilter := func(acc *store.Account) bool {
-		if opts.RequireWarpCloudAgent && !warp.AccountSupportsCloudAgent(acc) {
-			return false
-		}
-		return true
-	}
-	if requestedModel == "" || requestedModel == warp.DefaultModel() {
-		return h.selectWarpAccountWithFilter(ctx, failedAccountIDs, targetChannel, opts, warpFilter)
-	}
-
-	choices, err := warp.LoadAccountModelChoices(ctx, h.loadBalancer.Store)
-	if err != nil || choices == nil {
-		return h.selectWarpAccountWithFilter(ctx, failedAccountIDs, targetChannel, opts, warpFilter)
-	}
-	if !h.warpEffectiveChoicesSupportModel(ctx, choices, requestedModel) {
-		return nil, fmt.Errorf("no enabled accounts available for channel: %s (model %s is not available in the current Warp account pool)", targetChannel, requestedModel)
-	}
-
-	account, err := h.loadBalancer.GetNextAccountExcludingByChannelWithTrackerFilter(ctx, failedAccountIDs, targetChannel, h.connTracker, func(acc *store.Account) bool {
-		return warpFilter(acc) && warp.AccountSupportsModelForAccount(choices, acc, requestedModel)
-	})
-	if err == nil {
-		return account, nil
-	}
-	if opts.RequireWarpCloudAgent {
-		return nil, fmt.Errorf("no enabled accounts available for channel: %s (cloud agent requires a non-free Warp account)", targetChannel)
-	}
-
-	return nil, err
-}
-
-func (h *Handler) selectWarpAccountWithFilter(ctx context.Context, failedAccountIDs []int64, targetChannel string, opts accountSelectionOptions, filter func(*store.Account) bool) (*store.Account, error) {
-	account, err := h.loadBalancer.GetNextAccountExcludingByChannelWithTrackerFilter(ctx, failedAccountIDs, targetChannel, h.connTracker, filter)
-	if err == nil {
-		return account, nil
-	}
-	if opts.RequireWarpCloudAgent {
-		return nil, fmt.Errorf("no enabled accounts available for channel: %s (cloud agent requires a non-free Warp account)", targetChannel)
-	}
-	return nil, err
-}
-
-func (h *Handler) warpEffectiveChoicesSupportModel(ctx context.Context, choices *warp.AccountModelChoices, modelID string) bool {
-	if h == nil || h.loadBalancer == nil || h.loadBalancer.Store == nil || choices == nil || len(choices.Accounts) == 0 {
-		return true
-	}
-	resolvedModelID := normalizeRequestedModelID(modelID)
-	if resolvedModelID == "" {
-		return true
-	}
-	visible := h.visibleWarpModelSet(ctx)
-	if visible == nil {
-		for _, models := range choices.Accounts {
-			for _, cachedModel := range models {
-				if normalizeRequestedModelID(cachedModel) == resolvedModelID {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	_, ok := visible[resolvedModelID]
-	return ok
-}
-
-func (h *Handler) resolveWarpFeatureConfig(ctx context.Context, acc *store.Account, requestedModel string) warp.AccountFeatureConfig {
-	if acc == nil || !strings.EqualFold(strings.TrimSpace(acc.AccountType), "warp") {
-		return warp.AccountFeatureConfig{}
-	}
-	var choices *warp.AccountModelChoices
-	if h != nil && h.loadBalancer != nil && h.loadBalancer.Store != nil {
-		loaded, err := warp.LoadAccountModelChoices(ctx, h.loadBalancer.Store)
-		if err == nil {
-			choices = loaded
-		}
-	}
-	return warp.EffectiveAccountFeatureConfig(acc, choices, requestedModel)
+	return h.loadBalancer.GetNextAccountExcludingByChannelWithTracker(ctx, failedAccountIDs, targetChannel, h.connTracker)
 }
 
 func firstString(values ...string) string {
@@ -279,11 +148,6 @@ func (h *Handler) releaseTrackedAccount(accountID int64) {
 }
 
 func (h *Handler) validateModelAvailability(ctx context.Context, modelID, forcedChannel string) (*store.Model, error) {
-	if strings.TrimSpace(forcedChannel) == "" || strings.EqualFold(strings.TrimSpace(forcedChannel), "warp") {
-		if m := warpVirtualModelRecord(modelID); m != nil {
-			return m, nil
-		}
-	}
 	if h == nil || h.loadBalancer == nil || h.loadBalancer.Store == nil {
 		return nil, nil
 	}
@@ -292,12 +156,13 @@ func (h *Handler) validateModelAvailability(ctx context.Context, modelID, forced
 		return nil, nil
 	}
 	var m *store.Model
+	var err error
 	if forcedChannel != "" {
-		_, m = h.resolveModelAliasForChannel(ctx, forcedChannel, modelID)
+		m, err = h.loadBalancer.Store.GetModelByChannelAndModelID(ctx, forcedChannel, modelID)
 	} else {
-		_, m = h.resolveModelAlias(ctx, modelID)
+		m, err = h.loadBalancer.Store.GetModelByModelID(ctx, modelID)
 	}
-	if m == nil {
+	if err != nil || m == nil {
 		return nil, fmt.Errorf("model not found")
 	}
 	if !m.Status.Enabled() {
@@ -330,88 +195,17 @@ func (h *Handler) updateAccountStats(account *store.Account, inputTokens, output
 		usage := float64(inputTokens + outputTokens)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		// Count each completed request exactly once here. This avoids the old
-		// pre-selection increment plus post-response stats update double-counting.
 		if err := h.loadBalancer.Store.IncrementAccountStats(ctx, accountID, usage, 1); err != nil {
 			slog.Error("Failed to update account stats", "account_id", accountID, "error", err)
 		}
 	}(account.ID, inputTokens, outputTokens)
 }
 
-func (h *Handler) syncWarpState(account *store.Account, client UpstreamClient, snapshot *store.Account) {
-	if account == nil || h.loadBalancer == nil || h.loadBalancer.Store == nil {
-		return
-	}
-
-	var changed bool
-	if strings.EqualFold(account.AccountType, "warp") {
-		if warpClient, ok := client.(*warp.Client); ok {
-			changed = warpClient.SyncAccountState()
-		}
-	}
-
-	if changed {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := h.loadBalancer.Store.UpdateAccount(ctx, account); err != nil {
-			slog.Warn("Failed to synchronize account token", "account", account.Name, "type", account.AccountType, "error", err)
-		}
-	}
+func (h *Handler) syncWarpState(account *store.Account, client upstream.UpstreamClient, snapshot *store.Account) {
 }
 
-type creditRefundClient interface {
-	RefundCredits(ctx context.Context, reason string) error
-}
-
-func shouldRefundWarpCredits(category string) bool {
-	switch strings.TrimSpace(category) {
-	case "canceled", "timeout", "network", "server", "unknown":
-		return true
-	default:
-		return false
-	}
-}
-
-func refundReasonForWarpCategory(category string) string {
-	switch strings.TrimSpace(category) {
-	case "canceled":
-		return "request_canceled"
-	case "timeout":
-		return "request_timeout"
-	case "network":
-		return "network_error"
-	case "server":
-		return "server_error"
-	default:
-		return "upstream_error"
-	}
-}
-
-func (h *Handler) refundWarpCredits(client UpstreamClient, category string) {
-	if !shouldRefundWarpCredits(category) {
-		return
-	}
-
-	refundable, ok := client.(creditRefundClient)
-	if !ok {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-
-	reason := refundReasonForWarpCategory(category)
-	if err := refundable.RefundCredits(ctx, reason); err != nil {
-		slog.Warn("Warp refund credits failed", "category", category, "reason", reason, "error", err)
-		return
-	}
-	slog.Debug("Warp credits refunded", "category", category, "reason", reason)
-}
-
-// upstreamErrorClass is a local alias for the centralized type.
 type upstreamErrorClass = apperrors.UpstreamErrorClass
 
-// classifyUpstreamError delegates to the centralized errors package.
 func classifyUpstreamError(errStr string) upstreamErrorClass {
 	return apperrors.ClassifyUpstreamError(errStr)
 }

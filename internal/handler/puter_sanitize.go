@@ -6,7 +6,7 @@ import (
 	"orchids-api/internal/prompt"
 )
 
-func sanitizePuterMessages(messages []prompt.Message) []prompt.Message {
+func SanitizePuterMessages(messages []prompt.Message) []prompt.Message {
 	if len(messages) == 0 {
 		return nil
 	}

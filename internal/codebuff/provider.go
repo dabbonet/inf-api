@@ -31,7 +31,7 @@ type Provider struct {
 // NewFromAccount creates a codebuff Provider from a store.Account.
 // This matches the signature expected by handler.buildAccountClient.
 func NewFromAccount(acc *store.Account, cfg *config.Config) *Provider {
-	token := strings.TrimSpace(acc.Token)
+	token := ResolveAuthToken(acc)
 	if token == "" {
 		return nil
 	}
@@ -43,6 +43,32 @@ func NewFromAccount(acc *store.Account, cfg *config.Config) *Provider {
 	}
 }
 
+// ResolveAuthToken extracts the bearer token that should be sent to codebuff
+// upstream. Order of preference:
+//  1. ClientCookie (full bearer)
+//  2. SessionCookie
+//  3. RefreshToken
+//  4. Token — only if it does NOT end in "..." (which signals a truncated preview
+//     written by truncateAccountDisplayToken). Truncated previews are rejected
+//     because upstream will return 401.
+func ResolveAuthToken(acc *store.Account) string {
+	if acc == nil {
+		return ""
+	}
+	for _, value := range []string{acc.ClientCookie, acc.SessionCookie, acc.RefreshToken} {
+		if token := strings.TrimSpace(value); token != "" {
+			return token
+		}
+	}
+	if token := strings.TrimSpace(acc.Token); token != "" {
+		if strings.HasSuffix(token, "...") {
+			return ""
+		}
+		return token
+	}
+	return ""
+}
+
 // SetRedisClient injects the Redis client used for session caching.
 // Called during handler initialisation after the store is ready.
 func (p *Provider) SetRedisClient(client *redis.Client) {
@@ -51,7 +77,7 @@ func (p *Provider) SetRedisClient(client *redis.Client) {
 	}
 	prefix := "codebuff"
 	if p.config != nil && p.config.RedisPrefix != "" {
-		prefix = p.config.RedisPrefix + ":codebuff"
+		prefix = strings.TrimSuffix(p.config.RedisPrefix, ":") + ":codebuff"
 	}
 	p.sessionCache = NewSessionCache(client, prefix)
 }
@@ -84,64 +110,89 @@ func (p *Provider) SendRequestWithPayload(
 		return err
 	}
 
-	// Acquire session (with retries for waiting_room_required).
-	const maxRetries = 2
-	var sess *Session
-	var sessData map[string]any
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		sess, sessData, err = p.acquireSession(ctx, model.SessionID())
-		if err == nil {
-			break
+	// Acquire session (with retries for waiting_room_required, model_locked,
+	// and session_model_mismatch; each retry evicts the broken cache entry first).
+	const maxSessionRetries = 2
+	const maxCreateRetries = 2
+
+	for sessionRetry := 0; sessionRetry <= maxSessionRetries; sessionRetry++ {
+		var sess *Session
+		var sessData map[string]any
+		for attempt := 0; attempt <= maxCreateRetries; attempt++ {
+			sess, sessData, err = p.acquireSession(ctx, model.SessionID())
+			if err == nil {
+				break
+			}
+			if (IsWaitingRoomRequired(err) || IsModelLocked(err) || strings.Contains(err.Error(), "session_model_mismatch")) && attempt < maxCreateRetries {
+				p.evictSession(ctx, model.SessionID())
+				slog.Warn("codebuff session error; evicting and retrying", "attempt", attempt+1, "error", err)
+				continue
+			}
+			return fmt.Errorf("codebuff session acquisition failed: %w", err)
 		}
-		if IsWaitingRoomRequired(err) && attempt < maxRetries {
-			slog.Warn("codebuff session superseded; retrying", "attempt", attempt+1, "error", err)
+		if sess == nil {
+			return fmt.Errorf("codebuff session is nil after acquisition")
+		}
+		if sessData != nil {
+			p.recordSessionQuotas(sessData)
+		}
+
+		go p.requestAds(ctx, req)
+
+		run, err := StartRunChain(ctx, p.client, model)
+		if err != nil {
+			return fmt.Errorf("codebuff run chain failed: %w", err)
+		}
+
+		clientID := ""
+		if p.config != nil {
+			clientID = p.config.CodebuffClientID
+		}
+		payload := BuildPayload(req, sess, run, clientID)
+
+		if logger != nil {
+			logger.LogUpstreamRequest(p.client.baseURL+"/api/v1/chat/completions", map[string]string{"channel": "codebuff"}, nil)
+		}
+
+		var chatErr error
+		if req.Stream {
+			if req.RawSSEWriter != nil {
+				chatErr = p.streamChatRaw(ctx, payload, run, req.RawSSEWriter, logger, req.Model)
+			} else {
+				chatErr = p.streamChat(ctx, payload, run, onMessage, logger, req.Model)
+			}
+		} else {
+			chatErr = p.completeChat(ctx, payload, run, onMessage, logger, req.Model)
+		}
+
+		if chatErr == nil {
+			return nil
+		}
+
+		if sessionRetry < maxSessionRetries && (IsModelLocked(chatErr) || IsWaitingRoomRequired(chatErr) || strings.Contains(chatErr.Error(), "session_model_mismatch")) {
+			p.evictSession(ctx, model.SessionID())
+			slog.Warn("codebuff chat failed with session error; evicting and retrying cycle", "retry", sessionRetry+1, "model", req.Model, "error", chatErr)
 			continue
 		}
-		return fmt.Errorf("codebuff session acquisition failed: %w", err)
-	}
-	if sess == nil {
-		return fmt.Errorf("codebuff session is nil after acquisition")
-	}
-	if sessData != nil {
-		p.recordSessionQuotas(sessData)
+
+		return chatErr
 	}
 
-	// Request ads (best-effort, non-blocking).
-	go p.requestAds(ctx, req)
-
-	// Start run chain.
-	run, err := StartRunChain(ctx, p.client, model)
-	if err != nil {
-		return fmt.Errorf("codebuff run chain failed: %w", err)
-	}
-
-	// Build payload with Buffy injection.
-	clientID := ""
-	if p.config != nil {
-		clientID = p.config.CodebuffClientID
-	}
-	payload := BuildPayload(req, sess, run, clientID)
-
-	if logger != nil {
-		logger.LogUpstreamRequest(p.client.baseURL+"/api/v1/chat/completions", map[string]string{"channel": "codebuff"}, nil)
-	}
-
-	// Execute chat.
-	if req.Stream {
-		if req.RawSSEWriter != nil {
-			return p.streamChatRaw(ctx, payload, run, req.RawSSEWriter, logger, req.Model)
-		}
-		return p.streamChat(ctx, payload, run, onMessage, logger, req.Model)
-	}
-	return p.completeChat(ctx, payload, run, onMessage, logger, req.Model)
+	return fmt.Errorf("codebuff: exhausted session retries")
 }
 
 func (p *Provider) acquireSession(ctx context.Context, model string) (*Session, map[string]any, error) {
 	if p.sessionCache != nil {
 		return p.sessionCache.EnsureSession(ctx, p.client, p.client.apiKey, model)
 	}
-	// Fallback: create a new session every time (no Redis).
 	return p.client.CreateSession(ctx, model)
+}
+
+func (p *Provider) evictSession(ctx context.Context, model string) {
+	if p.sessionCache == nil || p.client == nil {
+		return
+	}
+	_ = p.sessionCache.EvictSession(ctx, p.client.apiKey, model)
 }
 
 func (p *Provider) recordSessionQuotas(data map[string]any) {
@@ -322,6 +373,10 @@ func (p *Provider) streamChatRaw(
 	}
 
 	go FinalizeRun(context.Background(), p.client, run, messageID)
+	if err := scanner.Err(); err != nil {
+		p.recordTelemetry(requestedModel, true, 0, time.Since(start).Milliseconds())
+		return fmt.Errorf("codebuff stream error: %w", err)
+	}
 	p.recordTelemetry(requestedModel, false, 0, time.Since(start).Milliseconds())
 	return nil
 }

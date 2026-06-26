@@ -11,7 +11,6 @@ import (
 
 	"orchids-api/internal/auth"
 	"orchids-api/internal/store"
-	"orchids-api/internal/warp"
 
 	"golang.org/x/sync/singleflight"
 )
@@ -226,8 +225,6 @@ const (
 	retry429Default = 1 * time.Minute
 	// 403/404 Cooling time: The account may be banned or configured incorrectly. Please try again after a longer interval.
 	retry403Default = 24 * time.Hour
-	// Many of Grok's 403s are Cloudflare challenges/temporary risk control and should not be blocked for a long time.
-	retry403Grok = 10 * time.Minute
 )
 
 func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Account) bool {
@@ -281,9 +278,6 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 			return false
 		}
 		cooldown := retry402Default
-		if at := strings.ToLower(strings.TrimSpace(acc.AccountType)); at == "aihubmix" || at == "zenmux" {
-			cooldown = 5 * time.Minute
-		}
 		if now.Sub(acc.LastAttempt) >= cooldown {
 			lb.clearAccountStatus(ctx, acc, "402 Cooling completed, automatic recovery attempt")
 			return true
@@ -291,19 +285,10 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 		return false
 	case "403", "404":
 		// 403/404 may be a temporary ban or configuration issue.
-		// For Grok, 403s are mostly Cloudflare challenges and should not be blocked for a long time.
-		// For aihubmix/zenmux (Bearer-token auth), 403 is usually a bad key or insufficient
-		// credits — keep a short cooldown so users can recover after rotating keys.
 		if acc.LastAttempt.IsZero() {
 			return false
 		}
 		cooldown := retry403Default
-		switch strings.ToLower(strings.TrimSpace(acc.AccountType)) {
-		case "grok":
-			cooldown = retry403Grok
-		case "aihubmix", "zenmux":
-			cooldown = 5 * time.Minute
-		}
 		if now.Sub(acc.LastAttempt) >= cooldown {
 			lb.clearAccountStatus(ctx, acc, status+"Cooling completed, automatic recovery attempt")
 			return true
@@ -324,10 +309,6 @@ func (lb *LoadBalancer) isAccountAvailable(ctx context.Context, acc *store.Accou
 }
 
 func (lb *LoadBalancer) clearAccountStatus(ctx context.Context, acc *store.Account, reason string) {
-	// Clear the warp session cache to ensure new tokens are used after recovery
-	if strings.EqualFold(acc.AccountType, "warp") && acc.ID > 0 {
-		warp.InvalidateSession(acc.ID)
-	}
 	// Find and update the account in the cached slice so the change reflects immediately
 	lb.mu.Lock()
 	acc.StatusCode = ""
