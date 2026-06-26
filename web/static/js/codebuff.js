@@ -103,7 +103,7 @@ function totalAcross(predicate) {
     if (!acc.oldest || (m.total.first_used && m.total.first_used < acc.oldest)) acc.oldest = m.total.first_used;
     if (typeof m.rpm === "number" && m.rpm > acc.rpm) acc.rpm = m.rpm;
   });
-  // Sum session counters across accounts for the banner.
+  // Sum session counters across accounts. creates is the billable unit.
   (metricsData || []).forEach((m) => {
     if (!predicate(m)) return;
     const ms = m.sessions || (m.total && m.total.sessions) || {};
@@ -115,13 +115,11 @@ function totalAcross(predicate) {
     acc.mismatch += ms.mismatch || 0;
   });
   acc.avgMs = acc.reqs > 0 ? Math.round(acc.latencyMs / acc.reqs) : 0;
-  // tokens_per_s uses wall_ms server-side when present.
   const wall = (metricsData || []).reduce((s, m) => {
     if (!predicate(m)) return s;
     return s + (m.total.wall_ms || 0);
   }, 0);
   acc.tps = wall > 0 ? acc.tokens / (wall / 1000) : 0;
-  // Sum rolling RPM per account → banner total
   acc.rpm = 0;
   (metricsData || []).forEach((m) => {
     if (!predicate(m)) return;
@@ -158,13 +156,15 @@ function renderStats() {
   document.getElementById("statTokensFoot").textContent =
     activeRange === "all" ? "prompt + completion (lifetime)" : `prompt + completion (${rangeLabel.toLowerCase()})`;
 
-  const sTotal = (t.creates || 0) + (t.reuses || 0);
-  const sAll = sTotal + (t.evictions || 0) + (t.waiting_room || 0) + (t.model_locked || 0) + (t.mismatch || 0);
-  document.getElementById("statSessions").textContent = sTotal.toLocaleString();
+  // Per user feedback: 'Sessions' = billable upstream sessions (POST /api/v1/freebuff/session).
+  // Reuse hits happen inside the same logical session and do NOT consume a new billable slot.
+  const creates = t.creates || 0;
+  const reuses = t.reuses || 0;
+  document.getElementById("statSessions").textContent = creates.toLocaleString();
   document.getElementById("statSessionsFoot").textContent =
-    sTotal > 0
-      ? `${sessionReusePct(t)} reuse · ${sAll.toLocaleString()} lifecycle events`
-      : "no sessions this window";
+    creates > 0
+      ? `billed by freebuff · ${reuses.toLocaleString()} reuses · ${sessionReusePct(t)} reuse rate`
+      : "no sessions billed this window";
 }
 
 function shortNumber(n) {
@@ -392,10 +392,10 @@ function buildCard(acc, models) {
           </div>
           <div class="stat">
             <div class="stat-label">Sessions</div>
-            <div class="stat-num">${sTotal.toLocaleString()}</div>
+            <div class="stat-num">${(accCreates || 0).toLocaleString()}</div>
             <div class="stat-foot">
               ${sTotal > 0
-                ? `${accCreates} new · ${accReuses} reused · ${sessionReusePct(s)} reuse`
+                ? `billed by freebuff · ${accReuses.toLocaleString()} reused · ${sessionReusePct(s)} reuse`
                 : '—'}
             </div>
           </div>
@@ -416,8 +416,8 @@ function buildCard(acc, models) {
           <span>Tokens</span>
           <span>T/s</span>
           <span>Avg ms</span>
-          <span>Sessions</span>
-          <span>Reuse%</span>
+          <span title="Sessions counted by freebuff (each new POST /api/v1/freebuff/session).">Sessions</span>
+          <span title="How often an existing session was reused before expiring. Higher is more efficient.">Reuse%</span>
         </div>
         ${emptyModels || modelRows}
       </section>
@@ -442,11 +442,7 @@ function buildModelRow(acc, m, accMetric) {
   const ses = (mm && mm.sessions) || {};
   const sCreates = ses.creates || 0;
   const sReuses = ses.reuses || 0;
-  const sEvicts = ses.evictions || 0;
-  const sIssues = (ses.waiting_room || 0) + (ses.model_locked || 0) + (ses.mismatch || 0);
-  const sessLife = sCreates + sReuses + sEvicts + sIssues;
   const sessReusePct = sessionReusePct(ses);
-  const sessIsWarn = sEvicts > 0 || sIssues > 0;
 
   let state, stateCls;
   if (blocked) { state = "429 blocked"; stateCls = "danger"; }
@@ -481,8 +477,8 @@ function buildModelRow(acc, m, accMetric) {
       <div class="m-cell m-num">${shortNumber(tokens)}</div>
       <div class="m-cell m-num">${tps.toFixed(1)}</div>
       <div class="m-cell m-num">${avgMs > 0 ? avgMs + ' ms' : '—'}</div>
-      <div class="m-cell m-num ${sessIsWarn ? 'm-warn' : ''}" title="${sCreates} new · ${sReuses} reused · ${sEvicts} evictions · ${sIssues} issues">${sessLife}</div>
-      <div class="m-cell m-num">${sessReusePct}</div>
+      <div class="m-cell m-num">${(sCreates || 0).toLocaleString()}</div>
+      <div class="m-cell m-num" title="${sCreates || 0} new sessions · ${sReuses || 0} reuses">${sessReusePct}</div>
     </div>
   `;
 }
