@@ -11,8 +11,11 @@ import (
 	"time"
 
 	apperrors "orchids-api/internal/errors"
+	"orchids-api/internal/codebuff"
 	"orchids-api/internal/store"
 	"orchids-api/internal/upstream"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func (h *Handler) resolveWorkdir(r *http.Request, req ClaudeRequest, conversationKey string) (string, string, bool) {
@@ -106,7 +109,91 @@ func (h *Handler) selectAccountRecordWithOptions(ctx context.Context, targetChan
 	if h == nil || h.loadBalancer == nil {
 		return nil, errors.New("load balancer not configured")
 	}
+
+	// Reactive model-session affinity: if the caller knows which model is needed
+	// AND we're routing to codebuff, scan existing session caches to find the
+	// account that already holds an active upstream session for this model.
+	// One Redis EXISTS per account; no writes, no proactive assignment.
+	if opts.ModelID != "" && strings.EqualFold(targetChannel, "codebuff") {
+		if acc := h.trySessionAffinity(ctx, opts.ModelID, failedAccountIDs); acc != nil {
+			return acc, nil
+		}
+	}
+
 	return h.loadBalancer.GetNextAccountExcludingByChannelWithTracker(ctx, failedAccountIDs, targetChannel, h.connTracker)
+}
+
+// trySessionAffinity checks whether any codebuff account already has an
+// active Redis cache entry for the given model. If one exists AND the
+// account is not in failedAccountIDs, it returns that account — meaning
+// the next chat for this model will reuse the existing session instead of
+// creating a new one. Purely reactive: reads existing cache, writes nothing.
+func (h *Handler) trySessionAffinity(ctx context.Context, model string, failedIDs []int64) *store.Account {
+	redisClient := h.loadBalancer.Store.RedisClient()
+	if redisClient == nil {
+		return nil
+	}
+	// Build the session-key prefix: RedisPrefix trimmed + ":codebuff"
+	prefix := "codebuff"
+	if h.config != nil && h.config.RedisPrefix != "" {
+		prefix = strings.TrimSuffix(h.config.RedisPrefix, ":") + ":codebuff"
+	}
+
+	// Get all accounts, filter to codebuff only, scan sessions on-demand.
+	all, err := h.loadBalancer.Store.ListAccounts(ctx)
+	if err != nil || len(all) == 0 {
+		return nil
+	}
+
+	// As a cheap pre-filter, compute token hashes and session keys for all
+	// codebuff accounts, then pipeline all EXISTS commands in one round-trip.
+	type candidate struct {
+		account *store.Account
+		key     string
+		cmd     *redis.IntCmd
+	}
+	candidates := make([]candidate, 0, len(all))
+	pipe := redisClient.Pipeline()
+	for _, acc := range all {
+		if acc == nil || !strings.EqualFold(acc.AccountType, "codebuff") {
+			continue
+		}
+		token := codebuff.ResolveAuthToken(acc)
+		if token == "" {
+			continue
+		}
+		key := fmt.Sprintf("%s:session:%s:%s", prefix, codebuff.HashToken(token), model)
+		candidates = append(candidates, candidate{account: acc, key: key, cmd: pipe.Exists(ctx, key)})
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	_, _ = pipe.Exec(ctx)
+
+	// Walk candidates in account-ID order (stable). Return the first match
+	// that is healthy and not in the failed set.
+	for _, c := range candidates {
+		n, _ := c.cmd.Result()
+		if n == 0 {
+			continue
+		}
+		// Skip accounts that were already rejected in the current retry loop.
+		excluded := false
+		for _, id := range failedIDs {
+			if c.account.ID == id {
+				excluded = true
+				break
+			}
+		}
+		if excluded {
+			continue
+		}
+		if !c.account.Enabled {
+			continue
+		}
+		return c.account
+	}
+	return nil
 }
 
 func firstString(values ...string) string {
