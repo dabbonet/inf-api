@@ -39,7 +39,7 @@ func (c *SessionCacheConfig) withDefaults() {
 		c.PollDelay = 250 * time.Millisecond
 	}
 	if c.FreshThresholdMs <= 0 {
-		c.FreshThresholdMs = 30000
+		c.FreshThresholdMs = 5000
 	}
 }
 
@@ -150,10 +150,10 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 				// Not active — evict.
 				_ = sc.redis.Del(ctx, sessionKey).Err()
 			}
-		} else {
-			// Verify failed — evict.
-			_ = sc.redis.Del(ctx, sessionKey).Err()
 		}
+		// Validation call failed (network, timeout, etc.) — do NOT evict the cached session.
+		// Return the stale-but-probably-fine cache entry and let the actual chat request
+		// fail if the session is truly dead. One network blip should not cost a bill.
 	}
 
 	// 2. Try to acquire lock for session creation.
@@ -250,9 +250,11 @@ func (sc *SessionCache) saveSession(ctx context.Context, key string, sess *Sessi
 		return err
 	}
 	// TTL based on remaining_ms if available, otherwise 24h.
+	// Add a 120s buffer so the Redis key outlives the upstream expiry
+	// and stays findable in the recovery path (Path 4).
 	ttl := 24 * time.Hour
 	if sess.RemainingMs > 0 {
-		ttl = time.Duration(sess.RemainingMs) * time.Millisecond
+		ttl = time.Duration(sess.RemainingMs+120000) * time.Millisecond
 	}
 	return sc.redis.Set(ctx, key, raw, ttl).Err()
 }
