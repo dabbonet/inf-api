@@ -210,7 +210,8 @@ func (p *Provider) recordSessionQuotas(data map[string]any) {
 
 // recordTelemetry increments per-account/per-model counters in the TelemetryStore.
 // is429 must be true only when the request was rejected by a 429 response.
-func (p *Provider) recordTelemetry(requestedModel string, is429 bool, tokens int, latencyMs int64) {
+// isError marks any other failure (non-429). Tokens/latency are optional.
+func (p *Provider) recordTelemetry(requestedModel string, is429 bool, isError bool, tokens int, latencyMs int64) {
 	if p == nil || p.telemetry == nil || p.account == nil {
 		return
 	}
@@ -224,7 +225,7 @@ func (p *Provider) recordTelemetry(requestedModel string, is429 bool, tokens int
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	p.telemetry.RecordRequest(ctx, p.account.ID, model, is429, tokens, latencyMs)
+	p.telemetry.RecordRequest(ctx, p.account.ID, model, is429, isError, tokens, latencyMs)
 }
 
 func (p *Provider) recordBlockIf429(err error, requestedModel string) {
@@ -276,7 +277,7 @@ func (p *Provider) streamChat(
 	body, err := p.client.ChatCompletions(ctx, payload)
 	if err != nil {
 		p.recordBlockIf429(err, requestedModel)
-		p.recordTelemetry(requestedModel, true, 0, time.Since(start).Milliseconds())
+		p.recordTelemetry(requestedModel, true, false, 0, time.Since(start).Milliseconds())
 		return err
 	}
 	defer body.Close()
@@ -293,7 +294,7 @@ func (p *Provider) streamChat(
 				break
 			}
 			go FinalizeRun(context.Background(), p.client, run, messageID)
-			p.recordTelemetry(requestedModel, true, 0, time.Since(start).Milliseconds())
+			p.recordTelemetry(requestedModel, true, false, 0, time.Since(start).Milliseconds())
 			return fmt.Errorf("codebuff stream error: %w", err)
 		}
 		for _, msg := range msgs {
@@ -302,13 +303,13 @@ func (p *Provider) streamChat(
 			}
 			if msg.Type == "model.finish" {
 				go FinalizeRun(context.Background(), p.client, run, messageID)
-				p.recordTelemetry(requestedModel, false, 0, time.Since(start).Milliseconds())
+				p.recordTelemetry(requestedModel, false, false, 0, time.Since(start).Milliseconds())
 				return nil
 			}
 		}
 	}
 	go FinalizeRun(context.Background(), p.client, run, messageID)
-	p.recordTelemetry(requestedModel, false, 0, time.Since(start).Milliseconds())
+	p.recordTelemetry(requestedModel, false, false, 0, time.Since(start).Milliseconds())
 	return nil
 }
 
@@ -327,7 +328,7 @@ func (p *Provider) streamChatRaw(
 	body, err := p.client.ChatCompletions(ctx, payload)
 	if err != nil {
 		p.recordBlockIf429(err, requestedModel)
-		p.recordTelemetry(requestedModel, true, 0, time.Since(start).Milliseconds())
+		p.recordTelemetry(requestedModel, true, false, 0, time.Since(start).Milliseconds())
 		return err
 	}
 	defer body.Close()
@@ -374,10 +375,10 @@ func (p *Provider) streamChatRaw(
 
 	go FinalizeRun(context.Background(), p.client, run, messageID)
 	if err := scanner.Err(); err != nil {
-		p.recordTelemetry(requestedModel, true, 0, time.Since(start).Milliseconds())
+		p.recordTelemetry(requestedModel, true, false, 0, time.Since(start).Milliseconds())
 		return fmt.Errorf("codebuff stream error: %w", err)
 	}
-	p.recordTelemetry(requestedModel, false, 0, time.Since(start).Milliseconds())
+	p.recordTelemetry(requestedModel, false, false, 0, time.Since(start).Milliseconds())
 	return nil
 }
 
@@ -393,7 +394,7 @@ func (p *Provider) completeChat(
 	body, err := p.client.ChatCompletions(ctx, payload)
 	if err != nil {
 		p.recordBlockIf429(err, requestedModel)
-		p.recordTelemetry(requestedModel, true, 0, time.Since(start).Milliseconds())
+		p.recordTelemetry(requestedModel, true, false, 0, time.Since(start).Milliseconds())
 		return err
 	}
 	defer body.Close()
@@ -416,10 +417,10 @@ func (p *Provider) completeChat(
 		} `json:"usage"`
 	}
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
-		p.recordTelemetry(requestedModel, false, 0, time.Since(start).Milliseconds())
+		p.recordTelemetry(requestedModel, false, true, 0, time.Since(start).Milliseconds())
 		return fmt.Errorf("codebuff completion decode error: %w", err)
 	}
-	p.recordTelemetry(requestedModel, false, resp.Usage.TotalTokens, time.Since(start).Milliseconds())
+	p.recordTelemetry(requestedModel, false, false, resp.Usage.TotalTokens, time.Since(start).Milliseconds())
 
 	messageID := resp.ID
 	var content, reasoning, finishReason string
