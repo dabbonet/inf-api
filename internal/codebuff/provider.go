@@ -15,6 +15,7 @@ import (
 	"orchids-api/internal/config"
 	"orchids-api/internal/debug"
 	"orchids-api/internal/store"
+	"orchids-api/internal/tiktoken"
 	"orchids-api/internal/upstream"
 )
 
@@ -286,6 +287,9 @@ func (p *Provider) streamChat(
 	parser := NewStreamParser(body)
 	defer parser.Close()
 
+	// tiktoken Estimator accumulates tokens across the streamed response so the
+	// dashboard reflects real cost instead of always-zero (Bug 1).
+	var estimator tiktoken.Estimator
 	messageID := ""
 	for {
 		msgs, err := parser.Next()
@@ -296,22 +300,36 @@ func (p *Provider) streamChat(
 			go FinalizeRun(context.Background(), p.client, run, messageID)
 			// Parse errors on the streaming path are network/scanner problems,
 			// not rate-limit responses. Increment errors_total for failure-rate.
-			p.recordTelemetry(requestedModel, false, true, 0, time.Since(start).Milliseconds())
+			p.recordTelemetry(requestedModel, false, true, estimator.Count(), time.Since(start).Milliseconds())
 			return fmt.Errorf("codebuff stream error: %w", err)
 		}
 		for _, msg := range msgs {
 			if onMessage != nil {
 				onMessage(msg)
 			}
+			if msg.Type == "model.text-delta" || msg.Type == "model.thinking" {
+				if delta, ok := msg.Event["delta"].(string); ok {
+					estimator.Add(delta)
+				}
+			}
 			if msg.Type == "model.finish" {
+				if usage, ok := msg.Event["usage"].(map[string]any); ok {
+					if total, ok := usage["totalTokens"].(int); ok && total > 0 {
+						// Prefer exact completion totals when the upstream
+						// emit a usage event in the SSE stream.
+						p.recordTelemetry(requestedModel, false, false, total, time.Since(start).Milliseconds())
+						go FinalizeRun(context.Background(), p.client, run, messageID)
+						return nil
+					}
+				}
 				go FinalizeRun(context.Background(), p.client, run, messageID)
-				p.recordTelemetry(requestedModel, false, false, 0, time.Since(start).Milliseconds())
+				p.recordTelemetry(requestedModel, false, false, estimator.Count(), time.Since(start).Milliseconds())
 				return nil
 			}
 		}
 	}
 	go FinalizeRun(context.Background(), p.client, run, messageID)
-	p.recordTelemetry(requestedModel, false, false, 0, time.Since(start).Milliseconds())
+	p.recordTelemetry(requestedModel, false, false, estimator.Count(), time.Since(start).Milliseconds())
 	return nil
 }
 
@@ -335,6 +353,13 @@ func (p *Provider) streamChatRaw(
 	}
 	defer body.Close()
 
+	// tiktoken Estimator accumulates approximate tokens from raw SSE chunks.
+	// We try to decode each OpenAI delta chunk and feed its text content to
+	// the estimator; non-decodable lines are skipped. Bug 1 — tokens
+	// previously hardcoded to 0 on the streaming path.
+	var estimator tiktoken.Estimator
+	tokenFromUsage := 0
+
 	messageID := ""
 	sawToolCallsFinish := false
 	scanner := bufio.NewScanner(body)
@@ -354,6 +379,8 @@ func (p *Provider) streamChatRaw(
 			if sawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"stop"`)) {
 				continue
 			}
+			// Best-effort decode for token estimation only — failures are ignored.
+			accumulateTokensFromChunk(data, &estimator, &tokenFromUsage)
 			writeSSE("", data)
 			// Track if we already sent tool_calls finish.
 			if !sawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"tool_calls"`)) {
@@ -375,14 +402,48 @@ func (p *Provider) streamChatRaw(
 		}
 	}
 
+	// Prefer the exact usage-reported token total when present.
+	tokens := tokenFromUsage
+	if tokens <= 0 {
+		tokens = estimator.Count()
+	}
+
 	go FinalizeRun(context.Background(), p.client, run, messageID)
 	if err := scanner.Err(); err != nil {
 		// Scanner errors are network failures, not 429s.
-		p.recordTelemetry(requestedModel, false, true, 0, time.Since(start).Milliseconds())
+		p.recordTelemetry(requestedModel, false, true, tokens, time.Since(start).Milliseconds())
 		return fmt.Errorf("codebuff stream error: %w", err)
 	}
-	p.recordTelemetry(requestedModel, false, false, 0, time.Since(start).Milliseconds())
+	p.recordTelemetry(requestedModel, false, false, tokens, time.Since(start).Milliseconds())
 	return nil
+}
+
+// accumulateTokensFromChunk is a best-effort decoder that pulls text deltas
+// and (when present) a final usage.total_tokens out of a single SSE chunk
+// emitted by codebuff upstream. It is only used for token estimation in
+// streamChatRaw; decode errors are silently ignored.
+func accumulateTokensFromChunk(data []byte, est *tiktoken.Estimator, usage *int) {
+	var chunk struct {
+		Choices []struct {
+			Delta struct {
+				Content         string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
+			} `json:"delta"`
+		} `json:"choices"`
+		Usage *struct {
+			TotalTokens int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(data, &chunk); err != nil {
+		return
+	}
+	if len(chunk.Choices) > 0 {
+		est.Add(chunk.Choices[0].Delta.Content)
+		est.Add(chunk.Choices[0].Delta.ReasoningContent)
+	}
+	if chunk.Usage != nil && chunk.Usage.TotalTokens > 0 {
+		*usage = chunk.Usage.TotalTokens
+	}
 }
 
 func (p *Provider) completeChat(
