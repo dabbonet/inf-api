@@ -82,6 +82,7 @@ function updateLastSyncLabel() {
 }
 
 function renderAll() {
+  renderStats();
   renderRangeBar();
   renderRefreshBar();
   renderFilter();
