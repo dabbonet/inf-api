@@ -228,6 +228,7 @@ func (ts *TelemetryStore) GetAccountsMetricsInRange(ctx context.Context, account
 			total.ErrorsTotal += mm.ErrorsTotal
 			total.Tokens += mm.Tokens
 			total.LatencyMs += mm.LatencyMs
+			total.WallMs += mm.WallMs
 			if mm.LastUsed > total.LastUsed {
 				total.LastUsed = mm.LastUsed
 			}
@@ -332,11 +333,12 @@ func parseModelMetrics(raw map[string]string) ModelMetrics {
 		ErrorsTotal: parseInt(raw["errors_total"]),
 		Tokens:      parseInt(raw["tokens"]),
 		LatencyMs:   parseInt(raw["latency_ms"]),
+		WallMs:      parseInt(raw["wall_ms"]),
 		LastUsed:    parseInt(raw["last_unix"]),
 		FirstUsed:   parseInt(raw["first_unix"]),
 	}
 	mm.AvgLatencyMs = avgLat(mm.Requests, mm.LatencyMs)
-	mm.TokensPerS = tokensPerSecond(mm.Tokens, mm.LatencyMs)
+	mm.TokensPerS = tokensPerSecond(mm.Tokens, mm.WallMs)
 	return mm
 }
 
