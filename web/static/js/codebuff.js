@@ -103,8 +103,24 @@ function totalAcross(predicate) {
     if (!acc.oldest || (m.total.first_used && m.total.first_used < acc.oldest)) acc.oldest = m.total.first_used;
     if (typeof m.rpm === "number" && m.rpm > acc.rpm) acc.rpm = m.rpm;
   });
+  // Sum session counters across accounts for the banner.
+  (metricsData || []).forEach((m) => {
+    if (!predicate(m)) return;
+    const ms = m.sessions || (m.total && m.total.sessions) || {};
+    acc.creates += ms.creates || 0;
+    acc.reuses  += ms.reuses  || 0;
+    acc.evictions += ms.evictions || 0;
+    acc.waiting_room += ms.waiting_room || 0;
+    acc.model_locked += ms.model_locked || 0;
+    acc.mismatch += ms.mismatch || 0;
+  });
   acc.avgMs = acc.reqs > 0 ? Math.round(acc.latencyMs / acc.reqs) : 0;
-  acc.tps = acc.latencyMs > 0 ? acc.tokens / (acc.latencyMs / 1000) : 0;
+  // tokens_per_s uses wall_ms server-side when present.
+  const wall = (metricsData || []).reduce((s, m) => {
+    if (!predicate(m)) return s;
+    return s + (m.total.wall_ms || 0);
+  }, 0);
+  acc.tps = wall > 0 ? acc.tokens / (wall / 1000) : 0;
   // Sum rolling RPM per account → banner total
   acc.rpm = 0;
   (metricsData || []).forEach((m) => {
@@ -115,7 +131,17 @@ function totalAcross(predicate) {
 }
 
 function zero() {
-  return { reqs: 0, s429: 0, serr: 0, tokens: 0, latencyMs: 0, avgMs: 0, tps: 0, rpm: 0, oldest: 0, newest: 0 };
+  return {
+    reqs: 0, s429: 0, serr: 0, tokens: 0, latencyMs: 0, avgMs: 0, tps: 0, rpm: 0,
+    oldest: 0, newest: 0,
+    creates: 0, reuses: 0, evictions: 0, waiting_room: 0, model_locked: 0, mismatch: 0,
+  };
+}
+
+function sessionReusePct(s) {
+  const total = (s.creates || 0) + (s.reuses || 0);
+  if (total === 0) return "—";
+  return Math.round(((s.reuses || 0) / total) * 100) + "%";
 }
 
 function renderStats() {
@@ -131,6 +157,14 @@ function renderStats() {
   document.getElementById("statRPMFoot").textContent = `${rangeLabel} • rolling`;
   document.getElementById("statTokensFoot").textContent =
     activeRange === "all" ? "prompt + completion (lifetime)" : `prompt + completion (${rangeLabel.toLowerCase()})`;
+
+  const sTotal = (t.creates || 0) + (t.reuses || 0);
+  const sAll = sTotal + (t.evictions || 0) + (t.waiting_room || 0) + (t.model_locked || 0) + (t.mismatch || 0);
+  document.getElementById("statSessions").textContent = sTotal.toLocaleString();
+  document.getElementById("statSessionsFoot").textContent =
+    sTotal > 0
+      ? `${sessionReusePct(t)} reuse · ${sAll.toLocaleString()} lifecycle events`
+      : "no sessions this window";
 }
 
 function shortNumber(n) {
@@ -240,6 +274,7 @@ function renderCards() {
 function buildCard(acc, models) {
   const accMetric = (metricsData || []).find((m) => m.account_id === acc.account_id);
   const t = accMetric ? accMetric.total : zero();
+  const s = (accMetric && accMetric.sessions) || (t && t.sessions) || {};
 
   const accReqs = t.requests || 0;
   const acc429 = t.errors_429 || 0;
@@ -252,6 +287,15 @@ function buildCard(acc, models) {
   const accRpm = (typeof t.rpm === "number" && t.rpm > 0) ? t.rpm :
                   (accMetric && typeof accMetric.rpm === "number" ? accMetric.rpm : 0);
   const lastUsed = t.last_used ? fmtTimeLeft(t.last_used) : "—";
+
+  const accCreates = s.creates || 0;
+  const accReuses = s.reuses || 0;
+  const accEvictions = s.evictions || 0;
+  const accWaitingRoom = s.waiting_room || 0;
+  const accModelLocked = s.model_locked || 0;
+  const accMismatch = s.mismatch || 0;
+  const sTotal = accCreates + accReuses;
+  const sessionIssues = accEvictions + accWaitingRoom + accModelLocked + accMismatch;
 
   // Quota totals
   let totalRemaining = 0, totalLimit = 0, healthyModels = 0, exhaustedModels = 0, blockedModels = 0;
@@ -347,6 +391,15 @@ function buildCard(acc, models) {
             <div class="stat-foot">${rangeLabel.toLowerCase()} • rolling</div>
           </div>
           <div class="stat">
+            <div class="stat-label">Sessions</div>
+            <div class="stat-num">${sTotal.toLocaleString()}</div>
+            <div class="stat-foot">
+              ${sTotal > 0
+                ? `${accCreates} new · ${accReuses} reused · ${sessionReusePct(s)} reuse`
+                : '—'}
+            </div>
+          </div>
+          <div class="stat">
             <div class="stat-label">Last Used</div>
             <div class="stat-num">${lastUsed}</div>
             <div class="stat-foot">ago</div>
@@ -363,6 +416,8 @@ function buildCard(acc, models) {
           <span>Tokens</span>
           <span>T/s</span>
           <span>Avg ms</span>
+          <span>Sessions</span>
+          <span>Reuse%</span>
         </div>
         ${emptyModels || modelRows}
       </section>
@@ -384,6 +439,14 @@ function buildModelRow(acc, m, accMetric) {
   const wall = (mm && (mm.wall_ms || mm.latency_ms)) || 0;
   const tps = wall > 0 ? (tokens / (wall / 1000)) : 0;
   const avgMs = mm ? mm.avg_latency_ms : 0;
+  const ses = (mm && mm.sessions) || {};
+  const sCreates = ses.creates || 0;
+  const sReuses = ses.reuses || 0;
+  const sEvicts = ses.evictions || 0;
+  const sIssues = (ses.waiting_room || 0) + (ses.model_locked || 0) + (ses.mismatch || 0);
+  const sessLife = sCreates + sReuses + sEvicts + sIssues;
+  const sessReusePct = sessionReusePct(ses);
+  const sessIsWarn = sEvicts > 0 || sIssues > 0;
 
   let state, stateCls;
   if (blocked) { state = "429 blocked"; stateCls = "danger"; }
@@ -418,6 +481,8 @@ function buildModelRow(acc, m, accMetric) {
       <div class="m-cell m-num">${shortNumber(tokens)}</div>
       <div class="m-cell m-num">${tps.toFixed(1)}</div>
       <div class="m-cell m-num">${avgMs > 0 ? avgMs + ' ms' : '—'}</div>
+      <div class="m-cell m-num ${sessIsWarn ? 'm-warn' : ''}" title="${sCreates} new · ${sReuses} reused · ${sEvicts} evictions · ${sIssues} issues">${sessLife}</div>
+      <div class="m-cell m-num">${sessReusePct}</div>
     </div>
   `;
 }

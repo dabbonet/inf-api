@@ -119,13 +119,15 @@ func (p *Provider) SendRequestWithPayload(
 	for sessionRetry := 0; sessionRetry <= maxSessionRetries; sessionRetry++ {
 		var sess *Session
 		var sessData map[string]any
+		var outcome SessionOutcome
 		for attempt := 0; attempt <= maxCreateRetries; attempt++ {
-			sess, sessData, err = p.acquireSession(ctx, model.SessionID())
+			sess, sessData, outcome, err = p.acquireSession(ctx, model.SessionID())
 			if err == nil {
 				break
 			}
 			if (IsWaitingRoomRequired(err) || IsModelLocked(err) || strings.Contains(err.Error(), "session_model_mismatch")) && attempt < maxCreateRetries {
 				p.evictSession(ctx, model.SessionID())
+				p.recordSessionTelemetry(model.UpstreamID(), evictReason(err))
 				slog.Warn("codebuff session error; evicting and retrying", "attempt", attempt+1, "error", err)
 				continue
 			}
@@ -133,6 +135,9 @@ func (p *Provider) SendRequestWithPayload(
 		}
 		if sess == nil {
 			return fmt.Errorf("codebuff session is nil after acquisition")
+		}
+		if outcome != "" {
+			p.recordSessionTelemetry(model.UpstreamID(), string(outcome))
 		}
 		if sessData != nil {
 			p.recordSessionQuotas(sessData)
@@ -172,6 +177,7 @@ func (p *Provider) SendRequestWithPayload(
 
 		if sessionRetry < maxSessionRetries && (IsModelLocked(chatErr) || IsWaitingRoomRequired(chatErr) || strings.Contains(chatErr.Error(), "session_model_mismatch")) {
 			p.evictSession(ctx, model.SessionID())
+			p.recordSessionTelemetry(model.UpstreamID(), evictReason(chatErr))
 			slog.Warn("codebuff chat failed with session error; evicting and retrying cycle", "retry", sessionRetry+1, "model", req.Model, "error", chatErr)
 			continue
 		}
@@ -182,11 +188,15 @@ func (p *Provider) SendRequestWithPayload(
 	return fmt.Errorf("codebuff: exhausted session retries")
 }
 
-func (p *Provider) acquireSession(ctx context.Context, model string) (*Session, map[string]any, error) {
+func (p *Provider) acquireSession(ctx context.Context, model string) (*Session, map[string]any, SessionOutcome, error) {
 	if p.sessionCache != nil {
 		return p.sessionCache.EnsureSession(ctx, p.client, p.client.apiKey, model)
 	}
-	return p.client.CreateSession(ctx, model)
+	sess, sessData, err := p.client.CreateSession(ctx, model)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	return sess, sessData, SessionOutcomeCreate, nil
 }
 
 func (p *Provider) evictSession(ctx context.Context, model string) {
@@ -194,6 +204,42 @@ func (p *Provider) evictSession(ctx context.Context, model string) {
 		return
 	}
 	_ = p.sessionCache.EvictSession(ctx, p.client.apiKey, model)
+}
+
+// evictReason maps an upstream error to the corresponding SessionOutcome
+// string used by the telemetry session-event recorder.
+func evictReason(err error) string {
+	switch {
+	case IsWaitingRoomRequired(err):
+		return "waiting_room"
+	case IsModelLocked(err):
+		return "model_locked"
+	case err != nil && strings.Contains(err.Error(), "session_model_mismatch"):
+		return "mismatch"
+	default:
+		return "evict"
+	}
+}
+
+// recordSessionTelemetry books an outcome against the per-(account, model)
+// redis hash. The SessionOutcome strings ("reuse", "create") and the
+// evictReason outputs ("waiting_room", "model_locked", "mismatch",
+// "evict") are the canonical labels.
+func (p *Provider) recordSessionTelemetry(model string, outcome string) {
+	if p == nil || p.telemetry == nil || p.account == nil {
+		return
+	}
+	resolved, _ := ResolveModel(model)
+	canonical := model
+	if resolved != nil {
+		canonical = resolved.UpstreamID()
+	}
+	if canonical == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	p.telemetry.RecordSessionEvent(ctx, p.account.ID, canonical, outcome)
 }
 
 func (p *Provider) recordSessionQuotas(data map[string]any) {

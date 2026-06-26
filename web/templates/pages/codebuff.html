@@ -101,7 +101,7 @@
     .refresh-time { font-size: 12px; color: #9ca3af; margin-right: 6px; }
 
     .cb-banner .banner-stats {
-      display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 0;
     }
     .cb-banner .banner-stat { padding: 16px 22px; border-right: 1px solid var(--line); }
     .cb-banner .banner-stat:last-child { border-right: none; }
@@ -259,12 +259,12 @@
     /* Model detail */
     .model-detail { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); grid-column: 1 / -1; }
     .model-table-head {
-      display: grid; grid-template-columns: 1.4fr 1.4fr repeat(5, 0.7fr);
+      display: grid; grid-template-columns: 1.4fr 1.4fr repeat(6, 0.7fr);
       gap: 12px; padding: 6px 10px;
       font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
     }
     .model-row {
-      display: grid; grid-template-columns: 1.4fr 1.4fr repeat(5, 0.7fr); gap: 12px;
+      display: grid; grid-template-columns: 1.4fr 1.4fr repeat(6, 0.7fr); gap: 12px;
       padding: 10px 10px; border-radius: 8px;
       border: 1px solid transparent;
       transition: background 120ms;
@@ -368,6 +368,11 @@
           <div class="stat-sub" id="statErrorsFoot">0 errors</div>
         </div>
         <div class="banner-stat">
+          <div class="stat-label">Sessions</div>
+          <div class="stat-value" id="statSessions">0</div>
+          <div class="stat-sub" id="statSessionsFoot">no sessions this window</div>
+        </div>
+        <div class="banner-stat">
           <div class="stat-label">Tokens Used</div>
           <div class="stat-value" id="statTokens">0</div>
           <div class="stat-sub" id="statTokensFoot">prompt + completion (lifetime)</div>
@@ -394,7 +399,7 @@
   </main>
 
   <script src="{{.AdminPath}}/js/common.js?v=20260605-2"></script>
-  <script src="{{.AdminPath}}/js/codebuff.js?v=20260626-3"></script>
+  <script src="{{.AdminPath}}/js/codebuff.js?v=20260626-4"></script>
 </body>
 
 </html>

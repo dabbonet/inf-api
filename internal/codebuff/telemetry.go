@@ -32,6 +32,26 @@ func (ts *TelemetryStore) accountKey(accountID int64, model string) string {
 	return fmt.Sprintf("%s:telemetry:%d:%s", ts.prefix, accountID, model)
 }
 
+// Phase 8 / Step 8.2 — bucket counter fields. Per-minute bucket hashes
+// carry these fields in addition to the request/error/latency counters.
+// Adding a new field here requires extending RecordRequest and the
+// per-range aggregation in sumBucketsForRange to keep callers in sync.
+const (
+	bucketFieldRequests   = "requests"
+	bucketFieldErrors429  = "errors_429"
+	bucketFieldErrorsTot  = "errors_total"
+	bucketFieldTokens     = "tokens"
+	bucketFieldLatencyMs  = "latency_ms"
+	bucketFieldWallMs     = "wall_ms"
+
+	bucketFieldSessionCreates  = "session_creates"
+	bucketFieldSessionReuses   = "session_reuses"
+	bucketFieldSessionEvicts   = "session_evictions"
+	bucketFieldWaitingRoom     = "waiting_room"
+	bucketFieldModelLocked     = "model_locked"
+	bucketFieldSessionMismatch = "session_mismatch"
+)
+
 // RecordRequest records the outcome of a single chat request to telemetry.
 // is429 indicates a rate-limit response. Tokens/latency are optional.
 // Pass latencyMs = end-start wall time for speed metrics.
@@ -51,19 +71,19 @@ func (ts *TelemetryStore) RecordRequest(ctx context.Context, accountID int64, mo
 	bucketKey := ts.bucketKey(accountID, model, now)
 	tokensI := int64(tokens)
 	pipe := ts.redis.TxPipeline()
-	pipe.HIncrBy(ctx, bucketKey, "requests", 1)
+	pipe.HIncrBy(ctx, bucketKey, bucketFieldRequests, 1)
 	if is429 {
-		pipe.HIncrBy(ctx, bucketKey, "errors_429", 1)
+		pipe.HIncrBy(ctx, bucketKey, bucketFieldErrors429, 1)
 	}
 	if isError {
-		pipe.HIncrBy(ctx, bucketKey, "errors_total", 1)
+		pipe.HIncrBy(ctx, bucketKey, bucketFieldErrorsTot, 1)
 	}
 	if tokens > 0 {
-		pipe.HIncrBy(ctx, bucketKey, "tokens", tokensI)
+		pipe.HIncrBy(ctx, bucketKey, bucketFieldTokens, tokensI)
 	}
 	if latencyMs > 0 {
-		pipe.HIncrBy(ctx, bucketKey, "latency_ms", latencyMs)
-		pipe.HIncrBy(ctx, bucketKey, "wall_ms", latencyMs)
+		pipe.HIncrBy(ctx, bucketKey, bucketFieldLatencyMs, latencyMs)
+		pipe.HIncrBy(ctx, bucketKey, bucketFieldWallMs, latencyMs)
 	}
 	pipe.Expire(ctx, bucketKey, 24*time.Hour)
 
@@ -139,11 +159,61 @@ func (ts *TelemetryStore) DailyRequests(ctx context.Context, accountID int64) (i
 	return v, err
 }
 
+// sessionField maps a SessionOutcome string to the redis hash field that
+// gets incremented. The empty bucket fields are reserved for future use
+// and to keep the maps symmetrical with the bucket schema.
+var sessionField = map[string]string{
+	"create":       bucketFieldSessionCreates,
+	"reuse":        bucketFieldSessionReuses,
+	"evict":        bucketFieldSessionEvicts,
+	"waiting_room": bucketFieldWaitingRoom,
+	"model_locked": bucketFieldModelLocked,
+	"mismatch":     bucketFieldSessionMismatch,
+}
+
+// RecordSessionEvent books a session-lifecycle outcome against both the
+// lifetime aggregate hash and the current-minute bucket hash. The
+// outcome argument matches one of the SessionOutcome constants in
+// session.go and the strings emitted by provider.evictReason.
+func (ts *TelemetryStore) RecordSessionEvent(ctx context.Context, accountID int64, model string, outcome string) {
+	if ts == nil || ts.redis == nil || accountID == 0 || model == "" {
+		return
+	}
+	field, ok := sessionField[outcome]
+	if !ok {
+		return
+	}
+	now := time.Now().Unix()
+	key := ts.accountKey(accountID, model)
+	bucketKey := ts.bucketKey(accountID, model, now)
+
+	pipe := ts.redis.TxPipeline()
+	pipe.HIncrBy(ctx, key, field, 1)
+	pipe.HSet(ctx, key, "session_last_event", now)
+	pipe.HIncrBy(ctx, bucketKey, field, 1)
+	pipe.HSet(ctx, bucketKey, "session_last_event", now)
+	pipe.Expire(ctx, bucketKey, 24*time.Hour)
+	_, _ = pipe.Exec(ctx)
+}
+
 // nowDateUTC returns YYYY-MM-DD in UTC for the given unix-second. Extracted as
 // a tiny helper so the date string is stable across calls within the same
 // second for a given request.
 func nowDateUTC(unixSec int64) string {
 	return time.Unix(unixSec, 0).UTC().Format("2006-01-02")
+}
+
+// SessionMetrics is per-model session lifecycle counters. Distinct from
+// request counters so a single request can advance both: a chat call that
+// causes a session create increments both requests and session_creates.
+type SessionMetrics struct {
+	Creates       int64 `json:"creates"`
+	Reuses        int64 `json:"reuses"`
+	Evictions     int64 `json:"evictions"`
+	WaitingRoom   int64 `json:"waiting_room"`
+	ModelLocked   int64 `json:"model_locked"`
+	Mismatch      int64 `json:"mismatch"`
+	LastEvent     int64 `json:"last_event"`
 }
 
 // ModelMetrics is the per-model telemetry summary returned to the dashboard.
@@ -159,6 +229,7 @@ type ModelMetrics struct {
 	LastUsed     int64   `json:"last_used"`
 	FirstUsed    int64   `json:"first_used"`
 	RPM          float64 `json:"rpm"` // requests served in the last 60s
+	Sessions     SessionMetrics `json:"sessions"`
 }
 
 // AccountMetrics is the per-account telemetry summary returned to the dashboard.
@@ -168,6 +239,7 @@ type AccountMetrics struct {
 	Total     ModelMetrics             `json:"total"`
 	Models    map[string]ModelMetrics  `json:"models"`
 	RPM       float64                  `json:"rpm"` // requests served in the last 60s by the account
+	Sessions  SessionMetrics           `json:"sessions"`
 }
 
 // GetAccountsMetrics reads all telemetry counters for the given codebuff
@@ -229,6 +301,15 @@ func (ts *TelemetryStore) GetAccountsMetricsInRange(ctx context.Context, account
 			total.Tokens += mm.Tokens
 			total.LatencyMs += mm.LatencyMs
 			total.WallMs += mm.WallMs
+			total.Sessions.Creates += mm.Sessions.Creates
+			total.Sessions.Reuses += mm.Sessions.Reuses
+			total.Sessions.Evictions += mm.Sessions.Evictions
+			total.Sessions.WaitingRoom += mm.Sessions.WaitingRoom
+			total.Sessions.ModelLocked += mm.Sessions.ModelLocked
+			total.Sessions.Mismatch += mm.Sessions.Mismatch
+			if mm.Sessions.LastEvent > total.Sessions.LastEvent {
+				total.Sessions.LastEvent = mm.Sessions.LastEvent
+			}
 			if mm.LastUsed > total.LastUsed {
 				total.LastUsed = mm.LastUsed
 			}
@@ -240,6 +321,7 @@ func (ts *TelemetryStore) GetAccountsMetricsInRange(ctx context.Context, account
 		total.AvgLatencyMs = avgLat(total.Requests, total.LatencyMs)
 		total.TokensPerS = tokensPerSecond(total.Tokens, total.LatencyMs)
 		am.Total = total
+		am.Sessions = total.Sessions
 
 		// Compute rolling 60s RPM from sorted-set timestamps. Bucket-scoped
 		// queries still expose the rolling RPM since per-minute buckets would
@@ -288,6 +370,12 @@ func (ts *TelemetryStore) sumBucketsForRange(ctx context.Context, accountID int6
 		out.Tokens += parseInt(v["tokens"])
 		out.LatencyMs += parseInt(v["latency_ms"])
 		out.WallMs += parseInt(v["wall_ms"])
+		out.Sessions.Creates += parseInt(v["session_creates"])
+		out.Sessions.Reuses += parseInt(v["session_reuses"])
+		out.Sessions.Evictions += parseInt(v["session_evictions"])
+		out.Sessions.WaitingRoom += parseInt(v["waiting_room"])
+		out.Sessions.ModelLocked += parseInt(v["model_locked"])
+		out.Sessions.Mismatch += parseInt(v["session_mismatch"])
 		if last := parseInt(v["last_unix"]); last > out.LastUsed {
 			out.LastUsed = last
 		}
@@ -336,6 +424,15 @@ func parseModelMetrics(raw map[string]string) ModelMetrics {
 		WallMs:      parseInt(raw["wall_ms"]),
 		LastUsed:    parseInt(raw["last_unix"]),
 		FirstUsed:   parseInt(raw["first_unix"]),
+		Sessions: SessionMetrics{
+			Creates:     parseInt(raw["session_creates"]),
+			Reuses:      parseInt(raw["session_reuses"]),
+			Evictions:   parseInt(raw["session_evictions"]),
+			WaitingRoom: parseInt(raw["waiting_room"]),
+			ModelLocked: parseInt(raw["model_locked"]),
+			Mismatch:    parseInt(raw["session_mismatch"]),
+			LastEvent:   parseInt(raw["session_last_event"]),
+		},
 	}
 	mm.AvgLatencyMs = avgLat(mm.Requests, mm.LatencyMs)
 	mm.TokensPerS = tokensPerSecond(mm.Tokens, mm.WallMs)
