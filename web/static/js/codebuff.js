@@ -1,28 +1,62 @@
-// Codebuff Telemetry — vertically rich cards layout with sparklines, progress bars, status pills.
+// Codebuff Telemetry — vertically rich cards with time-range filters, rolling RPM,
+// per-model tokens, error labels and live-responsive refresh.
+// Reads server-provided `rpm` / `errors_total` from /api/codebuff/metrics.
 
-const POLL_INTERVAL = 30000;
+const RANGE_OPTIONS = [
+  { id: "15m", label: "Last 15m" },
+  { id: "1h",  label: "Last 1h" },
+  { id: "6h",  label: "Last 6h" },
+  { id: "24h", label: "Last 24h" },
+  { id: "all", label: "All time" },
+];
+
+const REFRESH_OPTIONS = [
+  { id: "10000", label: "10s" },
+  { id: "30000", label: "30s" },
+  { id: "60000", label: "1m" },
+  { id: "300000", label: "5m" },
+  { id: "0",     label: "off" },
+];
+
 let poolData = null;
 let metricsData = null;
 let expanded = new Set();
-let accountFilter = "all"; // "all" or specific account id
+let accountFilter = "all";
+
+let activeRange = "all";
+let refreshMs = 30000;
+let refreshTimer = null;
+let autoSyncTimer = null;
+let lastSyncedAt = null;
+
+// Show a per-second spinner while pings are pending.
+function setRefreshBtn(busy) {
+  const btn = document.getElementById("refreshBtn");
+  if (!btn) return;
+  if (busy) { btn.disabled = true; btn.textContent = "Refreshing…"; }
+  else { btn.disabled = false; btn.textContent = "Refresh"; }
+}
 
 function loadCodebuffData() {
+  setRefreshBtn(true);
+  const qs = (activeRange && activeRange !== "all") ? `?range=${encodeURIComponent(activeRange)}` : "";
   Promise.all([
     fetch("/api/codebuff/pool-status").then((r) => r.ok ? r.json() : null).catch(() => null),
-    fetch("/api/codebuff/metrics").then((r) => r.ok ? r.json() : null).catch(() => null),
+    fetch("/api/codebuff/metrics" + qs).then((r) => r.ok ? r.json() : null).catch(() => null),
   ]).then(([pool, metrics]) => {
     poolData = pool;
     metricsData = metrics;
     renderAll();
     updateBanner();
-  }).catch((err) => console.error("loadCodebuffData failed", err));
+  }).catch((err) => console.error("loadCodebuffData failed", err))
+    .finally(() => setRefreshBtn(false));
 }
 
 function syncQuota() {
   const btn = document.getElementById("syncBtn");
   if (btn) { btn.disabled = true; btn.textContent = "Syncing…"; }
   if (!poolData || !poolData.accounts) {
-    setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = "Sync Quota"; } loadCodebuffData(); }, 200);
+    setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = "Sync quota"; } loadCodebuffData(); }, 200);
     return;
   }
   const syncs = poolData.accounts.map((acc) =>
@@ -30,15 +64,26 @@ function syncQuota() {
       .then((r) => r.ok).catch(() => false)
   );
   Promise.all(syncs).then(() => {
+    lastSyncedAt = Date.now();
+    updateLastSyncLabel();
     setTimeout(() => {
       loadCodebuffData();
-      if (btn) { btn.disabled = false; btn.textContent = "Sync Quota"; }
+      if (btn) { btn.disabled = false; btn.textContent = "Sync quota"; }
     }, 500);
   });
 }
 
+function updateLastSyncLabel() {
+  const el = document.getElementById("lastSync");
+  if (!el) return;
+  if (!lastSyncedAt) { el.textContent = "— never"; return; }
+  const sec = Math.max(0, Math.floor((Date.now() - lastSyncedAt) / 1000));
+  el.textContent = "last synced " + fmtDuration(sec) + " ago";
+}
+
 function renderAll() {
-  renderStats();
+  renderRangeBar();
+  renderRefreshBar();
   renderFilter();
   renderCards();
 }
@@ -50,27 +95,41 @@ function totalAcross(predicate) {
     if (!predicate(m)) return;
     acc.reqs += m.total.requests;
     acc.s429 += m.total.errors_429;
+    acc.serr += m.total.errors_total || 0;
     acc.tokens += m.total.tokens;
     acc.latencyMs += m.total.latency_ms || 0;
-    if (m.total.last_used > acc.newest) acc.newest = m.total.last_used;
-    if (acc.oldest === 0 || (m.total.first_used && m.total.first_used < acc.oldest)) acc.oldest = m.total.first_used;
+    if (m.total.last_used && m.total.last_used > acc.newest) acc.newest = m.total.last_used;
+    if (!acc.oldest || (m.total.first_used && m.total.first_used < acc.oldest)) acc.oldest = m.total.first_used;
+    if (typeof m.rpm === "number" && m.rpm > acc.rpm) acc.rpm = m.rpm;
   });
   acc.avgMs = acc.reqs > 0 ? Math.round(acc.latencyMs / acc.reqs) : 0;
-  acc.tps = acc.tps || (acc.latencyMs > 0 ? acc.tokens / (acc.latencyMs / 1000) : 0);
-  acc.rpm = acc.oldest > 0 && acc.newest > acc.oldest ? (acc.reqs / Math.max(1, (acc.newest - acc.oldest) / 60000)) : 0;
+  acc.tps = acc.latencyMs > 0 ? acc.tokens / (acc.latencyMs / 1000) : 0;
+  // Sum rolling RPM per account → banner total
+  acc.rpm = 0;
+  (metricsData || []).forEach((m) => {
+    if (!predicate(m)) return;
+    acc.rpm += (m.rpm || 0);
+  });
   return acc;
 }
 
 function zero() {
-  return { reqs: 0, s429: 0, tokens: 0, latencyMs: 0, avgMs: 0, tps: 0, rpm: 0, oldest: 0, newest: 0 };
+  return { reqs: 0, s429: 0, serr: 0, tokens: 0, latencyMs: 0, avgMs: 0, tps: 0, rpm: 0, oldest: 0, newest: 0 };
 }
 
 function renderStats() {
   const t = totalAcross(() => true);
   document.getElementById("statReqs").textContent = t.reqs.toLocaleString();
   document.getElementById("stat429s").textContent = t.s429.toLocaleString();
+  document.getElementById("statErrors").textContent = t.serr.toLocaleString();
+  document.getElementById("statErrorsFoot").textContent =
+    t.reqs > 0 ? ((t.serr / t.reqs) * 100).toFixed(1) + "% error rate" : "0 errors";
   document.getElementById("statTokens").textContent = shortNumber(t.tokens);
   document.getElementById("statRPM").textContent = t.rpm.toFixed(1);
+  const rangeLabel = (RANGE_OPTIONS.find((r) => r.id === activeRange) || {}).label || "All time";
+  document.getElementById("statRPMFoot").textContent = `${rangeLabel} • rolling`;
+  document.getElementById("statTokensFoot").textContent =
+    activeRange === "all" ? "prompt + completion (lifetime)" : `prompt + completion (${rangeLabel.toLowerCase()})`;
 }
 
 function shortNumber(n) {
@@ -84,6 +143,41 @@ function updateBanner() {
   if (banner) banner.textContent = "last refreshed " + new Date().toLocaleTimeString();
   const reset = document.getElementById("resetIn");
   if (reset) reset.textContent = computeResetIn();
+  updateLastSyncLabel();
+}
+
+function renderRangeBar() {
+  const bar = document.getElementById("rangeBar");
+  if (!bar) return;
+  bar.innerHTML = RANGE_OPTIONS.map((r) => {
+    const sel = r.id === activeRange ? " active" : "";
+    return `<button class="range-btn${sel}" data-range="${r.id}" onclick="setRange('${r.id}')">${r.label}</button>`;
+  }).join("");
+}
+
+function setRange(id) {
+  if (activeRange === id) return;
+  activeRange = id;
+  renderRangeBar();
+  loadCodebuffData();
+}
+
+function renderRefreshBar() {
+  const bar = document.getElementById("refreshBar");
+  if (!bar) return;
+  bar.innerHTML =
+    `<span class="filter-label">Refresh</span>` +
+    REFRESH_OPTIONS.map((r) => {
+      const sel = String(refreshMs) === r.id ? " active" : "";
+      return `<button class="range-btn${sel}" data-refresh="${r.id}" onclick="setRefresh(${r.id})">${r.label}</button>`;
+    }).join("");
+}
+
+function setRefresh(ms) {
+  refreshMs = parseInt(ms, 10) || 0;
+  renderRefreshBar();
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  if (refreshMs > 0) refreshTimer = setInterval(loadCodebuffData, refreshMs);
 }
 
 function renderFilter() {
@@ -148,11 +242,14 @@ function buildCard(acc, models) {
 
   const accReqs = t.requests || 0;
   const acc429 = t.errors_429 || 0;
+  const accErr = t.errors_total || 0;
   const accTokens = t.tokens || 0;
   const accLatMs = accReqs > 0 ? Math.round((t.latency_ms || 0) / accReqs) : 0;
-  const accTps = t.tokens_per_s || 0;
-  const accRpm = (t.first_used && t.last_used && t.last_used > t.first_used)
-    ? (accReqs / Math.max(1, (t.last_used - t.first_used) / 60000)) : 0;
+  // Tokens/s labelled clearly: divisor is wall_ms (server wall clock serving), not seconds-since-first-request.
+  const wall = t.wall_ms || t.latency_ms || 0;
+  const accTps = wall > 0 ? (accTokens / (wall / 1000)) : 0;
+  const accRpm = (typeof t.rpm === "number" && t.rpm > 0) ? t.rpm :
+                  (accMetric && typeof accMetric.rpm === "number" ? accMetric.rpm : 0);
   const lastUsed = t.last_used ? fmtTimeLeft(t.last_used) : "—";
 
   // Quota totals
@@ -169,28 +266,17 @@ function buildCard(acc, models) {
   const usagePct = totalLimit > 0 ? Math.min(100, Math.round((totalConsumed / totalLimit) * 100)) : 0;
 
   let statusLabel, statusClass;
-  if (blockedModels > 0) {
-    statusLabel = `${blockedModels} blocked`;
-    statusClass = "pill-danger";
-  } else if (totalRemaining === 0 && totalLimit > 0) {
-    statusLabel = "All exhausted";
-    statusClass = "pill-warn";
-  } else if (accReqs === 0) {
-    statusLabel = "Idle";
-    statusClass = "pill-idle";
-  } else {
-    statusLabel = "Healthy";
-    statusClass = "pill-ok";
-  }
+  if (blockedModels > 0) { statusLabel = `${blockedModels} blocked`; statusClass = "pill-danger"; }
+  else if (totalRemaining === 0 && totalLimit > 0) { statusLabel = "All exhausted"; statusClass = "pill-warn"; }
+  else if (accReqs === 0) { statusLabel = "Idle"; statusClass = "pill-idle"; }
+  else { statusLabel = "Healthy"; statusClass = "pill-ok"; }
 
   const expandedCls = expanded.has(acc.account_id) ? "expanded" : "";
 
-  // Per-model rows.
   const modelRows = models.map((m) => buildModelRow(acc, m, accMetric)).join("");
-  const emptyModels = models.length === 0
-    ? `<div class="empty-models">No models registered for this account.</div>`
-    : "";
+  const emptyModels = models.length === 0 ? `<div class="empty-models">No models registered for this account.</div>` : "";
 
+  const rangeLabel = (RANGE_OPTIONS.find((r) => r.id === activeRange) || {}).label || "All time";
   const reset = acc.models[models[0]]?.reset_at && new Date(acc.models[models[0]].reset_at).getFullYear() > 1
     ? fmtTimeLeft(new Date(acc.models[models[0]].reset_at)) : "—";
 
@@ -232,17 +318,17 @@ function buildCard(acc, models) {
           <div class="stat">
             <div class="stat-label">Requests</div>
             <div class="stat-num">${accReqs.toLocaleString()}</div>
-            <div class="stat-foot">lifetime</div>
+            <div class="stat-foot">${rangeLabel.toLowerCase()}</div>
           </div>
           <div class="stat">
-            <div class="stat-label">429s</div>
-            <div class="stat-num ${acc429 > 0 ? 'num-warn' : ''}">${acc429.toLocaleString()}</div>
-            <div class="stat-foot">${accReqs > 0 ? ((acc429 / accReqs) * 100).toFixed(1) + '%' : '—'}</div>
+            <div class="stat-label">Errors</div>
+            <div class="stat-num ${accErr > 0 ? 'num-warn' : ''}">${accErr.toLocaleString()}</div>
+            <div class="stat-foot">${accReqs > 0 ? ((acc429 > 0 ? acc429 + ' × 429 · ' : '') + ((accErr / accReqs) * 100).toFixed(1) + '% fail') : '—'}</div>
           </div>
           <div class="stat">
             <div class="stat-label">Tokens</div>
             <div class="stat-num">${shortNumber(accTokens)}</div>
-            <div class="stat-foot">total</div>
+            <div class="stat-foot">${rangeLabel.toLowerCase()}</div>
           </div>
           <div class="stat">
             <div class="stat-label">Avg Latency</div>
@@ -251,13 +337,13 @@ function buildCard(acc, models) {
           </div>
           <div class="stat">
             <div class="stat-label">Throughput</div>
-            <div class="stat-num">${accTps.toFixed(1)} <span class="unit">t/s</span></div>
-            <div class="stat-foot">${accTokens ? shortNumber(accTokens / Math.max(1, (t.last_used - t.first_used) / 60)) + ' t/min' : '—'}</div>
+            <div class="stat-num">${accTps.toFixed(1)} <span class="unit">t/s (wall)</span></div>
+            <div class="stat-foot">tokens per serving-second</div>
           </div>
           <div class="stat">
-            <div class="stat-label">Rate</div>
+            <div class="stat-label">Rate (60s)</div>
             <div class="stat-num">${accRpm.toFixed(2)} <span class="unit">req/m</span></div>
-            <div class="stat-foot">rate/min</div>
+            <div class="stat-foot">${rangeLabel.toLowerCase()} • rolling</div>
           </div>
           <div class="stat">
             <div class="stat-label">Last Used</div>
@@ -273,6 +359,7 @@ function buildCard(acc, models) {
           <span>Quota</span>
           <span>Reqs</span>
           <span>429s</span>
+          <span>Tokens</span>
           <span>T/s</span>
           <span>Avg ms</span>
         </div>
@@ -292,7 +379,9 @@ function buildModelRow(acc, m, accMetric) {
   const blocked = cell.blocked;
   const reqs = mm ? mm.requests : 0;
   const e429 = mm ? mm.errors_429 : 0;
-  const tps = mm && mm.tokens_per_s ? mm.tokens_per_s : 0;
+  const tokens = mm ? mm.tokens : 0;
+  const wall = (mm && (mm.wall_ms || mm.latency_ms)) || 0;
+  const tps = wall > 0 ? (tokens / (wall / 1000)) : 0;
   const avgMs = mm ? mm.avg_latency_ms : 0;
 
   let state, stateCls;
@@ -325,6 +414,7 @@ function buildModelRow(acc, m, accMetric) {
       </div>
       <div class="m-cell m-num">${reqs.toLocaleString()}</div>
       <div class="m-cell m-num m-warn">${e429.toLocaleString()}</div>
+      <div class="m-cell m-num">${shortNumber(tokens)}</div>
       <div class="m-cell m-num">${tps.toFixed(1)}</div>
       <div class="m-cell m-num">${avgMs > 0 ? avgMs + ' ms' : '—'}</div>
     </div>
@@ -369,6 +459,12 @@ function fmtTimeLeft(input) {
 }
 
 loadCodebuffData();
-setInterval(loadCodebuffData, POLL_INTERVAL);
+setRefresh(refreshMs);
 setInterval(updateCountdown, 1000);
 updateCountdown();
+
+(function setupAutoSync() {
+  // Auto-trigger one sync 1s after the first data load completes, then every 5min.
+  setTimeout(() => { syncQuota(); }, 1000);
+  autoSyncTimer = setInterval(syncQuota, 5 * 60 * 1000);
+})();
