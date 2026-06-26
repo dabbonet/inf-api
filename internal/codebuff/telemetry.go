@@ -321,6 +321,7 @@ func (ts *TelemetryStore) GetAccountsMetricsInRange(ctx context.Context, account
 		total.AvgLatencyMs = avgLat(total.Requests, total.LatencyMs)
 		total.TokensPerS = tokensPerSecond(total.Tokens, total.LatencyMs)
 		am.Total = total
+		am.Sessions = total.Sessions
 
 		// Compute rolling 60s RPM from sorted-set timestamps. Bucket-scoped
 		// queries still expose the rolling RPM since per-minute buckets would
