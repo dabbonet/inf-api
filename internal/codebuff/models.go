@@ -46,7 +46,7 @@ var (
 		// CodebuffAI/codebuff@main, commit dd151df.
 		// AgentID is a best-effort mapping to match the `base2-free-*` pattern;
 		// override here if upstream rejects with 404/waiting_room_required.
-		{ID: "z-ai/glm-5.2", AgentID: "base2-free-glm-5.2", OwnedBy: "freebuff"},
+		{ID: "z-ai/glm-5.2", AgentID: "base2-free-glm-5-2", OwnedBy: "freebuff"},
 	}
 
 	DEFAULT_MODEL = FREEBUFF_MODELS[0]
