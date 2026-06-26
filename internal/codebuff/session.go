@@ -100,10 +100,29 @@ func NewSessionCacheWith(client *redis.Client, prefix string, cfg SessionCacheCo
 	}
 }
 
+// SessionOutcome describes how EnsureSession reached the session it returned.
+// Telemetry providers use it to record create-vs-reuse counts without having
+// to thread an account_id into the cache layer.
+type SessionOutcome string
+
+const (
+	// SessionOutcomeReuse covers all paths where the cached session was
+	// still valid (or recovered from upstream's existing active session).
+	SessionOutcomeReuse SessionOutcome = "reuse"
+	// SessionOutcomeCreate is recorded when EnsureSession successfully
+	// called POST /api/v1/freebuff/session after no usable cache.
+	SessionOutcomeCreate SessionOutcome = "create"
+)
+
 // EnsureSession returns a valid session for the given token and model,
 // creating one if necessary.  This mirrors the Python SessionManager logic.
 // The returned map is non-nil only when a new session was created upstream.
-func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token, model string) (*Session, map[string]any, error) {
+//
+// The SessionOutcome return value identifies whether the returned session
+// was a cache hit, an upstream-recovered session, or a freshly created
+// session. Callers may ignore it; the telemetry layer records create-vs-
+// reuse counts from this signal.
+func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token, model string) (*Session, map[string]any, SessionOutcome, error) {
 	tokenHash := hashToken(token)
 	// Per-(token,model) lock so concurrent requests for *different* models
 	// on the same token don't fight over a single key.
@@ -123,7 +142,7 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 						cached.RemainingMs = int(v)
 					}
 					_ = sc.saveSession(ctx, sessionKey, cached)
-					return cached, nil, nil
+					return cached, nil, SessionOutcomeReuse, nil
 				}
 				// Model mismatch — evict.
 				_ = sc.redis.Del(ctx, sessionKey).Err()
@@ -140,7 +159,7 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 	// 2. Try to acquire lock for session creation.
 	locked, err := sc.redis.SetNX(ctx, lockKey, "1", sc.lockTTL).Result()
 	if err != nil {
-		return nil, nil, fmt.Errorf("redis lock error: %w", err)
+		return nil, nil, "", fmt.Errorf("redis lock error: %w", err)
 	}
 	if !locked {
 		// Another process is creating the session; poll Redis briefly.
@@ -148,15 +167,15 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 		for time.Now().Before(deadline) {
 			select {
 			case <-ctx.Done():
-				return nil, nil, ctx.Err()
+				return nil, nil, "", ctx.Err()
 			case <-time.After(sc.pollDelay):
 			}
 			cached, err = sc.loadSession(ctx, sessionKey)
 			if err == nil && cached != nil && cached.IsFresh(sc.freshMs) {
-				return cached, nil, nil
+				return cached, nil, SessionOutcomeReuse, nil
 			}
 		}
-		return nil, nil, fmt.Errorf("timeout waiting for session lock")
+		return nil, nil, "", fmt.Errorf("timeout waiting for session lock")
 	}
 	// Guarantee lock release.
 	defer sc.redis.Del(ctx, lockKey)
@@ -164,7 +183,7 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 	// 3. Double-check cache after acquiring lock.
 	cached, err = sc.loadSession(ctx, sessionKey)
 	if err == nil && cached != nil && cached.IsFresh(sc.freshMs) {
-		return cached, nil, nil
+		return cached, nil, SessionOutcomeReuse, nil
 	}
 
 	// 4. Check if upstream already has an active session for this model.
@@ -181,7 +200,7 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 					RemainingMs: intOrZero(data["remainingMs"]),
 				}
 				_ = sc.saveSession(ctx, sessionKey, sess)
-				return sess, nil, nil
+				return sess, nil, SessionOutcomeReuse, nil
 			}
 		}
 	}
@@ -197,10 +216,10 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 		}
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	_ = sc.saveSession(ctx, sessionKey, sess)
-	return sess, sessData, nil
+	return sess, sessData, SessionOutcomeCreate, nil
 }
 
 func (sc *SessionCache) loadSession(ctx context.Context, key string) (*Session, error) {
