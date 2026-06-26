@@ -376,6 +376,9 @@ func (ts *TelemetryStore) sumBucketsForRange(ctx context.Context, accountID int6
 		out.Sessions.WaitingRoom += parseInt(v["waiting_room"])
 		out.Sessions.ModelLocked += parseInt(v["model_locked"])
 		out.Sessions.Mismatch += parseInt(v["session_mismatch"])
+		if last := parseInt(v["session_last_event"]); last > out.Sessions.LastEvent {
+			out.Sessions.LastEvent = last
+		}
 		if last := parseInt(v["last_unix"]); last > out.LastUsed {
 			out.LastUsed = last
 		}
