@@ -264,15 +264,22 @@ func (qs *QuotaStore) GetPoolStatus(ctx context.Context, accounts []*store.Accou
 				Limit:     5,
 				Remaining: 5, // assume fully available until proven otherwise
 			}
-			if sessionInfo != nil {
-				if rl, ok := sessionInfo.RateLimitsByModel[model]; ok {
-					cell.Limit = rl.Limit
-					if rl.Limit > 0 {
-						cell.Remaining = rl.Remaining
-					}
-					cell.ResetAt = rl.ResetAt
+		if sessionInfo != nil {
+			if rl, ok := sessionInfo.RateLimitsByModel[model]; ok {
+				cell.Limit = rl.Limit
+				if rl.Limit > 0 {
+					cell.Remaining = rl.Remaining
+				}
+				cell.ResetAt = rl.ResetAt
+				// If the upstream reset window has already passed AND
+				// remaining is stuck at zero, auto-recover to limit.
+				// This fixes stale quota data between the moment
+				// 07:00 UTC passes and the next session create.
+				if cell.Remaining == 0 && !cell.ResetAt.IsZero() && time.Now().UTC().After(cell.ResetAt) {
+					cell.Remaining = cell.Limit
 				}
 			}
+		}
 			if block, ok := blocks[model]; ok {
 				cell.Blocked = true
 				cell.RecentCount = block.RecentCount
