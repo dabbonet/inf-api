@@ -48,7 +48,7 @@ func (a *API) handleCodebuffSync(w http.ResponseWriter, r *http.Request, id int6
 		return
 	}
 
-	client := codebuff.NewClient(acc.Token, a.config.Load())
+	client := codebuff.NewClient(codebuff.ResolveAuthToken(acc), a.config.Load())
 
 	// Fetch streak
 	streakData, streakErr := client.GetStreak(ctx)
