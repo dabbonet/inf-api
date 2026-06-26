@@ -83,12 +83,27 @@
     .banner-meta .countdown-cell small { font-size: 10px; color: var(--muted); font-weight: 500; }
     .banner-meta .countdown-divider { color: #cbd5e1; font-size: 16px; }
 
+    .cb-range-bar,
+    .cb-refresh-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .cb-range-bar .range-btn,
+    .cb-refresh-bar .range-btn {
+      padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line);
+      background: #fff; color: var(--muted); font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: all 120ms;
+    }
+    .cb-range-bar .range-btn:hover,
+    .cb-refresh-bar .range-btn:hover { background: #f3f4f6; color: var(--ink); }
+    .cb-range-bar .range-btn.active,
+    .cb-refresh-bar .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .cb-row-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+    .cb-row-bar .cb-filter-bar { margin-bottom: 0; flex: 1; }
+    .refresh-time { font-size: 12px; color: #9ca3af; margin-right: 6px; }
+
     .cb-banner .banner-stats {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
     }
-    .cb-banner .banner-stat {
-      padding: 16px 22px; border-right: 1px solid var(--line);
-    }
+    .cb-banner .banner-stat { padding: 16px 22px; border-right: 1px solid var(--line); }
     .cb-banner .banner-stat:last-child { border-right: none; }
     .cb-banner .banner-stat .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
     .cb-banner .banner-stat .stat-value { font-size: 26px; font-weight: 700; line-height: 1.15; margin-top: 4px; color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -244,12 +259,12 @@
     /* Model detail */
     .model-detail { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); grid-column: 1 / -1; }
     .model-table-head {
-      display: grid; grid-template-columns: 1.4fr 1.4fr repeat(4, 0.7fr);
+      display: grid; grid-template-columns: 1.4fr 1.4fr repeat(5, 0.7fr);
       gap: 12px; padding: 6px 10px;
       font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
     }
     .model-row {
-      display: grid; grid-template-columns: 1.4fr 1.4fr repeat(4, 0.7fr); gap: 12px;
+      display: grid; grid-template-columns: 1.4fr 1.4fr repeat(5, 0.7fr); gap: 12px;
       padding: 10px 10px; border-radius: 8px;
       border: 1px solid transparent;
       transition: background 120ms;
@@ -282,7 +297,7 @@
       .cb-card-grid { grid-template-columns: 1fr; }
       .card-body { grid-template-columns: 1fr; }
       .stat-grid { grid-template-columns: repeat(2, 1fr); }
-      .cb-banner .banner-stats { grid-template-columns: repeat(2, 1fr); }
+      .cb-banner .banner-stats { grid-template-columns: repeat(3, 1fr); }
       .cb-banner .banner-stat { border-bottom: 1px solid var(--line); }
     }
     @media (max-width: 700px) {
@@ -292,7 +307,7 @@
       .cb-banner .banner-meta { flex-direction: column; align-items: flex-start; gap: 10px; }
       .cb-banner .banner-stats { grid-template-columns: 1fr; }
       .stat-grid { grid-template-columns: 1fr 1fr; }
-      .model-table-head, .model-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .model-table-head, .model-row { grid-template-columns: 1.4fr 1.4fr repeat(2, 0.7fr); gap: 8px; }
     }
   </style>
 </head>
@@ -308,10 +323,17 @@
       </div>
       <div class="toolbar">
         <span class="refresh-time" id="lastUpdate">—</span>
+        <span class="refresh-time" id="lastSync">— never</span>
         <button class="cb-btn" id="syncBtn" onclick="syncQuota()">Sync quota</button>
-        <button class="cb-btn primary" onclick="loadCodebuffData()">Refresh</button>
+        <button class="cb-btn primary" id="refreshBtn" onclick="loadCodebuffData()">Refresh</button>
       </div>
     </section>
+
+    <div class="cb-row-bar">
+      <div class="cb-filter-bar" id="filterBar"></div>
+      <div class="cb-range-bar" id="rangeBar"></div>
+      <div class="cb-refresh-bar" id="refreshBar"></div>
+    </div>
 
     <div class="cb-banner">
       <div class="banner-meta">
@@ -333,7 +355,7 @@
         <div class="banner-stat">
           <div class="stat-label">Total Requests</div>
           <div class="stat-value" id="statReqs">0</div>
-          <div class="stat-sub">across all accounts</div>
+          <div class="stat-sub" id="statReqsFoot">across all accounts</div>
         </div>
         <div class="banner-stat">
           <div class="stat-label">429 Responses</div>
@@ -341,14 +363,19 @@
           <div class="stat-sub">rate-limit rejections</div>
         </div>
         <div class="banner-stat">
+          <div class="stat-label">Errors</div>
+          <div class="stat-value warn" id="statErrors">0</div>
+          <div class="stat-sub" id="statErrorsFoot">0 errors</div>
+        </div>
+        <div class="banner-stat">
           <div class="stat-label">Tokens Used</div>
           <div class="stat-value" id="statTokens">0</div>
-          <div class="stat-sub">prompt + completion</div>
+          <div class="stat-sub" id="statTokensFoot">prompt + completion (lifetime)</div>
         </div>
         <div class="banner-stat">
           <div class="stat-label">Per Minute</div>
           <div class="stat-value" id="statRPM">0</div>
-          <div class="stat-sub">aggregate request rate</div>
+          <div class="stat-sub" id="statRPMFoot">aggregate request rate</div>
         </div>
       </div>
 
@@ -361,15 +388,13 @@
       </div>
     </div>
 
-    <div class="cb-filter-bar" id="filterBar"></div>
-
     <div class="cb-card-grid" id="cardContainer"></div>
 
     <div class="toast-container" id="toastContainer"></div>
   </main>
 
   <script src="{{.AdminPath}}/js/common.js?v=20260605-2"></script>
-  <script src="{{.AdminPath}}/js/codebuff.js?v=20260621-7"></script>
+  <script src="{{.AdminPath}}/js/codebuff.js?v=20260626-2"></script>
 </body>
 
 </html>
