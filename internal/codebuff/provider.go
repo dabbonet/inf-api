@@ -294,7 +294,9 @@ func (p *Provider) streamChat(
 				break
 			}
 			go FinalizeRun(context.Background(), p.client, run, messageID)
-			p.recordTelemetry(requestedModel, true, false, 0, time.Since(start).Milliseconds())
+			// Parse errors on the streaming path are network/scanner problems,
+			// not rate-limit responses. Increment errors_total for failure-rate.
+			p.recordTelemetry(requestedModel, false, true, 0, time.Since(start).Milliseconds())
 			return fmt.Errorf("codebuff stream error: %w", err)
 		}
 		for _, msg := range msgs {
@@ -375,7 +377,8 @@ func (p *Provider) streamChatRaw(
 
 	go FinalizeRun(context.Background(), p.client, run, messageID)
 	if err := scanner.Err(); err != nil {
-		p.recordTelemetry(requestedModel, true, false, 0, time.Since(start).Milliseconds())
+		// Scanner errors are network failures, not 429s.
+		p.recordTelemetry(requestedModel, false, true, 0, time.Since(start).Milliseconds())
 		return fmt.Errorf("codebuff stream error: %w", err)
 	}
 	p.recordTelemetry(requestedModel, false, false, 0, time.Since(start).Milliseconds())

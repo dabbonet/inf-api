@@ -73,6 +73,14 @@ func (ts *TelemetryStore) RecordRequest(ctx context.Context, accountID int64, mo
 	pipe.ZRemRangeByScore(ctx, ts.timestampKey(accountID), "-inf", fmt.Sprintf("(%d", now-120))
 	pipe.Expire(ctx, ts.timestampKey(accountID), 2*time.Hour)
 
+	// Per-account daily request counter — used by handleCodebuffSync as an
+	// authoritative fallback when upstream's rateLimitsByModel is stale or
+	// missing from the GET /api/v1/freebuff/session response. 48h TTL covers
+	// the current Pacific-day window plus one full day of grace for clock skew.
+	today := nowDateUTC(now)
+	pipe.Incr(ctx, ts.dailyKey(accountID, today))
+	pipe.Expire(ctx, ts.dailyKey(accountID, today), 48*time.Hour)
+
 	_, _ = pipe.Exec(ctx)
 }
 
@@ -80,6 +88,33 @@ func (ts *TelemetryStore) RecordRequest(ctx context.Context, accountID int64, mo
 // for a given codebuff account, used to compute rolling RPM.
 func (ts *TelemetryStore) timestampKey(accountID int64) string {
 	return fmt.Sprintf("%s:telemetry:times:%d", ts.prefix, accountID)
+}
+
+// dailyKey is the Redis key holding today's request count for a given
+// codebuff account, used as the fallback for QuotaSync freshness.
+func (ts *TelemetryStore) dailyKey(accountID int64, day string) string {
+	return fmt.Sprintf("%s:telemetry:daily:%d:%s", ts.prefix, accountID, day)
+}
+
+// DailyRequests returns today's proxied request count for the given account
+// (UTC date). Used by handleCodebuffSync as an authoritative daily figure
+// independent of upstream rate-limit responses.
+func (ts *TelemetryStore) DailyRequests(ctx context.Context, accountID int64) (int64, error) {
+	if ts == nil || ts.redis == nil || accountID == 0 {
+		return 0, nil
+	}
+	v, err := ts.redis.Get(ctx, ts.dailyKey(accountID, nowDateUTC(time.Now().Unix()))).Int64()
+	if err == redis.Nil {
+		return 0, nil
+	}
+	return v, err
+}
+
+// nowDateUTC returns YYYY-MM-DD in UTC for the given unix-second. Extracted as
+// a tiny helper so the date string is stable across calls within the same
+// second for a given request.
+func nowDateUTC(unixSec int64) string {
+	return time.Unix(unixSec, 0).UTC().Format("2006-01-02")
 }
 
 // ModelMetrics is the per-model telemetry summary returned to the dashboard.
