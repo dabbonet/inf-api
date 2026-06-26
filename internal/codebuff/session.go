@@ -257,6 +257,10 @@ func (sc *SessionCache) saveSession(ctx context.Context, key string, sess *Sessi
 	return sc.redis.Set(ctx, key, raw, ttl).Err()
 }
 
+// HashToken returns the first 16 hex chars of sha256(token) — the same
+// hash used to build per-(account,model) session cache keys.
+func HashToken(token string) string { return hashToken(token) }
+
 func hashToken(token string) string {
 	h := sha256.New()
 	h.Write([]byte(token))
