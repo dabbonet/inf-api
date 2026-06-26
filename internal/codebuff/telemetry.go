@@ -41,11 +41,35 @@ func (ts *TelemetryStore) RecordRequest(ctx context.Context, accountID int64, mo
 	if ts == nil || ts.redis == nil || accountID == 0 || model == "" {
 		return
 	}
-	key := ts.accountKey(accountID, model)
-	ttl := 24 * time.Hour
 	now := time.Now().Unix()
 
+	// Per-minute bucket counters — feed Feature 1 / time-range scoped metrics.
+	// Each bucket is a Redis hash with fields requests, errors_429, errors_total,
+	// tokens, latency_ms, wall_ms. 24h TTL covers the longest available range
+	// button ("Today"); older buckets naturally roll forward and are pruned by
+	// Redis once the TTL elapses.
+	bucketKey := ts.bucketKey(accountID, model, now)
+	tokensI := int64(tokens)
 	pipe := ts.redis.TxPipeline()
+	pipe.HIncrBy(ctx, bucketKey, "requests", 1)
+	if is429 {
+		pipe.HIncrBy(ctx, bucketKey, "errors_429", 1)
+	}
+	if isError {
+		pipe.HIncrBy(ctx, bucketKey, "errors_total", 1)
+	}
+	if tokens > 0 {
+		pipe.HIncrBy(ctx, bucketKey, "tokens", tokensI)
+	}
+	if latencyMs > 0 {
+		pipe.HIncrBy(ctx, bucketKey, "latency_ms", latencyMs)
+		pipe.HIncrBy(ctx, bucketKey, "wall_ms", latencyMs)
+	}
+	pipe.Expire(ctx, bucketKey, 24*time.Hour)
+
+	// Aggregate lifetime counters. first_unix remains HSetNX'd so lifetime
+	// averages stay meaningful on the cards that still use them.
+	key := ts.accountKey(accountID, model)
 	pipe.HIncrBy(ctx, key, "requests", 1)
 	pipe.HIncrBy(ctx, key, "last_unix", now)
 	if is429 {
@@ -55,16 +79,14 @@ func (ts *TelemetryStore) RecordRequest(ctx context.Context, accountID int64, mo
 		pipe.HIncrBy(ctx, key, "errors_total", 1)
 	}
 	if tokens > 0 {
-		pipe.HIncrBy(ctx, key, "tokens", int64(tokens))
+		pipe.HIncrBy(ctx, key, "tokens", tokensI)
 	}
 	if latencyMs > 0 {
 		pipe.HIncrBy(ctx, key, "latency_ms", latencyMs)
-		// Wall-time spent serving requests for this model/account.
 		pipe.HIncrBy(ctx, key, "wall_ms", latencyMs)
 	}
-	// First time we ever recorded an event for this model — capture window start.
 	pipe.HSetNX(ctx, key, "first_unix", now)
-	pipe.Expire(ctx, key, ttl)
+	pipe.Expire(ctx, key, 24*time.Hour)
 
 	// Rolling-RPM sorted set: score == unix-second of the request, member == request id.
 	// Backed by timestamp entries that count the requests in the last 60 seconds
@@ -96,6 +118,13 @@ func (ts *TelemetryStore) dailyKey(accountID int64, day string) string {
 	return fmt.Sprintf("%s:telemetry:daily:%d:%s", ts.prefix, accountID, day)
 }
 
+// bucketKey is the Redis hash key holding one minute's worth of counters
+// for a given (account, model) pair. Used by time-range UI to scope stats.
+func (ts *TelemetryStore) bucketKey(accountID int64, model string, unixSec int64) string {
+	minute := unixSec - (unixSec % 60)
+	return fmt.Sprintf("%s:telemetry:bucket:%d:%s:%d", ts.prefix, accountID, model, minute)
+}
+
 // DailyRequests returns today's proxied request count for the given account
 // (UTC date). Used by handleCodebuffSync as an authoritative daily figure
 // independent of upstream rate-limit responses.
@@ -124,6 +153,7 @@ type ModelMetrics struct {
 	ErrorsTotal  int64   `json:"errors_total"`
 	Tokens       int64   `json:"tokens"`
 	LatencyMs    int64   `json:"latency_ms"`
+	WallMs       int64   `json:"wall_ms"`
 	AvgLatencyMs int64   `json:"avg_latency_ms"`
 	TokensPerS   float64 `json:"tokens_per_s"`
 	LastUsed     int64   `json:"last_used"`
@@ -146,12 +176,25 @@ type AccountMetrics struct {
 // The returned RPM fields are computed from a Redis sorted set of recent
 // request timestamps, not from the lifetime first_unix/last_unix window,
 // so they stay accurate even as the underlying TTL rolls over.
+//
+// When `RangeSeconds` is set, the aggregates are computed by summing the
+// per-minute buckets in the window (Feature 1) and lifetime aggregates
+// are skipped. When RangeSeconds is 0, the lifetime aggregate hash is
+// returned and RPM comes from the rolling set.
 func (ts *TelemetryStore) GetAccountsMetrics(ctx context.Context, accounts []AccountRef) ([]AccountMetrics, error) {
+	return ts.GetAccountsMetricsInRange(ctx, accounts, 0)
+}
+
+// GetAccountsMetricsInRange is the entrypoint respecting Feature 1's
+// ?range= query parameter. RangeSeconds == 0 is "all-time" (legacy path).
+// RangeSeconds > 0 sums the per-minute buckets in [now-RangeSeconds, now].
+func (ts *TelemetryStore) GetAccountsMetricsInRange(ctx context.Context, accounts []AccountRef, rangeSeconds int64) ([]AccountMetrics, error) {
 	if ts == nil || ts.redis == nil {
 		return []AccountMetrics{}, nil
 	}
 
 	out := make([]AccountMetrics, 0, len(accounts))
+	models := allModelIDs()
 
 	for _, acc := range accounts {
 		am := AccountMetrics{
@@ -160,16 +203,25 @@ func (ts *TelemetryStore) GetAccountsMetrics(ctx context.Context, accounts []Acc
 			Models:    make(map[string]ModelMetrics),
 		}
 
-		models := allModelIDs()
 		total := ModelMetrics{}
 
 		for _, m := range models {
-			key := ts.accountKey(acc.ID, m)
-			raw, err := ts.redis.HGetAll(ctx, key).Result()
-			if err != nil || len(raw) == 0 {
-				continue
+			var mm ModelMetrics
+			if rangeSeconds > 0 {
+				var err error
+				mm, err = ts.sumBucketsForRange(ctx, acc.ID, m, rangeSeconds)
+				if err != nil || (mm.Requests == 0 && mm.Errors429 == 0 && mm.Tokens == 0) {
+					continue
+				}
+			} else {
+				key := ts.accountKey(acc.ID, m)
+				raw, err := ts.redis.HGetAll(ctx, key).Result()
+				if err != nil || len(raw) == 0 {
+					continue
+				}
+				mm = parseModelMetrics(raw)
 			}
-			mm := parseModelMetrics(raw)
+
 			am.Models[m] = mm
 			total.Requests += mm.Requests
 			total.Errors429 += mm.Errors429
@@ -188,7 +240,9 @@ func (ts *TelemetryStore) GetAccountsMetrics(ctx context.Context, accounts []Acc
 		total.TokensPerS = tokensPerSecond(total.Tokens, total.LatencyMs)
 		am.Total = total
 
-		// Compute rolling 60s RPM from sorted-set timestamps.
+		// Compute rolling 60s RPM from sorted-set timestamps. Bucket-scoped
+		// queries still expose the rolling RPM since per-minute buckets would
+		// lag a 60-second window.
 		rpm, err := ts.RollingRPM(ctx, acc.ID, 60)
 		if err == nil {
 			am.RPM = rpm
@@ -197,6 +251,50 @@ func (ts *TelemetryStore) GetAccountsMetrics(ctx context.Context, accounts []Acc
 		out = append(out, am)
 	}
 
+	return out, nil
+}
+
+// sumBucketsForRange sums the per-minute bucket counters for the given
+// (account, model) pair in the last `rangeSeconds` seconds. Uses pipelining
+// so a 24h range is at most 1440 HGETALL calls in one round-trip.
+func (ts *TelemetryStore) sumBucketsForRange(ctx context.Context, accountID int64, model string, rangeSeconds int64) (ModelMetrics, error) {
+	if rangeSeconds <= 0 {
+		return ModelMetrics{}, nil
+	}
+	now := time.Now().Unix()
+	startMinute := (now - rangeSeconds) - ((now - rangeSeconds) % 60)
+	endMinute := now - (now % 60)
+
+	pipe := ts.redis.Pipeline()
+	cmds := make([]*redis.MapStringStringCmd, 0, (endMinute-startMinute)/60+1)
+	for m := startMinute; m <= endMinute; m += 60 {
+		key := ts.bucketKey(accountID, model, m)
+		cmds = append(cmds, pipe.HGetAll(ctx, key))
+	}
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+		return ModelMetrics{}, err
+	}
+
+	out := ModelMetrics{}
+	for _, c := range cmds {
+		v, err := c.Result()
+		if err != nil || len(v) == 0 {
+			continue
+		}
+		out.Requests += parseInt(v["requests"])
+		out.Errors429 += parseInt(v["errors_429"])
+		out.ErrorsTotal += parseInt(v["errors_total"])
+		out.Tokens += parseInt(v["tokens"])
+		out.LatencyMs += parseInt(v["latency_ms"])
+		out.WallMs += parseInt(v["wall_ms"])
+		if last := parseInt(v["last_unix"]); last > out.LastUsed {
+			out.LastUsed = last
+		}
+	}
+	out.AvgLatencyMs = avgLat(out.Requests, out.LatencyMs)
+	out.TokensPerS = tokensPerSecond(out.Tokens, out.LatencyMs)
+	// Range-scoped metrics are not "lifetime" — RPM is computed by the
+	// caller from the rolling set; FirstUsed is left as 0 for the UI.
 	return out, nil
 }
 
