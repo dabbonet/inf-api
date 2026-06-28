@@ -145,6 +145,7 @@ func main() {
 			codebuffTelemetryStore = codebuff.NewTelemetryStore(rc, prefix)
 			apiHandler.SetCodebuffQuotaStore(codebuffQuotaStore)
 			apiHandler.SetCodebuffTelemetryStore(codebuffTelemetryStore)
+			h.SetQuotaStore(codebuffQuotaStore)
 		}
 	}
 

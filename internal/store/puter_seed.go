@@ -16,6 +16,10 @@ func buildPuterSeedModels() []Model {
 		"gpt-4o",
 		"o3",
 		"gemini-2.5-pro",
+		"z-ai/glm-5.2",
+		"moonshotai/kimi-k2.7-code",
+		"qwen/qwen3.7-plus",
+		"xiaomi/mimo-v2.5-pro",
 	}
 
 	models := make([]Model, 0, len(modelIDs))

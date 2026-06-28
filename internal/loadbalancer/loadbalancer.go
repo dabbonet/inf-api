@@ -90,11 +90,20 @@ func (lb *LoadBalancer) GetNextAccountExcludingByChannelWithTrackerFilter(ctx co
 			continue
 		}
 		channelMatched++
+
+		// For codebuff channel, skip the LB-level 429 cooldown check.
+		// Codebuff 429s are per-model and handled by the quota filter
+		// (RecordBlock + IsBlocked). The LB's StatusCode="429" is
+		// account-wide and would incorrectly block ALL models.
 		if !lb.isAccountAvailable(ctx, acc) {
-			if strings.TrimSpace(acc.StatusCode) == "429" {
-				rateLimitedUnavailable++
+			if strings.TrimSpace(acc.StatusCode) == "429" && strings.EqualFold(channel, "codebuff") {
+				slog.Debug("LB: ignoring codebuff StatusCode=429 (per-model quota filter handles it)", "account_id", acc.ID)
+			} else {
+				if strings.TrimSpace(acc.StatusCode) == "429" {
+					rateLimitedUnavailable++
+				}
+				continue
 			}
-			continue
 		}
 		filtered = append(filtered, acc)
 	}
@@ -327,20 +336,36 @@ func (lb *LoadBalancer) clearAccountStatus(ctx context.Context, acc *store.Accou
 }
 
 // MarkAccountStatus marks the account status (for use by external calls such as background refresh).
-func (lb *LoadBalancer) MarkAccountStatus(ctx context.Context, acc *store.Account, status string) {
+// When status=="429" and quotaResetAt is non-zero, the LB will use it as the cooldown end
+// instead of the default retry429Default. When quotaResetAt is zero, the default 1m is used.
+func (lb *LoadBalancer) MarkAccountStatus(ctx context.Context, acc *store.Account, status string, quotaResetAt ...time.Time) {
 	if acc == nil || lb.Store == nil || status == "" {
 		return
+	}
+	var resetAt time.Time
+	if len(quotaResetAt) > 0 {
+		resetAt = quotaResetAt[0]
 	}
 	lb.mu.Lock()
 	now := time.Now()
 	acc.StatusCode = status
 	acc.LastAttempt = now
+	if status == "429" && !resetAt.IsZero() {
+		acc.QuotaResetAt = resetAt
+	} else {
+		acc.QuotaResetAt = time.Time{}
+	}
 
 	// Ensure the cache is updated as well
 	for _, cached := range lb.cachedAccounts {
 		if cached.ID == acc.ID {
 			cached.StatusCode = status
 			cached.LastAttempt = now
+			if status == "429" && !resetAt.IsZero() {
+				cached.QuotaResetAt = resetAt
+			} else {
+				cached.QuotaResetAt = time.Time{}
+			}
 			break
 		}
 	}

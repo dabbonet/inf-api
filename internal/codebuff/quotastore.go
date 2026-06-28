@@ -103,6 +103,21 @@ func (qs *QuotaStore) sessionKey(accountID int64) string {
 	return fmt.Sprintf("%s:quota:session:%d", qs.prefix, accountID)
 }
 
+// IsBlocked returns true if the (account, model) has an active 429 block
+// stored in Redis. Block keys auto-expire at resetAt+1min, so a missing key
+// means quota is or will be available. Single GET per check; pipeline
+// candidates for batch lookups in the request path.
+func (qs *QuotaStore) IsBlocked(ctx context.Context, accountID int64, model string) (bool, error) {
+	if qs == nil {
+		return false, nil
+	}
+	n, err := qs.redis.Exists(ctx, qs.blockKey(accountID, model)).Result()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // RecordBlock stores a 429 block with TTL until resetAt.
 func (qs *QuotaStore) RecordBlock(ctx context.Context, accountID int64, block *ModelBlock) error {
 	if qs == nil || block == nil {

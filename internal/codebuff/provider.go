@@ -131,6 +131,7 @@ func (p *Provider) SendRequestWithPayload(
 				slog.Warn("codebuff session error; evicting and retrying", "attempt", attempt+1, "error", err)
 				continue
 			}
+			p.recordBlockIf429(err, model.UpstreamID())
 			return fmt.Errorf("codebuff session acquisition failed: %w", err)
 		}
 		if sess == nil {

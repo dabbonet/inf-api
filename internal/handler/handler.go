@@ -21,6 +21,7 @@ import (
 
 	"orchids-api/internal/adapter"
 	"orchids-api/internal/audit"
+	"orchids-api/internal/codebuff"
 	"orchids-api/internal/config"
 	"orchids-api/internal/debug"
 	apperrors "orchids-api/internal/errors"
@@ -53,6 +54,8 @@ type Handler struct {
 
 	sessionStore SessionStore
 	dedupStore   DedupStore
+
+	quotaStore *codebuff.QuotaStore
 }
 
 type ClaudeRequest = appreq.Request
@@ -184,6 +187,13 @@ func (h *Handler) RegisterSpec(s provider.Spec) {
 		h.specs = provider.NewRegistry()
 	}
 	h.specs.Register(s)
+}
+
+// SetQuotaStore wires the codebuff QuotaStore for quota-aware account
+// selection on the handler path. Optional; if nil, selection falls back to
+// load-balancer-only behavior.
+func (h *Handler) SetQuotaStore(qs *codebuff.QuotaStore) {
+	h.quotaStore = qs
 }
 
 // ResolveSpec returns the provider spec for a request, looking up by URL path
@@ -1156,14 +1166,27 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 
 			// Check for non-retriable errors
 			slog.Error("Request error", "trace_id", traceID, "attempt", upstreamReq.Attempt, "error", err, "category", errClass.Category, "retryable", errClass.Retryable)
-			// Mark account status
+			// Mark account status for auth/rate-limit errors.
+			// For codebuff channel, 429 is handled by per-model quota blocks
+			// (RecordBlock) — setting LB-level StatusCode="429" would block ALL
+			// models for the account, not just the rate-limited one.
 			if currentAccount != nil && h.loadBalancer != nil && h.loadBalancer.Store != nil {
 				if status := classifyAccountStatus(errStr); status != "" {
 					if !errClass.Retryable || errClass.Category == "auth" || errClass.Category == "auth_blocked" || status == "403" || status == "429" || status == "402" {
-						if verboseDiagnostics {
-							slog.Debug("Mark account status", "account_id", currentAccount.ID, "status", status, "category", errClass.Category)
+						if status == "429" && strings.EqualFold(targetChannel, "codebuff") {
+							slog.Debug("Skipping LB MarkAccountStatus for codebuff 429 (per-model block handles it)", "account_id", currentAccount.ID)
+						} else {
+							if verboseDiagnostics {
+								slog.Debug("Mark account status", "account_id", currentAccount.ID, "status", status, "category", errClass.Category)
+							}
+							var resetAt time.Time
+							if status == "429" {
+								if block, _ := codebuff.Parse429Body(err); block != nil {
+									resetAt = block.ResetAt
+								}
+							}
+							h.loadBalancer.MarkAccountStatus(r.Context(), currentAccount, status, resetAt)
 						}
-						h.loadBalancer.MarkAccountStatus(r.Context(), currentAccount, status)
 					}
 				}
 			}
@@ -1539,10 +1562,21 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 		)
 
 		// Mark account status for auth/rate-limit errors.
+		// For codebuff channel, 429 is handled by per-model quota blocks.
 		if currentAccount != nil && h.loadBalancer != nil && h.loadBalancer.Store != nil {
 			if status := classifyAccountStatus(errStr); status != "" {
 				if !errClass.Retryable || errClass.Category == "auth" || errClass.Category == "auth_blocked" || status == "403" || status == "429" || status == "402" {
-					h.loadBalancer.MarkAccountStatus(r.Context(), currentAccount, status)
+					if status == "429" && strings.EqualFold(targetChannel, "codebuff") {
+						slog.Debug("Skipping LB MarkAccountStatus for codebuff 429 (per-model block handles it)", "account_id", currentAccount.ID)
+					} else {
+						var resetAt time.Time
+						if status == "429" {
+							if block, _ := codebuff.Parse429Body(err); block != nil {
+								resetAt = block.ResetAt
+							}
+						}
+						h.loadBalancer.MarkAccountStatus(r.Context(), currentAccount, status, resetAt)
+					}
 				}
 			}
 		}

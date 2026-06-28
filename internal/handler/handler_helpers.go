@@ -110,17 +110,36 @@ func (h *Handler) selectAccountRecordWithOptions(ctx context.Context, targetChan
 		return nil, errors.New("load balancer not configured")
 	}
 
+	// Quota-aware filter: never pick an account whose (acct, model) has an
+	// active 429 block in QuotaStore. The block key auto-expires at
+	// resetAt+1min, so a missing key means quota is available again. This is
+	// the SOURCE OF TRUTH for "blocked until resetAt" — load balancer's
+	// StatusCode cooldown is wrong shape (per-account, 1 minute) for freebuff.
+	quotaFilter := func(acc *store.Account) bool {
+		if h.quotaStore == nil || acc == nil || opts.ModelID == "" {
+			return true
+		}
+		if !strings.EqualFold(targetChannel, "codebuff") {
+			return true
+		}
+		blocked, err := h.quotaStore.IsBlocked(ctx, acc.ID, opts.ModelID)
+		if err != nil {
+			return true // fail-open: never wedge selection on a Redis hiccup
+		}
+		return !blocked
+	}
+
 	// Reactive model-session affinity: if the caller knows which model is needed
 	// AND we're routing to codebuff, scan existing session caches to find the
 	// account that already holds an active upstream session for this model.
 	// One Redis EXISTS per account; no writes, no proactive assignment.
 	if opts.ModelID != "" && strings.EqualFold(targetChannel, "codebuff") {
-		if acc := h.trySessionAffinity(ctx, opts.ModelID, failedAccountIDs); acc != nil {
+		if acc := h.trySessionAffinity(ctx, opts.ModelID, failedAccountIDs, quotaFilter); acc != nil {
 			return acc, nil
 		}
 	}
 
-	return h.loadBalancer.GetNextAccountExcludingByChannelWithTracker(ctx, failedAccountIDs, targetChannel, h.connTracker)
+	return h.loadBalancer.GetNextAccountExcludingByChannelWithTrackerFilter(ctx, failedAccountIDs, targetChannel, h.connTracker, quotaFilter)
 }
 
 // trySessionAffinity checks whether any codebuff account already has an
@@ -128,7 +147,7 @@ func (h *Handler) selectAccountRecordWithOptions(ctx context.Context, targetChan
 // account is not in failedAccountIDs, it returns that account — meaning
 // the next chat for this model will reuse the existing session instead of
 // creating a new one. Purely reactive: reads existing cache, writes nothing.
-func (h *Handler) trySessionAffinity(ctx context.Context, model string, failedIDs []int64) *store.Account {
+func (h *Handler) trySessionAffinity(ctx context.Context, model string, failedIDs []int64, quotaFilter func(*store.Account) bool) *store.Account {
 	redisClient := h.loadBalancer.Store.RedisClient()
 	if redisClient == nil {
 		return nil
@@ -189,6 +208,10 @@ func (h *Handler) trySessionAffinity(ctx context.Context, model string, failedID
 			continue
 		}
 		if !c.account.Enabled {
+			continue
+		}
+		// Quota-aware: skip accounts with active 429 block on this model.
+		if quotaFilter != nil && !quotaFilter(c.account) {
 			continue
 		}
 		return c.account
