@@ -3,6 +3,8 @@ package puter
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"fmt"
 	"io"
@@ -119,6 +121,56 @@ func (c *Client) Close() {
 	}
 }
 
+// readErrorBody reads up to 8KB from a puter response body, transparently
+// decompressing gzip/deflate/brotli/zstd. Returns the decoded text or a
+// short placeholder. Without this, an error path that includes a CDN
+// challenge (e.g. Cloudflare's brotli'd "verify you are human" page) is
+// surfaced to the user as garbled binary.
+func readErrorBody(resp *http.Response) string {
+	if resp == nil || resp.Body == nil {
+		return ""
+	}
+	const limit = 8192
+	rc, err := decodeByContentEncoding(resp, io.LimitReader(resp.Body, limit))
+	if err != nil {
+		return fmt.Sprintf("[body decode error: %v]", err)
+	}
+	raw, _ := io.ReadAll(rc)
+	return strings.TrimSpace(string(raw))
+}
+
+func decodeByContentEncoding(resp *http.Response, r io.Reader) (io.Reader, error) {
+	enc := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
+	if enc == "" {
+		return r, nil
+	}
+	// Multiple values (e.g. "gzip, br") are unusual but handle the first
+	// one we support. Each decoder is its own name in the comma-list.
+	for _, e := range strings.Split(enc, ",") {
+		e = strings.TrimSpace(e)
+		switch e {
+		case "gzip", "x-gzip":
+			return gzip.NewReader(r)
+		case "deflate":
+			// zlib-wrapped deflate. NewReader can also handle raw deflate
+			// in some Go versions; if it fails, fall back to raw.
+			zr, err := zlib.NewReader(r)
+			if err == nil {
+				return zr, nil
+			}
+			return r, nil
+		case "br":
+			// Brotli is not in the Go stdlib. If a brotli body shows up,
+			// surface a short note rather than passing raw compressed
+			// bytes to the user.
+			return io.NopCloser(strings.NewReader("[brotli-encoded body, decoder not available]")), nil
+		case "zstd":
+			return io.NopCloser(strings.NewReader("[zstd-encoded body, decoder not available]")), nil
+		}
+	}
+	return r, nil
+}
+
 func (c *Client) VerifyAuthToken(ctx context.Context) error {
 	return c.VerifyModel(ctx, defaultModelID)
 }
@@ -164,8 +216,7 @@ func (c *Client) VerifyModel(ctx context.Context, modelID string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-		return fmt.Errorf("puter API error: status=%d, body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return fmt.Errorf("puter API error: status=%d, body=%s", resp.StatusCode, readErrorBody(resp))
 	}
 
 	if _, err := readStreamText(resp.Body); err != nil {
@@ -198,8 +249,7 @@ func (c *Client) FetchMonthlyUsage(ctx context.Context) (*MonthlyUsage, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-		return nil, fmt.Errorf("puter usage API error: status=%d, body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return nil, fmt.Errorf("puter usage API error: status=%d, body=%s", resp.StatusCode, readErrorBody(resp))
 	}
 
 	var usage MonthlyUsage
@@ -243,8 +293,7 @@ func (c *Client) SendRequestWithPayload(ctx context.Context, req upstream.Upstre
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-		return fmt.Errorf("puter API error: status=%d, body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return fmt.Errorf("puter API error: status=%d, body=%s", resp.StatusCode, readErrorBody(resp))
 	}
 
 	fullText, err := readStreamText(resp.Body)

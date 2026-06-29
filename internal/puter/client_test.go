@@ -1,6 +1,8 @@
 package puter
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
@@ -660,5 +662,42 @@ func TestNewFromAccount_ReusesSharedHTTPClient(t *testing.T) {
 	}
 	if !clientA.sharedHTTPClient || !clientB.sharedHTTPClient {
 		t.Fatal("expected sharedHTTPClient flag to be set")
+	}
+}
+
+func TestReadErrorBody_GzipDecodes(t *testing.T) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, _ = zw.Write([]byte(`{"error":"malformed","message":"x"}`))
+	_ = zw.Close()
+
+	resp := &http.Response{
+		Header: http.Header{"Content-Encoding": []string{"gzip"}},
+		Body:   io.NopCloser(&buf),
+	}
+	got := readErrorBody(resp)
+	if !strings.Contains(got, "malformed") {
+		t.Fatalf("expected decoded body, got %q", got)
+	}
+}
+
+func TestReadErrorBody_NoEncoding(t *testing.T) {
+	resp := &http.Response{
+		Body: io.NopCloser(strings.NewReader("plain text error")),
+	}
+	got := readErrorBody(resp)
+	if got != "plain text error" {
+		t.Fatalf("expected plain body, got %q", got)
+	}
+}
+
+func TestReadErrorBody_BrotliNotesUnavailable(t *testing.T) {
+	resp := &http.Response{
+		Header: http.Header{"Content-Encoding": []string{"br"}},
+		Body:   io.NopCloser(strings.NewReader("compressed brotli bytes")),
+	}
+	got := readErrorBody(resp)
+	if !strings.Contains(got, "brotli") {
+		t.Fatalf("expected brotli note, got %q", got)
 	}
 }
