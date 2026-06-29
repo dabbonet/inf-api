@@ -60,3 +60,7 @@ tmp_aiclient/
 
 # Test
 test/
+
+# Backup copies of the binary (rewritten on every deploy; never commit)
+orchids-server.old
+orchids-server.previous
