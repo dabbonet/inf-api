@@ -177,4 +177,37 @@ func startCodebuffQuotaResetLoop(ctx context.Context, qs *codebuff.QuotaStore) {
 			}
 		}
 	}()
+
+	// Orphan-clearing loop: every 30 min, drop session keys whose SyncedAt
+	// is older than 6h. Defends against a bug-class where a caller writes
+	// stale rateLimitsByModel data — even if the caller keeps writing it,
+	// anything older than 6h is dropped, so the dashboard self-heals.
+	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				slog.Error("Panic in codebuff orphan quota loop", "error", err)
+			}
+		}()
+		// Run once at startup to clean up anything left over from a
+		// previous version that had a parsing bug.
+		if n, err := qs.ClearOrphanSessionQuotas(ctx, 1*time.Hour); err != nil {
+			slog.Error("Startup orphan clear failed", "error", err)
+		} else if n > 0 {
+			slog.Info("Startup orphan clear", "count", n)
+		}
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if n, err := qs.ClearOrphanSessionQuotas(ctx, 6*time.Hour); err != nil {
+					slog.Error("Failed to clear orphan session quotas", "error", err)
+				} else if n > 0 {
+					slog.Info("Cleared orphan session quotas", "count", n)
+				}
+			}
+		}
+	}()
 }

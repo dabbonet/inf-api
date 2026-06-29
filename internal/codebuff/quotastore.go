@@ -16,18 +16,41 @@ import (
 type ModelBlock struct {
 	Model        string    `json:"model"`
 	Limit        int       `json:"limit"`
-	RecentCount  int       `json:"recentCount"`
+	RecentCount  float64   `json:"recentCount"`
 	ResetAt      time.Time `json:"resetAt"`
 	BlockedAt    time.Time `json:"blockedAt"`
 	RetryAfterMs int       `json:"retryAfterMs"`
 }
 
 // ModelRateLimit records quota info from a session's rateLimitsByModel.
+//
+// Upstream (codebuff) sends `recentCount` (used count, can be fractional) and
+// `limit` (daily cap), but does NOT send `remaining`. We treat:
+//   - `Remaining` as a *int absent by design; consumers must check
+//     `HasRemaining` before treating it as authoritative. (Historically it
+//     was an `int` and Go's zero-value faked "exhausted" models with
+//     `remaining=0`.)
+//   - `RecentCount` as the *primary* signal — display "X / 5 used today".
+//   - When `RecentCount >= Limit` the model is genuinely exhausted.
 type ModelRateLimit struct {
-	Limit     int       `json:"limit"`
-	Remaining int       `json:"remaining"`
-	ResetAt   time.Time `json:"resetAt"`
-	Window    string    `json:"window"`
+	Limit       int       `json:"limit"`
+	HasRemaining bool     `json:"-"`
+	Remaining   *int      `json:"remaining,omitempty"`
+	RecentCount float64   `json:"recent_count"`
+	ResetAt     time.Time `json:"resetAt"`
+	Window      string    `json:"window"`
+}
+
+// UsedOrZero returns RecentCount as int (rounded). Use only for display
+// (cards/headlines); for arithmetic prefer RecentCount directly.
+func (m ModelRateLimit) UsedOrZero() int {
+	return int(m.RecentCount + 0.5)
+}
+
+// IsExhausted reports whether upstream says this model is fully used for the
+// day (RecentCount >= Limit and Limit > 0).
+func (m ModelRateLimit) IsExhausted() bool {
+	return m.Limit > 0 && m.RecentCount >= float64(m.Limit)
 }
 
 // StreakInfo holds upstream streak data.
@@ -55,8 +78,9 @@ type AccountQuotaStatus struct {
 type ModelPoolStatus struct {
 	Blocked     bool       `json:"blocked"`
 	Limit       int        `json:"limit"`
-	RecentCount int        `json:"recent_count"`
-	Remaining   int        `json:"remaining"`
+	RecentCount float64    `json:"recent_count"`
+	HasRemaining bool      `json:"has_remaining"`
+	Remaining   *int       `json:"remaining"`
 	Window      string     `json:"window,omitempty"`
 	ResetAt     time.Time  `json:"reset_at"`
 	BlockedAt   *time.Time `json:"blocked_at,omitempty"`
@@ -300,26 +324,27 @@ func (qs *QuotaStore) GetPoolStatus(ctx context.Context, accounts []*store.Accou
 			if sessionInfo != nil {
 				if rl, ok := sessionInfo.RateLimitsByModel[model]; ok {
 					cell.Limit = rl.Limit
-					if rl.Limit > 0 {
-						cell.Remaining = rl.Remaining
+					cell.RecentCount = rl.RecentCount
+					if rl.HasRemaining {
+						// Copy the pointer so JS sees either a real value
+						// or null — never the fake 0 from a missing field.
+						r := *rl.Remaining
+						cell.Remaining = &r
+						cell.HasRemaining = true
 					}
 					cell.Window = rl.Window
 					cell.ResetAt = rl.ResetAt
 					cell.SyncedAt = sessionInfo.SyncedAt
-					// If the upstream reset window has already passed AND
-					// remaining is stuck at zero, auto-recover to limit.
-					// This fixes stale quota data between the moment
-					// 07:00 UTC passes and the next session create.
-					if cell.Remaining == 0 && !cell.ResetAt.IsZero() && time.Now().UTC().After(cell.ResetAt) {
-						cell.Remaining = cell.Limit
+					// Reset-window recovery: if upstream said the reset
+					// already happened and the model was at remaining=0,
+					// bring it back to limit (only when we have a real
+					// remaining value).
+					if cell.HasRemaining && cell.Remaining != nil && *cell.Remaining == 0 &&
+						!cell.ResetAt.IsZero() && time.Now().UTC().After(cell.ResetAt) {
+						full := cell.Limit
+						cell.Remaining = &full
 					}
 				}
-			}
-			// No snapshot? Publish zero values so UI shows "—" / unknown,
-			// not a misleading default 5/5.
-			if cell.Limit == 0 {
-				cell.Limit = 0
-				cell.Remaining = 0
 			}
 			if block, ok := blocks[model]; ok {
 				cell.Blocked = true
@@ -339,6 +364,58 @@ func (qs *QuotaStore) GetPoolStatus(ctx context.Context, accounts []*store.Accou
 	}
 
 	return &result, nil
+}
+
+// ClearOrphanSessionQuotas removes session quota keys whose SyncedAt is older
+// than `maxAge`. Defends against a bug-class where a caller writes stale
+// rateLimitsByModel data (e.g. parse-side fabrication) — even if that keeps
+// happening, anything older than the threshold is dropped on a periodic timer.
+//
+// Pattern: <prefix>:quota:session:<id>
+func (qs *QuotaStore) ClearOrphanSessionQuotas(ctx context.Context, maxAge time.Duration) (int, error) {
+	if qs == nil {
+		return 0, nil
+	}
+	pattern := qs.sessionKey(0) // → "<prefix>:quota:session:0" — we'll trim last char for prefix scan
+	prefix := strings.TrimSuffix(pattern, "0")
+	iter := qs.redis.Scan(ctx, 0, prefix+"*", 200).Iterator()
+	cutoff := time.Now().UTC().Add(-maxAge)
+	var stale []string
+	for iter.Next(ctx) {
+		key := iter.Val()
+		raw, err := qs.redis.Get(ctx, key).Result()
+		if err != nil {
+			continue
+		}
+		var info SessionQuotaInfo
+		if err := json.Unmarshal([]byte(raw), &info); err != nil {
+			// Garbage value — delete it.
+			stale = append(stale, key)
+			continue
+		}
+		if info.SyncedAt.Before(cutoff) {
+			stale = append(stale, key)
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return 0, err
+	}
+	if len(stale) == 0 {
+		return 0, nil
+	}
+	const batch = 100
+	for i := 0; i < len(stale); i += batch {
+		end := i + batch
+		if end > len(stale) {
+			end = len(stale)
+		}
+		if err := qs.redis.Del(ctx, stale[i:end]...).Err(); err != nil {
+			return i, err
+		}
+	}
+	slog.Info("Cleared orphan codebuff session quotas",
+		"count", len(stale), "max_age", maxAge)
+	return len(stale), nil
 }
 
 // ClearQuotaResetData removes block keys and session quota data at the
@@ -413,7 +490,7 @@ func Parse429Body(err error) (*ModelBlock, error) {
 		block.Limit = int(v)
 	}
 	if v, ok := payload["recentCount"].(float64); ok {
-		block.RecentCount = int(v)
+		block.RecentCount = v
 	}
 	if v, ok := payload["retryAfterMs"].(float64); ok {
 		block.RetryAfterMs = int(v)
@@ -430,6 +507,13 @@ func Parse429Body(err error) (*ModelBlock, error) {
 }
 
 // ParseSessionRateLimits extracts rateLimitsByModel from a session response.
+// Upstream sends `recentCount` (used) and `limit` (daily cap), but no
+// `remaining`. We populate:
+//   - `Limit` from upstream
+//   - `RecentCount` from upstream (the primary display signal)
+//   - `Remaining` only when upstream actually returned it (rare)
+// We drop entries with no useful data so a missing "remaining" can't be
+// faked into "exhausted".
 func ParseSessionRateLimits(data map[string]any) (map[string]ModelRateLimit, error) {
 	if data == nil {
 		return nil, nil
@@ -448,8 +532,16 @@ func ParseSessionRateLimits(data map[string]any) (map[string]ModelRateLimit, err
 		if limit, ok := mraw["limit"].(float64); ok {
 			mr.Limit = int(limit)
 		}
+		// recentCount is the canonical "used" signal from upstream.
+		// Float-valued: 4.5 means 4.5 of N consumed (e.g. a half-burn).
+		if recent, ok := mraw["recentCount"].(float64); ok {
+			mr.RecentCount = recent
+		}
+		// Remaining is rare in upstream responses; only set if present.
 		if remaining, ok := mraw["remaining"].(float64); ok {
-			mr.Remaining = int(remaining)
+			r := int(remaining)
+			mr.Remaining = &r
+			mr.HasRemaining = true
 		}
 		if window, ok := mraw["window"].(string); ok {
 			mr.Window = window
@@ -458,6 +550,10 @@ func ParseSessionRateLimits(data map[string]any) (map[string]ModelRateLimit, err
 			if t, err := parseTime(resetAt); err == nil {
 				mr.ResetAt = t
 			}
+		}
+		// Drop entries with no quota signal at all.
+		if mr.Limit == 0 && mr.RecentCount == 0 && !mr.HasRemaining && mr.ResetAt.IsZero() {
+			continue
 		}
 		result[model] = mr
 	}

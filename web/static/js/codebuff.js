@@ -300,32 +300,43 @@ function buildCard(acc, models) {
   // Quota: counts unknown/untouched models separately from exhausted ones.
   // Each model has its own independent daily quota — summing across all 11
   // models produces a meaningless total (e.g. 18/58). Show per-model reality.
+  //
+  // Upstream (codebuff) sends `recentCount` (used; can be fractional) and
+  // `limit` (daily cap), but no `remaining`. We display "X / 5 used today".
+  // `has_remaining` is only true when upstream explicitly returned a
+  // remaining value (rare); without it we fall back to recentCount display.
   let uncertainModels = 0, exhaustedModels = 0, blockedModels = 0, healthyModels = 0;
-  let mostConstrained = null; // {model, remaining, limit, pct, resetAt, blocked}
+  let mostConstrained = null; // {model, used, limit, pct, resetAt, blocked, window}
   models.forEach((m) => {
     const cell = acc.models[m] || {};
-    const hasSnapshot = cell.limit !== undefined && cell.limit > 0 && (cell.synced_at !== undefined);
+    // A model has a "real" quota snapshot if we have either recentCount>0
+    // (used signal) or a remaining value, AND a limit. Otherwise it's
+    // "uncertain" (no traffic / not yet known).
+    const hasUsed = typeof cell.recent_count === "number" && cell.recent_count > 0;
+    const hasLimit = typeof cell.limit === "number" && cell.limit > 0;
+    const hasSnapshot = (hasUsed || cell.has_remaining === true) && hasLimit;
+    const used = hasUsed ? cell.recent_count : 0;
     if (cell.blocked) {
       blockedModels++;
     } else if (!hasSnapshot) {
       uncertainModels++;
-    } else if (cell.remaining === 0) {
+    } else if (used >= cell.limit) {
       exhaustedModels++;
     } else {
       healthyModels++;
     }
-    // Track most-constrained model with valid snapshot.
+    // Track most-constrained (highest used/limit ratio) model with snapshot.
     if (hasSnapshot) {
-      const pct = remainingPct(cell);
-      const cand = { model: m, remaining: cell.remaining, limit: cell.limit, pct, resetAt: cell.reset_at, blocked: !!cell.blocked, window: cell.window };
-      if (!mostConstrained || cand.pct < mostConstrained.pct) {
+      const pct = usedPct(cell);
+      const cand = { model: m, used, limit: cell.limit, pct, resetAt: cell.reset_at, blocked: !!cell.blocked, window: cell.window };
+      if (!mostConstrained || cand.pct > mostConstrained.pct) {
         mostConstrained = cand;
       }
     }
   });
 
   const headline = mostConstrained
-    ? { used: mostConstrained.limit - mostConstrained.remaining, limit: mostConstrained.limit, pct: Math.round((1 - mostConstrained.pct) * 100), model: mostConstrained.model, blocked: mostConstrained.blocked }
+    ? { used: Math.round(mostConstrained.used * 10) / 10, limit: mostConstrained.limit, pct: Math.round(mostConstrained.pct * 100), model: mostConstrained.model, blocked: mostConstrained.blocked }
     : { used: 0, limit: 0, pct: 0, model: null, blocked: false };
 
   let statusLabel, statusClass;
@@ -450,9 +461,18 @@ function buildModelRow(acc, m, accMetric) {
   const cell = acc.models[m] || {};
   const mm = (accMetric && accMetric.models && accMetric.models[m]) || null;
 
-  const remaining = cell.remaining !== undefined ? cell.remaining : (cell.limit || 0);
   const limit = cell.limit || 0;
-  const exhausted = remaining === 0 && limit > 0;
+  // recent_count is the upstream-authoritative "used" value (float, 4.5 etc).
+  // If absent, fall back to limit - remaining (legacy) or 0.
+  let used;
+  if (typeof cell.recent_count === "number") {
+    used = cell.recent_count;
+  } else if (cell.has_remaining === true && typeof cell.remaining === "number") {
+    used = Math.max(0, limit - cell.remaining);
+  } else {
+    used = 0;
+  }
+  const exhausted = limit > 0 && used >= limit;
   const blocked = cell.blocked;
   const reqs = mm ? mm.requests : 0;
   const e429 = mm ? mm.errors_429 : 0;
@@ -468,13 +488,13 @@ function buildModelRow(acc, m, accMetric) {
   let state, stateCls;
   if (blocked) { state = "429 blocked"; stateCls = "danger"; }
   else if (exhausted) { state = "exhausted"; stateCls = "warn"; }
-  else if (reqs === 0) { state = "untouched"; stateCls = "idle"; }
+  else if (reqs === 0 && used === 0) { state = "untouched"; stateCls = "idle"; }
   else { state = "alive"; stateCls = "ok"; }
 
   const reset = cell.reset_at && new Date(cell.reset_at).getFullYear() > 1
     ? fmtTimeLeft(new Date(cell.reset_at)) : "—";
   const shortModel = m.split("/").slice(-1)[0];
-  const used = limit - remaining;
+  const usedDisplay = Number.isInteger(used) ? used : Math.round(used * 10) / 10;
   const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
 
   return `
@@ -485,7 +505,7 @@ function buildModelRow(acc, m, accMetric) {
       </div>
       <div class="m-cell m-quota">
         <div class="m-quota-line">
-          <span class="m-quota-count">${used} / ${limit}</span>
+          <span class="m-quota-count">${usedDisplay} / ${limit}</span>
           <span class="m-quota-state state-${stateCls}">${state}</span>
         </div>
         <div class="m-quota-bar">
@@ -504,10 +524,12 @@ function buildModelRow(acc, m, accMetric) {
   `;
 }
 
-function remainingPct(cell) {
-  if (!cell || !cell.limit || cell.limit <= 0) return 1;
-  const r = cell.remaining !== undefined ? cell.remaining : 0;
-  return Math.max(0, Math.min(1, r / cell.limit));
+function usedPct(cell) {
+  if (!cell || !cell.limit || cell.limit <= 0) return 0;
+  // Without recent_count data, we treat the model as "not constrained"
+  // (pct=0) so it never gets picked as the most-constrained.
+  if (typeof cell.recent_count !== "number") return 0;
+  return Math.max(0, Math.min(1, cell.recent_count / cell.limit));
 }
 
 function shortModelName(modelID) {

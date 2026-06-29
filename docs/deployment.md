@@ -140,6 +140,39 @@ If the current version mainly involves Puter or model refresh logic, it is recom
 go test ./internal/handler -run "Puter_"
 ```
 
+## 7a. Quota display semantics
+
+The dashboard's "X / Y used" columns are sourced from upstream codebuff's
+`rateLimitsByModel` object, which exposes:
+
+| Upstream field | Type | What it means |
+|---|---|---|
+| `limit` | int | Daily cap for the model |
+| `recentCount` | float | How much of that cap has been consumed (can be fractional) |
+| `resetAt` | RFC3339 | When the daily window resets (Pacific midnight = 07:00 UTC) |
+| `windowHours` | int | Window length in hours (typically 24) |
+
+Upstream does **not** return a `remaining` value. Our parser therefore
+displays `recentCount / limit` ("used today") as the primary signal, with
+`IsExhausted = recentCount >= limit` as the genuine-exhaustion predicate.
+
+### Why a `*int` for `Remaining`
+
+A previous version of the parser stored `Remaining` as `int`. When upstream
+omitted the field (always, in the live API), Go's zero-value default gave
+us `remaining=0` for every model — and the dashboard rendered that as
+"exhausted". That bug is now fixed by storing `Remaining` as `*int` with a
+`HasRemaining` discriminator, so absent/null upstream values render as
+"no snapshot" instead of a fake exhaustion.
+
+### Self-healing
+
+Even if a bug ever causes a stale write to land in Redis, the orphan-clear
+loop (every 30 min) drops session keys whose `SyncedAt` is older than 6h.
+Combined with the per-request TTL of `nextResetTTL()` (next 07:05 UTC),
+the dashboard can never get stuck on a permanently-stale "exhausted" model
+for more than one daily window.
+
 ## 8. Orchestrated Deploy (recommended)
 
 Two entry points, both lead to a healthy `orchids-api` on `:3002` running the
