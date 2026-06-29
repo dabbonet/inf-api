@@ -111,11 +111,33 @@ func (qs *QuotaStore) IsBlocked(ctx context.Context, accountID int64, model stri
 	if qs == nil {
 		return false, nil
 	}
+	// Check explicit block keys (written by RecordBlock on 429).
 	n, err := qs.redis.Exists(ctx, qs.blockKey(accountID, model)).Result()
 	if err != nil {
 		return false, err
 	}
-	return n > 0, nil
+	if n > 0 {
+		return true, nil
+	}
+	// Also check session quota data: if upstream reported remaining=0
+	// with a future resetAt, the account is effectively blocked until
+	// that time even if no block key exists (block keys auto-expire at
+	// old resetAt+1min but upstream may have a newer resetAt window).
+	sessData, err := qs.redis.Get(ctx, qs.sessionKey(accountID)).Result()
+	if err != nil {
+		return false, nil // no session data = not blocked
+	}
+	var sess SessionQuotaInfo
+	if err := json.Unmarshal([]byte(sessData), &sess); err != nil {
+		return false, nil
+	}
+	if rl, ok := sess.RateLimitsByModel[model]; ok {
+		if rl.Remaining == 0 && !rl.ResetAt.IsZero() && time.Now().UTC().Before(rl.ResetAt) {
+			slog.Debug("IsBlocked: session quota exhausted", "account_id", accountID, "model", model, "remaining", rl.Remaining, "resetAt", rl.ResetAt)
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // RecordBlock stores a 429 block with TTL until resetAt.
