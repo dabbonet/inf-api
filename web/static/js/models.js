@@ -12,7 +12,7 @@ let modelRefreshResults = {};
 let modelRefreshConcurrency = 4;
 
 function modelChannels() {
-  const defaultChannels = ["Puter", "Codebuff"];
+  const defaultChannels = ["Puter", "Codebuff", "Kimchi"];
   const allowed = new Set(defaultChannels.map((c) => c.toLowerCase()));
   const seen = new Set();
   const ordered = [];
@@ -161,6 +161,7 @@ function modelRefreshSourceLabel(source) {
     puter_public_models: "Puter Public Model API",
     puter_public_models_test_mode: "Puter Public API + Account Verification",
     puter_public_models_unverified: "Puter Public API",
+    kimchi_metadata: "Kimchi Metadata API",
   };
   if (labels[value]) return labels[value];
   return value;

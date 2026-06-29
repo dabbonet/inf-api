@@ -1494,6 +1494,7 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 		// Raw SSE writer — forwards upstream SSE directly to client, suppressing
 		// trailing finish_reason:"stop" after finish_reason:"tool_calls".
 		var rawSSEWriter func(event string, data []byte)
+		var rawBodyBuf bytes.Buffer
 		if rawBody.Stream {
 			rawFlusher, _ := w.(http.Flusher)
 			var rawSawToolCallsFinish bool
@@ -1518,6 +1519,14 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 					rawSawToolCallsFinish = true
 				}
 			}
+		} else {
+			// Non-stream passthrough: buffer the body so we can write
+			// it as JSON after SendRequestWithPayload returns.
+			rawSSEWriter = func(event string, data []byte) {
+				rawBodyBuf.Reset()
+				rawBodyBuf.Write(data)
+				hasOutput = true
+			}
 		}
 
 		// Build minimal upstream request with raw body — no type conversions.
@@ -1534,6 +1543,11 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 		// Call provider — SSE passthrough only
 		err := apiClient.SendRequestWithPayload(r.Context(), upstreamReq, nil, logger)
 		if err == nil {
+			// For non-stream: write buffered body as JSON response
+			if !rawBody.Stream && rawBodyBuf.Len() > 0 {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write(rawBodyBuf.Bytes())
+			}
 			break
 		}
 
