@@ -57,8 +57,10 @@ type ModelPoolStatus struct {
 	Limit       int        `json:"limit"`
 	RecentCount int        `json:"recent_count"`
 	Remaining   int        `json:"remaining"`
+	Window      string     `json:"window,omitempty"`
 	ResetAt     time.Time  `json:"reset_at"`
 	BlockedAt   *time.Time `json:"blocked_at,omitempty"`
+	SyncedAt    time.Time  `json:"synced_at,omitempty"`
 }
 
 // PoolStatus is the response for the pool-status endpoint.
@@ -161,6 +163,9 @@ func (qs *QuotaStore) RecordStreak(ctx context.Context, accountID int64, streak 
 }
 
 // RecordSessionQuotas stores rateLimitsByModel from a session response.
+// TTL is bounded to the next 07:00 UTC reset so stale snapshots (yesterday's
+// burns) don't leak into today's pool display. Daily quota windows reset at
+// Pacific midnight = 07:00 UTC.
 func (qs *QuotaStore) RecordSessionQuotas(ctx context.Context, accountID int64, limits map[string]ModelRateLimit) error {
 	if qs == nil || len(limits) == 0 {
 		return nil
@@ -174,7 +179,22 @@ func (qs *QuotaStore) RecordSessionQuotas(ctx context.Context, accountID int64, 
 	if err != nil {
 		return err
 	}
-	return qs.redis.Set(ctx, key, raw, 7*24*time.Hour).Err()
+	ttl := nextResetTTL()
+	return qs.redis.Set(ctx, key, raw, ttl).Err()
+}
+
+// nextResetTTL returns the time until next 07:00 UTC + small grace.
+func nextResetTTL() time.Duration {
+	now := time.Now().UTC()
+	next := time.Date(now.Year(), now.Month(), now.Day(), 7, 5, 0, 0, time.UTC)
+	if !now.Before(next) {
+		next = next.Add(24 * time.Hour)
+	}
+	d := next.Sub(now)
+	if d < time.Minute {
+		d = time.Minute
+	}
+	return d
 }
 
 // GetAccountStatus returns the full quota status for one account.
@@ -275,35 +295,42 @@ func (qs *QuotaStore) GetPoolStatus(ctx context.Context, accounts []*store.Accou
 
 		for _, model := range allModels {
 			cell := ModelPoolStatus{
-				Blocked:   false,
-				Limit:     5,
-				Remaining: 5, // assume fully available until proven otherwise
+				Blocked: false,
 			}
-		if sessionInfo != nil {
-			if rl, ok := sessionInfo.RateLimitsByModel[model]; ok {
-				cell.Limit = rl.Limit
-				if rl.Limit > 0 {
-					cell.Remaining = rl.Remaining
-				}
-				cell.ResetAt = rl.ResetAt
-				// If the upstream reset window has already passed AND
-				// remaining is stuck at zero, auto-recover to limit.
-				// This fixes stale quota data between the moment
-				// 07:00 UTC passes and the next session create.
-				if cell.Remaining == 0 && !cell.ResetAt.IsZero() && time.Now().UTC().After(cell.ResetAt) {
-					cell.Remaining = cell.Limit
+			if sessionInfo != nil {
+				if rl, ok := sessionInfo.RateLimitsByModel[model]; ok {
+					cell.Limit = rl.Limit
+					if rl.Limit > 0 {
+						cell.Remaining = rl.Remaining
+					}
+					cell.Window = rl.Window
+					cell.ResetAt = rl.ResetAt
+					cell.SyncedAt = sessionInfo.SyncedAt
+					// If the upstream reset window has already passed AND
+					// remaining is stuck at zero, auto-recover to limit.
+					// This fixes stale quota data between the moment
+					// 07:00 UTC passes and the next session create.
+					if cell.Remaining == 0 && !cell.ResetAt.IsZero() && time.Now().UTC().After(cell.ResetAt) {
+						cell.Remaining = cell.Limit
+					}
 				}
 			}
-		}
+			// No snapshot? Publish zero values so UI shows "—" / unknown,
+			// not a misleading default 5/5.
+			if cell.Limit == 0 {
+				cell.Limit = 0
+				cell.Remaining = 0
+			}
 			if block, ok := blocks[model]; ok {
 				cell.Blocked = true
 				cell.RecentCount = block.RecentCount
 				if block.Limit > 0 {
 					cell.Limit = block.Limit
 				}
-				cell.ResetAt = block.ResetAt
+				if cell.ResetAt.IsZero() {
+					cell.ResetAt = block.ResetAt
+				}
 				cell.BlockedAt = &block.BlockedAt
-				cell.Remaining = 0
 			}
 			accountStatus.Models[model] = cell
 		}

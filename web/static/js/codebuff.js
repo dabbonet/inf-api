@@ -297,23 +297,41 @@ function buildCard(acc, models) {
   const sTotal = accCreates + accReuses;
   const sessionIssues = accEvictions + accWaitingRoom + accModelLocked + accMismatch;
 
-  // Quota totals
-  let totalRemaining = 0, totalLimit = 0, healthyModels = 0, exhaustedModels = 0, blockedModels = 0;
+  // Quota: counts unknown/untouched models separately from exhausted ones.
+  // Each model has its own independent daily quota — summing across all 11
+  // models produces a meaningless total (e.g. 18/58). Show per-model reality.
+  let uncertainModels = 0, exhaustedModels = 0, blockedModels = 0, healthyModels = 0;
+  let mostConstrained = null; // {model, remaining, limit, pct, resetAt, blocked}
   models.forEach((m) => {
     const cell = acc.models[m] || {};
-    totalRemaining += (cell.remaining !== undefined ? cell.remaining : (cell.limit || 0));
-    totalLimit += (cell.limit || 0);
-    if (cell.blocked) blockedModels++;
-    else if ((cell.remaining !== undefined ? cell.remaining : (cell.limit || 0)) === 0) exhaustedModels++;
-    else healthyModels++;
+    const hasSnapshot = cell.limit !== undefined && cell.limit > 0 && (cell.synced_at !== undefined);
+    if (cell.blocked) {
+      blockedModels++;
+    } else if (!hasSnapshot) {
+      uncertainModels++;
+    } else if (cell.remaining === 0) {
+      exhaustedModels++;
+    } else {
+      healthyModels++;
+    }
+    // Track most-constrained model with valid snapshot.
+    if (hasSnapshot) {
+      const pct = remainingPct(cell);
+      const cand = { model: m, remaining: cell.remaining, limit: cell.limit, pct, resetAt: cell.reset_at, blocked: !!cell.blocked, window: cell.window };
+      if (!mostConstrained || cand.pct < mostConstrained.pct) {
+        mostConstrained = cand;
+      }
+    }
   });
-  const totalConsumed = totalLimit - totalRemaining;
-  const usagePct = totalLimit > 0 ? Math.min(100, Math.round((totalConsumed / totalLimit) * 100)) : 0;
+
+  const headline = mostConstrained
+    ? { used: mostConstrained.limit - mostConstrained.remaining, limit: mostConstrained.limit, pct: Math.round((1 - mostConstrained.pct) * 100), model: mostConstrained.model, blocked: mostConstrained.blocked }
+    : { used: 0, limit: 0, pct: 0, model: null, blocked: false };
 
   let statusLabel, statusClass;
   if (blockedModels > 0) { statusLabel = `${blockedModels} blocked`; statusClass = "pill-danger"; }
-  else if (totalRemaining === 0 && totalLimit > 0) { statusLabel = "All exhausted"; statusClass = "pill-warn"; }
-  else if (accReqs === 0) { statusLabel = "Idle"; statusClass = "pill-idle"; }
+  else if (exhaustedModels > 0) { statusLabel = `${exhaustedModels} exhausted`; statusClass = "pill-warn"; }
+  else if (uncertainModels === models.length && accReqs === 0) { statusLabel = "Idle"; statusClass = "pill-idle"; }
   else { statusLabel = "Healthy"; statusClass = "pill-ok"; }
 
   const expandedCls = expanded.has(acc.account_id) ? "expanded" : "";
@@ -322,8 +340,11 @@ function buildCard(acc, models) {
   const emptyModels = models.length === 0 ? `<div class="empty-models">No models registered for this account.</div>` : "";
 
   const rangeLabel = (RANGE_OPTIONS.find((r) => r.id === activeRange) || {}).label || "All time";
-  const reset = acc.models[models[0]]?.reset_at && new Date(acc.models[models[0]].reset_at).getFullYear() > 1
-    ? fmtTimeLeft(new Date(acc.models[models[0]].reset_at)) : "—";
+  const reset = mostConstrained && mostConstrained.resetAt && new Date(mostConstrained.resetAt).getFullYear() > 1
+    ? fmtTimeLeft(new Date(mostConstrained.resetAt)) : "—";
+  const scopeLabel = mostConstrained
+    ? (mostConstrained.window ? `${shortModelName(mostConstrained.model)} · ${mostConstrained.window}` : shortModelName(mostConstrained.model))
+    : "no quota snapshot";
 
   return `
     <article class="card ${expandedCls}" id="card-${acc.account_id}">
@@ -345,16 +366,16 @@ function buildCard(acc, models) {
         <div class="quota-block">
           <div class="quota-meta">
             <div>
-              <div class="meta-label">Quota</div>
-              <div class="meta-value">${totalConsumed} / ${totalLimit}</div>
+              <div class="meta-label">Quota · ${scopeLabel}</div>
+              <div class="meta-value">${headline.limit > 0 ? `${headline.used} / ${headline.limit}` : '— / —'}</div>
             </div>
-            <div class="meta-pct">${usagePct}% used</div>
+            <div class="meta-pct">${headline.limit > 0 ? `${headline.pct}% used` : 'no snapshot'}</div>
           </div>
           <div class="quota-bar">
-            <div class="quota-fill ${usagePct > 80 ? 'fill-warn' : ''} ${usagePct === 100 ? 'fill-danger' : ''}" style="width: ${usagePct}%"></div>
+            <div class="quota-fill ${headline.pct > 80 ? 'fill-warn' : ''} ${headline.pct >= 100 ? 'fill-danger' : ''}" style="width: ${headline.pct}%"></div>
           </div>
           <div class="quota-foot">
-            <span>${totalRemaining} requests left today</span>
+            <span>${exhaustedModels} exhausted · ${uncertainModels} no snapshot · ${blockedModels} blocked</span>
             <span>Resets in ${reset}</span>
           </div>
         </div>
@@ -481,6 +502,18 @@ function buildModelRow(acc, m, accMetric) {
       <div class="m-cell m-num" title="${sCreates || 0} new sessions · ${sReuses || 0} reuses">${sessReusePct}</div>
     </div>
   `;
+}
+
+function remainingPct(cell) {
+  if (!cell || !cell.limit || cell.limit <= 0) return 1;
+  const r = cell.remaining !== undefined ? cell.remaining : 0;
+  return Math.max(0, Math.min(1, r / cell.limit));
+}
+
+function shortModelName(modelID) {
+  if (!modelID) return "";
+  const parts = modelID.split("/");
+  return parts[parts.length - 1].replace(/-preview$|-\d+\.\d+$/, "");
 }
 
 function computeResetIn() {
