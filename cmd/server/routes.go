@@ -42,6 +42,9 @@ func registerRoutes(
 	if cfg.CodebuffEnabled {
 		modelPrefixes = append(modelPrefixes, "/codebuff/v1")
 	}
+	if cfg.KimchiEnabled {
+		modelPrefixes = append(modelPrefixes, "/kimchi/v1")
+	}
 	registerWithPrefixes(mux, modelPrefixes, "/models", h.HandleModels)
 	registerWithPrefixes(mux, modelPrefixes, "/models/", h.HandleModelByID)
 
@@ -51,6 +54,11 @@ func registerRoutes(
 		mux.HandleFunc("/codebuff/v1/messages", limiter.Limit(h.HandleMessages))
 		mux.HandleFunc("/codebuff/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
 		mux.HandleFunc("/codebuff/v1/chat/completions", limiter.Limit(h.HandleMessages))
+	}
+	if cfg.KimchiEnabled {
+		mux.HandleFunc("/kimchi/v1/messages", limiter.Limit(h.HandleMessages))
+		mux.HandleFunc("/kimchi/v1/messages/count_tokens", limiter.Limit(h.HandleCountTokens))
+		mux.HandleFunc("/kimchi/v1/chat/completions", limiter.Limit(h.HandleMessages))
 	}
 
 	// --- Public auth/login (no prefix duplication) ---

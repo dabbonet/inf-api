@@ -114,6 +114,9 @@ func channelFromPath(path string) string {
 	if strings.HasPrefix(path, "/codebuff/") {
 		return "codebuff"
 	}
+	if strings.HasPrefix(path, "/kimchi/") {
+		return "kimchi"
+	}
 	return ""
 }
 

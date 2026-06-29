@@ -24,6 +24,7 @@ import (
 	"orchids-api/internal/config"
 	apperrors "orchids-api/internal/errors"
 	"orchids-api/internal/middleware"
+	"orchids-api/internal/kimchi"
 	"orchids-api/internal/puter"
 	"orchids-api/internal/store"
 	"orchids-api/internal/tokencache"
@@ -196,6 +197,8 @@ func normalizedAccountCredentialKey(acc *store.Account) string {
 	switch accountType {
 	case "puter":
 		token = puter.ResolveAuthToken(acc)
+	case "kimchi":
+		token = kimchi.ResolveAuthToken(acc)
 	default:
 		token = strings.TrimSpace(firstNonEmptyString(acc.RefreshToken, acc.SessionCookie, acc.ClientCookie, acc.Token))
 	}
@@ -1549,7 +1552,7 @@ func (a *API) persistConfig(ctx context.Context, current, newCfg *config.Config)
 
 func isActiveModelChannel(channel string) bool {
 	switch strings.ToLower(strings.TrimSpace(channel)) {
-	case "puter", "codebuff":
+	case "puter", "codebuff", "kimchi":
 		return true
 	default:
 		return false
@@ -1563,6 +1566,8 @@ func truncateAccountDisplayToken(acc *store.Account) string {
 	var raw string
 	switch strings.ToLower(strings.TrimSpace(acc.AccountType)) {
 	case "warp":
+		raw = firstNonEmptyString(acc.RefreshToken, acc.SessionCookie, acc.ClientCookie, acc.Token)
+	case "kimchi":
 		raw = firstNonEmptyString(acc.RefreshToken, acc.SessionCookie, acc.ClientCookie, acc.Token)
 	default:
 		raw = firstNonEmptyString(acc.ClientCookie, acc.SessionCookie, acc.RefreshToken, acc.Token)

@@ -2216,6 +2216,11 @@ tr:hover td {
   color: #fb923c;
   border: 1px solid rgba(251, 146, 60, 0.35);
 }
+.badge-kimchi {
+  background: rgba(255, 82, 29, 0.15);
+  color: #ff521d;
+  border: 1px solid rgba(255, 82, 29, 0.35);
+}
 
 .badge-aihubmix {
   background: rgba(168, 85, 247, 0.15);

@@ -48,6 +48,10 @@ type Config struct {
 	CodebuffOS          string   `json:"codebuff_os"`
 	ZeroclickBaseURL    string   `json:"zeroclick_base_url"`
 
+	// ── Kimchi (kimchi.dev / Cast.ai Serverless Inference) ──
+	KimchiEnabled    bool   `json:"kimchi_enabled"`
+	KimchiBaseURL    string `json:"kimchi_base_url"`
+
 	// ── Per-client state (not configurable) ──
 	SessionID     string `json:"-"`
 	ClientCookie  string `json:"-"`

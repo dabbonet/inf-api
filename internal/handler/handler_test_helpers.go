@@ -10,6 +10,7 @@ import (
 	"orchids-api/internal/debug"
 	"orchids-api/internal/provider"
 	cbprov "orchids-api/internal/provider/codebuff"
+	kimchiprov "orchids-api/internal/provider/kimchi"
 	puterprov "orchids-api/internal/provider/puter"
 	"orchids-api/internal/upstream"
 )
@@ -20,6 +21,7 @@ import (
 func (h *Handler) registerDefaultSpecs() {
 	h.RegisterSpec(puterprov.Spec())
 	h.RegisterSpec(cbprov.Spec())
+	h.RegisterSpec(kimchiprov.Spec())
 }
 
 type fakePayloadClient struct {

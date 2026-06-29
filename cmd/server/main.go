@@ -26,6 +26,7 @@ import (
 	"orchids-api/internal/middleware"
 	cbprov "orchids-api/internal/provider/codebuff"
 	puterprov "orchids-api/internal/provider/puter"
+	kimchiprov "orchids-api/internal/provider/kimchi"
 	"orchids-api/internal/store"
 	"orchids-api/internal/template"
 	"orchids-api/internal/tokencache"
@@ -129,6 +130,9 @@ func main() {
 	h.RegisterSpec(puterprov.Spec())
 	if cfg.CodebuffEnabled {
 		h.RegisterSpec(cbprov.Spec())
+	}
+	if cfg.KimchiEnabled {
+		h.RegisterSpec(kimchiprov.Spec())
 	}
 
 	var redisClientForCodebuff *redis.Client

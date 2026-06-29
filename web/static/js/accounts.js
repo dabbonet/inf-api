@@ -419,6 +419,8 @@ function accountTypeLabel(type) {
       return "Puter";
     case "codebuff":
       return "Codebuff";
+    case "kimchi":
+      return "Kimchi";
     case "warp":
       return "Warp";
     case "aihubmix":
@@ -511,7 +513,7 @@ async function runAccountCreatePool(payloads, concurrency = 6, onProgress = null
 function renderPlatformTabs() {
   const container = document.getElementById("platformFilters");
   if (!container) return;
-  const defaultTypes = ["puter", "codebuff"];
+  const defaultTypes = ["puter", "codebuff", "kimchi"];
   const types = new Set([...defaultTypes, ...accounts.map(normalizeAccountType)]);
   const sorted = Array.from(types).sort();
   const tabs = [...sorted];
