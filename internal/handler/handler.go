@@ -1522,10 +1522,16 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 		} else {
 			// Non-stream passthrough: buffer the body so we can write
 			// it as JSON after SendRequestWithPayload returns.
+			// Don't overwrite with [DONE] — only capture first data chunk.
+			var bodyCaptured bool
 			rawSSEWriter = func(event string, data []byte) {
+				if bodyCaptured {
+					return
+				}
 				rawBodyBuf.Reset()
 				rawBodyBuf.Write(data)
 				hasOutput = true
+				bodyCaptured = true
 			}
 		}
 
