@@ -12,6 +12,7 @@ import (
 	"github.com/goccy/go-json"
 
 	"orchids-api/internal/config"
+	"orchids-api/internal/kimchi"
 	"orchids-api/internal/puter"
 	"orchids-api/internal/store"
 	"orchids-api/internal/util"
@@ -83,7 +84,7 @@ func makeModelRefreshHandler(cfg *config.Config, s *store.Store) http.HandlerFun
 		}
 
 		if channel != "" && !isRefreshableModelChannel(channel) {
-			http.Error(w, fmt.Sprintf("channel %q is no longer supported; refresh only Puter or Codebuff", channel), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("channel %q is not supported; refresh only Puter, Codebuff, or Kimchi", channel), http.StatusBadRequest)
 			return
 		}
 
@@ -136,6 +137,8 @@ func normalizeAdminModelChannel(channel string) string {
 	switch strings.ToLower(strings.TrimSpace(channel)) {
 	case "puter":
 		return "Puter"
+	case "kimchi":
+		return "Kimchi"
 	default:
 		return ""
 	}
@@ -182,6 +185,8 @@ func discoverModelsForChannelConcurrent(ctx context.Context, cfg *config.Config,
 	switch strings.ToLower(channel) {
 	case "puter":
 		return discoverPuterModelsConcurrent(ctx, cfg, s, concurrency)
+	case "kimchi":
+		return discoverKimchiModels(ctx, cfg, s)
 	default:
 		return nil, "", fmt.Errorf("unsupported channel: %s", channel)
 	}
@@ -223,6 +228,33 @@ func discoverPuterModelsConcurrent(ctx context.Context, cfg *config.Config, s *s
 		return nil, "", fmt.Errorf("no puter models verified by test_mode")
 	}
 	return verified, source + "_test_mode", nil
+}
+
+func discoverKimchiModels(ctx context.Context, cfg *config.Config, s *store.Store) ([]discoveredModel, string, error) {
+	if s == nil {
+		return nil, "", fmt.Errorf("store not configured")
+	}
+	accounts, err := enabledAccountsByType(ctx, s, "kimchi")
+	if err != nil || len(accounts) == 0 {
+		if err != nil {
+			return nil, "", fmt.Errorf("no enabled kimchi accounts: %w", err)
+		}
+		return nil, "", fmt.Errorf("no enabled kimchi accounts for model discovery")
+	}
+	// Use the first enabled kimchi account to fetch the model catalog.
+	acc := accounts[0]
+	models, err := kimchi.RefreshModels(ctx, acc, cfg)
+	if err != nil {
+		return nil, "", fmt.Errorf("kimchi model discovery failed: %w", err)
+	}
+	if len(models) == 0 {
+		return nil, "", fmt.Errorf("kimchi returned no models")
+	}
+	candidates := make([]discoveredModel, len(models))
+	for i, m := range models {
+		candidates[i] = discoveredModel{ID: m.ModelID, Name: firstNonEmpty(m.Name, m.ModelID), SortOrder: i}
+	}
+	return candidates, "kimchi_metadata", nil
 }
 
 func puterChoicesToDiscovered(items []puterPublicModelChoice) []discoveredModel {
@@ -538,7 +570,7 @@ func firstNonEmpty(values ...string) string {
 
 func isRefreshableModelChannel(channel string) bool {
 	switch strings.ToLower(strings.TrimSpace(channel)) {
-	case "puter", "codebuff":
+	case "puter", "codebuff", "kimchi":
 		return true
 	default:
 		return false

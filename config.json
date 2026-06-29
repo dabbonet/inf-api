@@ -12,5 +12,7 @@
   "redis_prefix": "orchids:",
   "proxy_url": "http://brd-customer-hl_a408d1c3-zone-isp_proxy2:r18rvqn5wzpl@brd.superproxy.io:33335",
   "codebuff_enabled": true,
-  "codebuff_ad_providers": ["gravity", "zeroclick"]
+  "codebuff_ad_providers": ["gravity", "zeroclick"],
+  "kimchi_enabled": true,
+  "kimchi_base_url": "https://llm.kimchi.dev"
 }

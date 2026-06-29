@@ -289,7 +289,7 @@ func forwardSSE(r io.Reader, write func(event string, data []byte)) error {
 			data.Reset()
 		case strings.HasPrefix(line, "event:"):
 			event.Reset()
-			event.Write(strings.TrimSpace(line[len("event:"):]))
+			event.WriteString(strings.TrimSpace(line[len("event:"):]))
 		case strings.HasPrefix(line, "data:"):
 			v := strings.TrimSpace(line[len("data:"):])
 			if data.Len() > 0 {
