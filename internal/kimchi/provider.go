@@ -116,11 +116,7 @@ func (p *Provider) completeUpstream(ctx context.Context, kind endpointKind, req 
 		return errors.New("kimchi: empty response body on non-stream request")
 	}
 	if req.RawSSEWriter != nil {
-		// Emit the JSON as a single SSE event terminated by [DONE]. The
-		// handler is responsible for keeping the connection open until
-		// return.
-		req.RawSSEWriter("message", body)
-		req.RawSSEWriter("", []byte("[DONE]"))
+		req.RawSSEWriter("body", body)
 	}
 	return nil
 }

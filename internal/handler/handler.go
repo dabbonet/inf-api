@@ -1520,18 +1520,18 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 				}
 			}
 		} else {
-			// Non-stream passthrough: buffer the body so we can write
-			// it as JSON after SendRequestWithPayload returns.
-			// Don't overwrite with [DONE] — only capture first data chunk.
-			var bodyCaptured bool
+			// Non-stream passthrough: write the body directly.
+			// The provider sends a single "body" event with JSON.
 			rawSSEWriter = func(event string, data []byte) {
-				if bodyCaptured {
+				// Skip the [DONE] sentinel from streaming paths, and
+				// discard any blank DONE events. For non-stream, providers
+				// send a single "body" event with the JSON response.
+				if string(data) == "[DONE]" {
 					return
 				}
 				rawBodyBuf.Reset()
 				rawBodyBuf.Write(data)
 				hasOutput = true
-				bodyCaptured = true
 			}
 		}
 
