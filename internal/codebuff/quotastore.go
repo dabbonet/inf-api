@@ -314,16 +314,23 @@ func (qs *QuotaStore) GetPoolStatus(ctx context.Context, accounts []*store.Accou
 	return &result, nil
 }
 
-// ClearAllBlocks removes all block keys.
-func (qs *QuotaStore) ClearAllBlocks(ctx context.Context) error {
+// ClearQuotaResetData removes block keys and session quota data at the
+// daily 07:00 UTC reset. Streak keys are preserved (they track usage
+// across days). One scan of codebuff:quota:*, delete everything except
+// codebuff:quota:streak:*.
+func (qs *QuotaStore) ClearQuotaResetData(ctx context.Context) error {
 	if qs == nil {
 		return nil
 	}
-	pattern := fmt.Sprintf("%s:quota:block:*", qs.prefix)
+	pattern := fmt.Sprintf("%s:quota:*", qs.prefix)
 	iter := qs.redis.Scan(ctx, 0, pattern, 1000).Iterator()
+	streakPrefix := fmt.Sprintf("%s:quota:streak:", qs.prefix)
 	var keys []string
 	for iter.Next(ctx) {
-		keys = append(keys, iter.Val())
+		key := iter.Val()
+		if !strings.HasPrefix(key, streakPrefix) {
+			keys = append(keys, key)
+		}
 	}
 	if err := iter.Err(); err != nil {
 		return err
@@ -341,7 +348,7 @@ func (qs *QuotaStore) ClearAllBlocks(ctx context.Context) error {
 			return err
 		}
 	}
-	slog.Info("Cleared codebuff quota blocks", "count", len(keys))
+	slog.Info("Cleared codebuff quota reset data", "count", len(keys))
 	return nil
 }
 

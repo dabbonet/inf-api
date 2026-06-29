@@ -169,10 +169,10 @@ func startCodebuffQuotaResetLoop(ctx context.Context, qs *codebuff.QuotaStore) {
 			case <-ctx.Done():
 				return
 			case <-time.After(next.Sub(now)):
-				if err := qs.ClearAllBlocks(ctx); err != nil {
-					slog.Error("Failed to clear codebuff quota blocks", "error", err)
+				if err := qs.ClearQuotaResetData(ctx); err != nil {
+					slog.Error("Failed to clear codebuff quota reset data", "error", err)
 				} else {
-					slog.Info("Cleared codebuff quota blocks for new day")
+					slog.Info("Cleared codebuff quota reset data for new day")
 				}
 			}
 		}
