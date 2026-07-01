@@ -246,7 +246,7 @@ const (
 	// succeeds we'll force-clear 402 there. Producer-side, we keep a short
 	// per-account cooldown so we don't pound the upstream when credits are
 	// truly zero; recovery is then driven by sync + manual intervention.
-	retry402Default = 5 * time.Minute
+	retry402Default = 24 * time.Hour
 	// 429 Cooling time: Current limiting is usually temporary, priority is given to waiting for a shorter window before resuming attempts.
 	retry429Default = 1 * time.Minute
 	// 403/404 Cooling time: The account may be banned or configured incorrectly. Please try again after a longer interval.
