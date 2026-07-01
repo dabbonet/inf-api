@@ -3,6 +3,7 @@ package kimchi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
@@ -55,6 +56,13 @@ func NewFromAccount(acc *store.Account, cfg *config.Config) *Provider {
 //
 // We don't use req.Prompt / req.Messages / req.Tools (passthrough mode).
 // We use req.RawBody, req.RawSSEWriter, req.Stream.
+//
+// IMPORTANT: We ALWAYS force stream:true upstream (Fix A) — kimi-k2.7 has a 1M
+// context window and slow prefill. With non-stream upstream, the first byte
+// takes 30-90s on multi-turn, and clients with a generator-cap (e.g. opencode's
+// 30s default) cut the connection before the response starts. By forcing
+// upstream stream:true, Kimchi returns SSE chunks incrementally and the
+// caller's stream-tolerant timeout applies (5 min+).
 func (p *Provider) SendRequestWithPayload(
 	ctx context.Context,
 	req upstream.UpstreamRequest,
@@ -68,15 +76,43 @@ func (p *Provider) SendRequestWithPayload(
 		return errors.New("kimchi: empty RawBody on passthrough request")
 	}
 
-	kind := guessKind(req.RawBody)
+	// Fix A: always rewrite the upstream body to stream:true.
+	// We don't want to mutate the caller's req.RawBody in place (their handler
+	// already parsed model/stream/messages off it), so we emit a fresh one.
+	upstreamBody := forceStreamTrue(req.RawBody)
+
+	kind := guessKind(upstreamBody)
 	if logger != nil {
-		logger.LogUpstreamRequest(p.client.upstreamURL(kind), map[string]string{"channel": "kimchi"}, nil)
+		logger.LogUpstreamRequest(p.client.upstreamURL(kind), map[string]string{"channel": "kimchi", "stream_forced": "true"}, nil)
 	}
 
-	if req.Stream {
-		return p.streamUpstream(ctx, kind, req)
+	// Always take the streaming path upstream. The handler decides downstream
+	// shape (SSE chunks vs single JSON) based on the caller's original request.
+	return p.streamUpstream(ctx, kind, upstream.UpstreamRequest{
+		Model:             req.Model,
+		Stream:            true,
+		RawBody:           upstreamBody,
+		RawOpenAIMessages: req.RawOpenAIMessages,
+		RawOpenAISystem:   req.RawOpenAISystem,
+		RawSSEWriter:      req.RawSSEWriter,
+		TraceID:           req.TraceID,
+	})
+}
+
+// forceStreamTrue rewrites the JSON body so the `stream` field is true.
+// Non-stream upstream Kimchi is too slow on multi-turn kimi-k2.7 (1M context).
+// Returns the original body unchanged if it can't be parsed (defensive).
+func forceStreamTrue(body []byte) []byte {
+	m := map[string]any{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		return body
 	}
-	return p.completeUpstream(ctx, kind, req)
+	m["stream"] = true
+	out, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 // streamUpstream forwards the SSE stream from upstream to the client.

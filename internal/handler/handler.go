@@ -1482,12 +1482,9 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 		"ms", time.Since(debugStart).Milliseconds(),
 		"hint", "if this >> 500ms the orchestrator is the bottleneck")
 
-	// Set SSE headers
-	if rawBody.Stream {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-	}
+	// SSE headers are now set inside the streaming-path block below,
+	// before the upstream POST, so the client sees the connection
+	// alive immediately (matters for Fix A's Kimchi-passthrough case).
 
 	// Track connection
 	trackedAccountID := h.acquireTrackedAccount(currentAccount)
@@ -1512,9 +1509,16 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 
 		// Raw SSE writer — forwards upstream SSE directly to client, suppressing
 		// trailing finish_reason:"stop" after finish_reason:"tool_calls".
+		//
+		// Fix A (Kimchi): always use the streaming response path regardless of
+		// the caller's `stream:false` choice. Kimchi kimi-k2.7 (1M context) is
+		// too slow on multi-turn for clients with a generator-cap (opencode's 30s
+		// default). By streaming SSE chunks back, the caller's stream-tolerant
+		// timeout (5 min+) applies and the response survives.
 		var rawSSEWriter func(event string, data []byte)
 		var rawBodyBuf bytes.Buffer
-		if rawBody.Stream {
+		forceStreamResponse := strings.EqualFold(spec.Name, "kimchi")
+		if rawBody.Stream || forceStreamResponse {
 			rawFlusher, _ := w.(http.Flusher)
 			var rawSawToolCallsFinish bool
 			rawSSEWriter = func(event string, data []byte) {
@@ -1537,6 +1541,15 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 				if !rawSawToolCallsFinish && bytes.Contains(data, []byte(`"finish_reason":"tool_calls"`)) {
 					rawSawToolCallsFinish = true
 				}
+			}
+			// Ensure SSE headers are out BEFORE upstream POST, so the client knows
+			// the connection is alive and won't close after a short generator cap.
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			w.WriteHeader(http.StatusOK)
+			if rawFlusher != nil {
+				rawFlusher.Flush()
 			}
 		} else {
 			// Non-stream passthrough: write the body directly.
