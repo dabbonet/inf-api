@@ -238,9 +238,15 @@ func (lb *LoadBalancer) ReleaseConnection(accountID int64) {
 const (
 	// 401 Cooling time: token may have been refreshed, try again after a shorter interval
 	retry401Default = 5 * time.Minute
-	// 402 to Puter usually means insufficient balance/credits. Puter currently has no stable quota/reset time API.
-	// The default is to cool down on a daily basis to prevent accounts without quota from repeatedly hitting the upstream.
-	retry402Default = 24 * time.Hour
+	// 402 = Puter / general "insufficient funds".
+	//
+	// Previously this was 24h, which locked users out for a full day even after
+	// they'd recharged via the Puter dashboard. The sync endpoint reads Puter's
+	// `/metering/usage` API to surface fresh quota state, so once a sync
+	// succeeds we'll force-clear 402 there. Producer-side, we keep a short
+	// per-account cooldown so we don't pound the upstream when credits are
+	// truly zero; recovery is then driven by sync + manual intervention.
+	retry402Default = 5 * time.Minute
 	// 429 Cooling time: Current limiting is usually temporary, priority is given to waiting for a shorter window before resuming attempts.
 	retry429Default = 1 * time.Minute
 	// 403/404 Cooling time: The account may be banned or configured incorrectly. Please try again after a longer interval.
