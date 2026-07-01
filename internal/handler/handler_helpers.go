@@ -134,12 +134,18 @@ func (h *Handler) selectAccountRecordWithOptions(ctx context.Context, targetChan
 	// account that already holds an active upstream session for this model.
 	// One Redis EXISTS per account; no writes, no proactive assignment.
 	if opts.ModelID != "" && strings.EqualFold(targetChannel, "codebuff") {
-		if acc := h.trySessionAffinity(ctx, opts.ModelID, failedAccountIDs, quotaFilter); acc != nil {
+		tAffinityStart := time.Now()
+		acc := h.trySessionAffinity(ctx, opts.ModelID, failedAccountIDs, quotaFilter)
+		slog.Debug("DEBUG_LATENCY trySessionAffinity", "ms", time.Since(tAffinityStart).Milliseconds(), "matched", acc != nil)
+		if acc != nil {
 			return acc, nil
 		}
 	}
 
-	return h.loadBalancer.GetNextAccountExcludingByChannelWithTrackerFilter(ctx, failedAccountIDs, targetChannel, h.connTracker, quotaFilter)
+	tLBStart := time.Now()
+	out, lbErr := h.loadBalancer.GetNextAccountExcludingByChannelWithTrackerFilter(ctx, failedAccountIDs, targetChannel, h.connTracker, quotaFilter)
+	slog.Debug("DEBUG_LATENCY loadbalancer.GetNext", "ms", time.Since(tLBStart).Milliseconds())
+	return out, lbErr
 }
 
 // trySessionAffinity checks whether any codebuff account already has an

@@ -1425,14 +1425,20 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// DEBUG_LATENCY: per-step timing between "slot acquired" and
+	// "upstream send". Logged at Debug level — only fires when
+	// cfg.DebugEnabled=true (which sets slog level to Debug).
+	debugStart := time.Now()
+
 	// Debug logger
 	logger := debug.New(h.config.DebugEnabled, h.config.DebugLogSSE)
 	defer logger.Close()
 
 	targetChannel := strings.TrimSpace(spec.Name)
 
-	// Validate model availability
+	tValidateStart := time.Now()
 	validatedModel, err := h.validateModelAvailability(r.Context(), rawBody.Model, targetChannel)
+	slog.Debug("DEBUG_LATENCY validateModelAvailability", "model", rawBody.Model, "ms", time.Since(tValidateStart).Milliseconds())
 	if err != nil {
 		apperrors.New("invalid_request_error", err.Error(), http.StatusBadRequest).WriteResponse(w)
 		return
@@ -1445,9 +1451,19 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 	// Select account — passthrough always requires a channel-bound account.
 	var failedAccountIDs []int64
 	failedAccountSet := make(map[int64]struct{})
+
+	tSelectStart := time.Now()
 	apiClient, currentAccount, err := h.selectAccountWithOptions(r.Context(), targetChannel, true, failedAccountIDs, accountSelectionOptions{
 		ModelID: mappedModel,
 	})
+	selAccID := int64(0)
+	if currentAccount != nil {
+		selAccID = currentAccount.ID
+	}
+	slog.Debug("DEBUG_LATENCY selectAccountWithOptions",
+		"channel", targetChannel,
+		"ms", time.Since(tSelectStart).Milliseconds(),
+		"account_id", selAccID)
 	if err != nil {
 		apperrors.New("server_error", fmt.Sprintf("No available accounts: %v", err), http.StatusServiceUnavailable).WriteResponse(w)
 		return
@@ -1462,6 +1478,9 @@ func (h *Handler) handlePassthroughProvider(w http.ResponseWriter, r *http.Reque
 		"account_id", currentAccount.ID,
 		"stream", rawBody.Stream,
 	)
+	slog.Debug("DEBUG_LATENCY total-orchestrator-overhead",
+		"ms", time.Since(debugStart).Milliseconds(),
+		"hint", "if this >> 500ms the orchestrator is the bottleneck")
 
 	// Set SSE headers
 	if rawBody.Stream {

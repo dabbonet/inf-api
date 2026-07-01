@@ -111,24 +111,40 @@ func (p *Provider) SendRequestWithPayload(
 		return err
 	}
 
-	// Acquire session (with retries for waiting_room_required, model_locked,
-	// and session_model_mismatch; each retry evicts the broken cache entry first).
-	const maxSessionRetries = 2
-	const maxCreateRetries = 2
+	// Acquire session. Outer = eviction retry cycles (when we evict
+	// model_locked / waiting_room / mismatch and want another account),
+	// inner = per-account acquireSession retries. Bounded — but small:
+	// with session-cache skipping upstream verify on fresh cache hits,
+	// waiting_room cases resolve faster and the previous 9-upstream-call
+	// worst case is rare. We keep a small safety net of 2×1 instead of 3×3.
+	const maxSessionRetries = 1
+	const maxCreateRetries = 1
+
+	tSessionLoopStart := time.Now()
 
 	for sessionRetry := 0; sessionRetry <= maxSessionRetries; sessionRetry++ {
 		var sess *Session
 		var sessData map[string]any
 		var outcome SessionOutcome
 		for attempt := 0; attempt <= maxCreateRetries; attempt++ {
+			tAcqStart := time.Now()
 			sess, sessData, outcome, err = p.acquireSession(ctx, model.SessionID())
+			tAcqMs := time.Since(tAcqStart).Milliseconds()
+			if tAcqMs > 500 {
+				slog.Debug("DEBUG_LATENCY codebuff.acquireSession",
+					"ms", tAcqMs, "session_retry", sessionRetry, "attempt", attempt,
+					"model", model.UpstreamID(), "err", err)
+			}
 			if err == nil {
 				break
 			}
 			if (IsWaitingRoomRequired(err) || IsModelLocked(err) || strings.Contains(err.Error(), "session_model_mismatch")) && attempt < maxCreateRetries {
 				p.evictSession(ctx, model.SessionID())
 				p.recordSessionTelemetry(model.UpstreamID(), evictReason(err))
-				slog.Warn("codebuff session error; evicting and retrying", "attempt", attempt+1, "error", err)
+				slog.Debug("DEBUG_LATENCY codebuff.session-retry",
+					"reason", "model_locked_or_waiting_or_mismatch",
+					"session_retry", sessionRetry, "attempt", attempt,
+					"err_short", errShort(err), "ms_so_far", time.Since(tSessionLoopStart).Milliseconds())
 				continue
 			}
 			p.recordBlockIf429(err, model.UpstreamID())
@@ -672,4 +688,16 @@ func (ca *CompletionAccumulator) ToMessages() []upstream.SSEMessage {
 		},
 	})
 	return msgs
+}
+
+// errShort returns the first 80 chars of an error message for log readability.
+func errShort(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	if len(s) > 80 {
+		return s[:80] + "…"
+	}
+	return s
 }

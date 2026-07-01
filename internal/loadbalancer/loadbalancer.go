@@ -63,11 +63,14 @@ func (lb *LoadBalancer) GetNextAccountExcludingByChannelWithTracker(ctx context.
 }
 
 func (lb *LoadBalancer) GetNextAccountExcludingByChannelWithTrackerFilter(ctx context.Context, excludeIDs []int64, channel string, tracker ConnTracker, filter func(*store.Account) bool) (*store.Account, error) {
+	tStart := time.Now()
 	accounts, err := lb.getEnabledAccounts(ctx)
+	tGetAccs := time.Since(tStart).Milliseconds()
 	if err != nil {
 		return nil, err
 	}
 
+	tFilterStart := time.Now()
 	var filtered []*store.Account
 	excludeSet := make(map[int64]bool)
 	channelMatched := 0
@@ -107,6 +110,7 @@ func (lb *LoadBalancer) GetNextAccountExcludingByChannelWithTrackerFilter(ctx co
 		}
 		filtered = append(filtered, acc)
 	}
+	tFilter := time.Since(tFilterStart).Milliseconds()
 	accounts = filtered
 
 	if len(accounts) == 0 {
@@ -117,6 +121,13 @@ func (lb *LoadBalancer) GetNextAccountExcludingByChannelWithTrackerFilter(ctx co
 	}
 
 	account := lb.selectAccountWithTracker(accounts, tracker)
+	slog.Debug("DEBUG_LATENCY LB.GetNextAccountWithFilter",
+		"channel", channel,
+		"ms_total", time.Since(tStart).Milliseconds(),
+		"ms_getEnabledAccounts", tGetAccs,
+		"ms_filterLoop", tFilter,
+		"matched_count", len(accounts),
+		"selected_id", account.ID)
 
 	slog.Debug("Selected account", "id", account.ID, "name", account.Name, "type", account.AccountType, "session", auth.MaskSensitive(account.SessionID))
 

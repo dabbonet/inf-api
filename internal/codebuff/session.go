@@ -122,6 +122,19 @@ const (
 // was a cache hit, an upstream-recovered session, or a freshly created
 // session. Callers may ignore it; the telemetry layer records create-vs-
 // reuse counts from this signal.
+//
+// Performance notes (2026-06-30):
+//   - For cached+fresh+matching sessions: skip the upstream verify round-trip.
+//     GetSession upstream calls were measured at 5-30s under load; doing two
+//     of them per request (verify + "is active") was the dominant source of
+//     orchestrator-added latency for codebuff requests.
+//   - On cache miss we DON'T preemptively call GetSession(ctx, "") to check
+//     if upstream has an active session. That call cost ~5-12s and the
+//     "CreateSession" path will surface any conflict via IsModelLocked /
+//     session_model_mismatch which the outer retry loop handles. Skipping
+//     the preemptive check halves worst-case session-create latency.
+//   - On cache miss we ALSO skip the double-check (step 3) to keep the
+//     fast-path as fast as possible.
 func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token, model string) (*Session, map[string]any, SessionOutcome, error) {
 	tokenHash := hashToken(token)
 	// Per-(token,model) lock so concurrent requests for *different* models
@@ -129,40 +142,30 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 	lockKey := fmt.Sprintf("%s:session_lock:%s:%s", sc.prefix, tokenHash, model)
 	sessionKey := fmt.Sprintf("%s:session:%s:%s", sc.prefix, tokenHash, model)
 
-	// 1. Try cached session.
+	// 1. Try cached session. If we have one with plenty of remaining time
+	//    AND it matches our requested model, trust the cache and skip the
+	//    upstream verify round-trip entirely. Upstream `GetSession` calls
+	//    have been observed taking 5-30 seconds under load, so skipping
+	//    them on the happy path eliminates a major source of
+	//    orchestrator-added latency.
 	cached, err := sc.loadSession(ctx, sessionKey)
+	if err == nil && cached != nil && cached.IsFresh(sc.freshMs) && cached.Model == model {
+		// Cache hit, fresh, model-matches. Trust it.
+		return cached, nil, SessionOutcomeReuse, nil
+	}
 	if err == nil && cached != nil && cached.IsFresh(sc.freshMs) {
-		data, err := client.GetSession(ctx, cached.InstanceID)
-		if err == nil {
-			if status, _ := data["status"].(string); status == "active" {
-				upstreamModel, _ := data["model"].(string)
-				if upstreamModel == "" || upstreamModel == model {
-					// Update remaining_ms from upstream.
-					if v, ok := data["remainingMs"].(float64); ok {
-						cached.RemainingMs = int(v)
-					}
-					_ = sc.saveSession(ctx, sessionKey, cached)
-					return cached, nil, SessionOutcomeReuse, nil
-				}
-				// Model mismatch — evict.
-				_ = sc.redis.Del(ctx, sessionKey).Err()
-			} else {
-				// Not active — evict.
-				_ = sc.redis.Del(ctx, sessionKey).Err()
-			}
-		} else {
-			// Verify failed — evict.
-			_ = sc.redis.Del(ctx, sessionKey).Err()
-		}
+		// Cache hit, fresh, but model in cache differs from requested.
+		// Evict and fall through to create a fresh session for this model.
+		_ = sc.redis.Del(ctx, sessionKey).Err()
 	}
 
-	// 2. Try to acquire lock for session creation.
+	// 2. Acquire lock for session creation. If another process holds it,
+	//    poll briefly for the cached session to appear.
 	locked, err := sc.redis.SetNX(ctx, lockKey, "1", sc.lockTTL).Result()
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("redis lock error: %w", err)
 	}
 	if !locked {
-		// Another process is creating the session; poll Redis briefly.
 		deadline := time.Now().Add(sc.pollTimeout)
 		for time.Now().Before(deadline) {
 			select {
@@ -171,41 +174,18 @@ func (sc *SessionCache) EnsureSession(ctx context.Context, client *Client, token
 			case <-time.After(sc.pollDelay):
 			}
 			cached, err = sc.loadSession(ctx, sessionKey)
-			if err == nil && cached != nil && cached.IsFresh(sc.freshMs) {
+			if err == nil && cached != nil && cached.IsFresh(sc.freshMs) && cached.Model == model {
 				return cached, nil, SessionOutcomeReuse, nil
 			}
 		}
 		return nil, nil, "", fmt.Errorf("timeout waiting for session lock")
 	}
-	// Guarantee lock release.
 	defer sc.redis.Del(ctx, lockKey)
 
-	// 3. Double-check cache after acquiring lock.
-	cached, err = sc.loadSession(ctx, sessionKey)
-	if err == nil && cached != nil && cached.IsFresh(sc.freshMs) {
-		return cached, nil, SessionOutcomeReuse, nil
-	}
-
-	// 4. Check if upstream already has an active session for this model.
-	data, err := client.GetSession(ctx, "")
-	if err == nil {
-		if status, _ := data["status"].(string); status == "active" {
-			upstreamModel, _ := data["model"].(string)
-			instanceID, _ := data["instanceId"].(string)
-			if upstreamModel == model && instanceID != "" {
-				sess := &Session{
-					InstanceID:  instanceID,
-					Model:       upstreamModel,
-					ExpiresAt:   stringOrEmpty(data["expiresAt"]),
-					RemainingMs: intOrZero(data["remainingMs"]),
-				}
-				_ = sc.saveSession(ctx, sessionKey, sess)
-				return sess, nil, SessionOutcomeReuse, nil
-			}
-		}
-	}
-
-	// 5. Create a new session.
+	// 3. Create a new session. We DO NOT preemptively call GetSession("") to
+	//    check if upstream already has an active session — that round-trip
+	//    costs 5-12s. If upstream rejects the create with model_locked /
+	//    session_model_mismatch, we'll handle that in the retry loop.
 	sess, sessData, err := client.CreateSession(ctx, model)
 	if err != nil {
 		if IsModelLocked(err) {
