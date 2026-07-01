@@ -283,6 +283,9 @@ func buildOpenAINonStreamResponse(sh *streamHandler, model string, stopReason st
 				call.ID = id
 			}
 			if name, ok := sh.contentBlocks[i]["name"].(string); ok {
+				if sh.responseFormat == adapter.FormatOpenAI {
+					name = strings.ToLower(name)
+				}
 				call.Function.Name = name
 			}
 			switch input := sh.contentBlocks[i]["input"].(type) {

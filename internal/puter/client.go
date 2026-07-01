@@ -886,7 +886,7 @@ func parseParsedToolCall(payload map[string]interface{}) (ParsedToolCall, bool) 
 	id := strings.TrimSpace(asString(payload["id"]))
 
 	if fn, ok := payload["function"].(map[string]interface{}); ok {
-		name := strings.ToLower(strings.TrimSpace(asString(fn["name"])))
+		name := strings.TrimSpace(asString(fn["name"]))
 		if name == "" {
 			return ParsedToolCall{}, false
 		}
@@ -902,12 +902,12 @@ func parseParsedToolCall(payload map[string]interface{}) (ParsedToolCall, bool) 
 		return ParsedToolCall{Name: name, ID: id, Input: input}, true
 	}
 
-	name := strings.ToLower(strings.TrimSpace(asString(payload["name"])))
+	name := strings.TrimSpace(asString(payload["name"]))
 	if name == "" {
-		name = strings.ToLower(strings.TrimSpace(asString(payload["tool"])))
+		name = strings.TrimSpace(asString(payload["tool"]))
 	}
 	if name == "" {
-		name = strings.ToLower(strings.TrimSpace(asString(payload["toolName"])))
+		name = strings.TrimSpace(asString(payload["toolName"]))
 	}
 	if name == "" {
 		return ParsedToolCall{}, false

@@ -642,6 +642,9 @@ func (h *streamHandler) writeSSEBytesLockedWithHint(event string, data []byte, i
 }
 
 func (h *streamHandler) writeSSEContentBlockStartToolUseLocked(index int, id, name string, final bool) {
+	if h.responseFormat == adapter.FormatOpenAI {
+		name = strings.ToLower(name)
+	}
 	raw, err := appendSSEContentBlockStartToolUse(h.ssePayloadScratch[:0], index, id, name)
 	if err != nil {
 		h.markWriteErrorLocked("content_block_start", err)
